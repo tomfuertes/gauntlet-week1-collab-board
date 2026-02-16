@@ -1,31 +1,36 @@
-import { useEffect, useState } from "react";
+import { useState, useEffect } from "react";
+import { Board } from "./components/Board";
+import { AuthForm } from "./components/AuthForm";
+
+export interface AuthUser {
+  id: string;
+  username: string;
+  displayName: string;
+}
 
 export function App() {
-  const [status, setStatus] = useState("connecting...");
+  const [user, setUser] = useState<AuthUser | null>(null);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetch("/api/health")
-      .then((r) => r.json() as Promise<{ status: string }>)
-      .then((data) => setStatus(data.status))
-      .catch(() => setStatus("offline"));
+    fetch("/auth/me")
+      .then((r) => r.json() as Promise<{ user: AuthUser | null }>)
+      .then((data) => setUser(data.user))
+      .catch(() => setUser(null))
+      .finally(() => setLoading(false));
   }, []);
 
-  return (
-    <div
-      style={{
-        display: "flex",
-        flexDirection: "column",
-        alignItems: "center",
-        justifyContent: "center",
-        height: "100vh",
-        gap: "1rem",
-      }}
-    >
-      <h1 style={{ fontSize: "3rem" }}>CollabBoard</h1>
-      <p>
-        API: <code style={{ color: status === "ok" ? "#4ade80" : "#f87171" }}>{status}</code>
-      </p>
-      <p style={{ color: "#888", fontSize: "0.875rem" }}>v0.0.1 - hello world</p>
-    </div>
-  );
+  if (loading) {
+    return (
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100vh", background: "#1a1a2e", color: "#eee" }}>
+        Loading...
+      </div>
+    );
+  }
+
+  if (!user) {
+    return <AuthForm onAuth={setUser} />;
+  }
+
+  return <Board user={user} onLogout={() => setUser(null)} />;
 }
