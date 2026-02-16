@@ -1,5 +1,5 @@
 import React, { useState, useRef, useCallback, useEffect } from "react";
-import { Stage, Layer, Rect, Text } from "react-konva";
+import { Stage, Layer, Rect, Text, Group } from "react-konva";
 import type { KonvaEventObject } from "konva/lib/Node";
 import type Konva from "konva";
 import type { AuthUser } from "../App";
@@ -20,7 +20,8 @@ export function Board({ user, onLogout }: { user: AuthUser; onLogout: () => void
   const [size, setSize] = useState({ width: window.innerWidth, height: window.innerHeight });
   const lastCursorSend = useRef(0);
 
-  const { connected, cursors, objects, presence, send } = useWebSocket(BOARD_ID);
+  const { connected, cursors, objects, presence, send, createObject, updateObject } = useWebSocket(BOARD_ID);
+  const [editingId, setEditingId] = useState<string | null>(null);
 
   // Resize handler
   useEffect(() => {
@@ -74,8 +75,37 @@ export function Board({ user, onLogout }: { user: AuthUser; onLogout: () => void
   }, [scale, stagePos]);
 
   const handleDragEnd = useCallback((e: KonvaEventObject<DragEvent>) => {
+    // Only update stage position when the Stage itself is dragged, not objects
+    if (e.target !== stageRef.current) return;
     setStagePos({ x: e.target.x(), y: e.target.y() });
   }, []);
+
+  // Double-click on empty canvas -> create new sticky
+  const handleStageDblClick = useCallback((e: KonvaEventObject<MouseEvent>) => {
+    // If we clicked on an object (not the Stage itself), don't create
+    if (e.target !== stageRef.current) return;
+
+    const stage = stageRef.current;
+    if (!stage) return;
+    const pointer = stage.getPointerPosition();
+    if (!pointer) return;
+
+    const worldX = (pointer.x - stagePos.x) / scale;
+    const worldY = (pointer.y - stagePos.y) / scale;
+
+    createObject({
+      id: crypto.randomUUID(),
+      type: "sticky",
+      x: worldX - 100,
+      y: worldY - 100,
+      width: 200,
+      height: 200,
+      rotation: 0,
+      props: { text: "", color: "#fbbf24" },
+      createdBy: user.id,
+      updatedAt: Date.now(),
+    });
+  }, [stagePos, scale, createObject, user.id]);
 
   const handleLogout = async () => {
     await fetch("/auth/logout", { method: "POST" });
@@ -131,6 +161,7 @@ export function Board({ user, onLogout }: { user: AuthUser; onLogout: () => void
         onWheel={handleWheel}
         onDragEnd={handleDragEnd}
         onMouseMove={handleMouseMove}
+        onDblClick={handleStageDblClick}
       >
         <Layer>
           {renderGrid(stagePos, scale, size)}
@@ -139,21 +170,32 @@ export function Board({ user, onLogout }: { user: AuthUser; onLogout: () => void
           {[...objects.values()].map((obj) => {
             if (obj.type === "sticky") {
               return (
-                <React.Fragment key={obj.id}>
+                <Group
+                  key={obj.id}
+                  x={obj.x}
+                  y={obj.y}
+                  draggable
+                  onDragEnd={(e) => {
+                    updateObject({ id: obj.id, x: e.target.x(), y: e.target.y() });
+                  }}
+                  onDblClick={(e) => {
+                    e.cancelBubble = true;
+                    setEditingId(obj.id);
+                  }}
+                >
                   <Rect
-                    x={obj.x} y={obj.y}
                     width={obj.width} height={obj.height}
                     fill={obj.props.color || "#fbbf24"}
                     cornerRadius={8}
                     shadowBlur={5} shadowColor="rgba(0,0,0,0.3)"
                   />
                   <Text
-                    x={obj.x + 10} y={obj.y + 10}
+                    x={10} y={10}
                     text={obj.props.text || ""}
                     fontSize={14} fill="#1a1a2e"
                     width={obj.width - 20}
                   />
-                </React.Fragment>
+                </Group>
               );
             }
             if (obj.type === "rect") {
@@ -178,6 +220,46 @@ export function Board({ user, onLogout }: { user: AuthUser; onLogout: () => void
           <Cursors cursors={cursors} />
         </Layer>
       </Stage>
+
+      {/* Inline text editing overlay */}
+      {editingId && (() => {
+        const obj = objects.get(editingId);
+        if (!obj) return null;
+        return (
+          <textarea
+            autoFocus
+            defaultValue={obj.props.text || ""}
+            style={{
+              position: "absolute",
+              left: obj.x * scale + stagePos.x,
+              top: obj.y * scale + stagePos.y,
+              width: obj.width * scale,
+              height: obj.height * scale,
+              background: obj.props.color || "#fbbf24",
+              border: "2px solid #f59e0b",
+              borderRadius: 8 * scale,
+              padding: 10 * scale,
+              fontSize: 14 * scale,
+              color: "#1a1a2e",
+              resize: "none",
+              outline: "none",
+              zIndex: 20,
+              boxSizing: "border-box" as const,
+              fontFamily: "inherit",
+            }}
+            onBlur={(e) => {
+              updateObject({ id: editingId, props: { ...obj.props, text: e.target.value } });
+              setEditingId(null);
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Escape") {
+                updateObject({ id: editingId, props: { ...obj.props, text: (e.target as HTMLTextAreaElement).value } });
+                setEditingId(null);
+              }
+            }}
+          />
+        );
+      })()}
 
       {/* Zoom controls */}
       <div style={{ position: "absolute", bottom: 16, right: 16, display: "flex", gap: 4, zIndex: 10 }}>

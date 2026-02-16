@@ -14,6 +14,9 @@ interface UseWebSocketReturn {
   objects: Map<string, BoardObject>;
   presence: { id: string; username: string }[];
   send: (msg: WSClientMessage) => void;
+  createObject: (obj: BoardObject) => void;
+  updateObject: (partial: Partial<BoardObject> & { id: string }) => void;
+  deleteObject: (id: string) => void;
 }
 
 export function useWebSocket(boardId: string): UseWebSocketReturn {
@@ -87,5 +90,29 @@ export function useWebSocket(boardId: string): UseWebSocketReturn {
     }
   }, []);
 
-  return { connected, cursors, objects, presence, send };
+  const createObject = useCallback((obj: BoardObject) => {
+    setObjects((prev) => new Map(prev).set(obj.id, obj));
+    send({ type: "obj:create", obj });
+  }, [send]);
+
+  const updateObject = useCallback((partial: Partial<BoardObject> & { id: string }) => {
+    setObjects((prev) => {
+      const next = new Map(prev);
+      const existing = next.get(partial.id);
+      if (existing) next.set(partial.id, { ...existing, ...partial, updatedAt: Date.now() });
+      return next;
+    });
+    send({ type: "obj:update", obj: partial });
+  }, [send]);
+
+  const deleteObject = useCallback((id: string) => {
+    setObjects((prev) => {
+      const next = new Map(prev);
+      next.delete(id);
+      return next;
+    });
+    send({ type: "obj:delete", id });
+  }, [send]);
+
+  return { connected, cursors, objects, presence, send, createObject, updateObject, deleteObject };
 }
