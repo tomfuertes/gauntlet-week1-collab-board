@@ -67,11 +67,12 @@ export class Board {
       }
       case "obj:update": {
         const existing = await this.state.storage.get<BoardObject>(`obj:${msg.obj.id}`);
-        if (existing) {
-          const updated = { ...existing, ...msg.obj, updatedAt: Date.now() };
-          await this.state.storage.put(`obj:${updated.id}`, updated);
-          this.broadcast({ type: "obj:update", obj: msg.obj }, ws);
-        }
+        if (!existing) break;
+        // LWW: reject if client's timestamp is older than stored
+        if (msg.obj.updatedAt && msg.obj.updatedAt < existing.updatedAt) break;
+        const updated = { ...existing, ...msg.obj, updatedAt: Date.now() };
+        await this.state.storage.put(`obj:${updated.id}`, updated);
+        this.broadcast({ type: "obj:update", obj: updated }, ws);
         break;
       }
       case "obj:delete": {

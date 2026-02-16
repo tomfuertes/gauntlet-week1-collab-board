@@ -13,12 +13,15 @@ const CURSOR_THROTTLE_MS = 33; // ~30fps
 // Hardcoded board ID for MVP - will be dynamic later
 const BOARD_ID = "default";
 
+type ToolMode = "sticky" | "rect";
+
 export function Board({ user, onLogout }: { user: AuthUser; onLogout: () => void }) {
   const stageRef = useRef<Konva.Stage>(null);
   const [stagePos, setStagePos] = useState({ x: 0, y: 0 });
   const [scale, setScale] = useState(1);
   const [size, setSize] = useState({ width: window.innerWidth, height: window.innerHeight });
   const lastCursorSend = useRef(0);
+  const [toolMode, setToolMode] = useState<ToolMode>("sticky");
 
   const { connected, cursors, objects, presence, send, createObject, updateObject } = useWebSocket(BOARD_ID);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -28,6 +31,18 @@ export function Board({ user, onLogout }: { user: AuthUser; onLogout: () => void
     const onResize = () => setSize({ width: window.innerWidth, height: window.innerHeight });
     window.addEventListener("resize", onResize);
     return () => window.removeEventListener("resize", onResize);
+  }, []);
+
+  // Keyboard shortcuts for tool switching
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      // Don't intercept when typing in an input/textarea
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+      if (e.key === "s" || e.key === "S") setToolMode("sticky");
+      if (e.key === "r" || e.key === "R") setToolMode("rect");
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
   }, []);
 
   // Track mouse for cursor sync
@@ -80,9 +95,8 @@ export function Board({ user, onLogout }: { user: AuthUser; onLogout: () => void
     setStagePos({ x: e.target.x(), y: e.target.y() });
   }, []);
 
-  // Double-click on empty canvas -> create new sticky
+  // Double-click on empty canvas -> create object based on active tool
   const handleStageDblClick = useCallback((e: KonvaEventObject<MouseEvent>) => {
-    // If we clicked on an object (not the Stage itself), don't create
     if (e.target !== stageRef.current) return;
 
     const stage = stageRef.current;
@@ -93,19 +107,34 @@ export function Board({ user, onLogout }: { user: AuthUser; onLogout: () => void
     const worldX = (pointer.x - stagePos.x) / scale;
     const worldY = (pointer.y - stagePos.y) / scale;
 
-    createObject({
-      id: crypto.randomUUID(),
-      type: "sticky",
-      x: worldX - 100,
-      y: worldY - 100,
-      width: 200,
-      height: 200,
-      rotation: 0,
-      props: { text: "", color: "#fbbf24" },
-      createdBy: user.id,
-      updatedAt: Date.now(),
-    });
-  }, [stagePos, scale, createObject, user.id]);
+    if (toolMode === "sticky") {
+      createObject({
+        id: crypto.randomUUID(),
+        type: "sticky",
+        x: worldX - 100,
+        y: worldY - 100,
+        width: 200,
+        height: 200,
+        rotation: 0,
+        props: { text: "", color: "#fbbf24" },
+        createdBy: user.id,
+        updatedAt: Date.now(),
+      });
+    } else if (toolMode === "rect") {
+      createObject({
+        id: crypto.randomUUID(),
+        type: "rect",
+        x: worldX - 75,
+        y: worldY - 50,
+        width: 150,
+        height: 100,
+        rotation: 0,
+        props: { fill: "#3b82f6", stroke: "#2563eb" },
+        createdBy: user.id,
+        updatedAt: Date.now(),
+      });
+    }
+  }, [stagePos, scale, createObject, user.id, toolMode]);
 
   const handleLogout = async () => {
     await fetch("/auth/logout", { method: "POST" });
@@ -200,15 +229,23 @@ export function Board({ user, onLogout }: { user: AuthUser; onLogout: () => void
             }
             if (obj.type === "rect") {
               return (
-                <Rect
+                <Group
                   key={obj.id}
-                  x={obj.x} y={obj.y}
-                  width={obj.width} height={obj.height}
-                  fill={obj.props.fill || "#3b82f6"}
-                  stroke={obj.props.stroke || "#2563eb"}
-                  strokeWidth={2}
-                  cornerRadius={4}
-                />
+                  x={obj.x}
+                  y={obj.y}
+                  draggable
+                  onDragEnd={(e) => {
+                    updateObject({ id: obj.id, x: e.target.x(), y: e.target.y() });
+                  }}
+                >
+                  <Rect
+                    width={obj.width} height={obj.height}
+                    fill={obj.props.fill || "#3b82f6"}
+                    stroke={obj.props.stroke || "#2563eb"}
+                    strokeWidth={2}
+                    cornerRadius={4}
+                  />
+                </Group>
               );
             }
             return null;
@@ -261,6 +298,12 @@ export function Board({ user, onLogout }: { user: AuthUser; onLogout: () => void
         );
       })()}
 
+      {/* Tool selector */}
+      <div style={{ position: "absolute", bottom: 16, left: 16, display: "flex", gap: 4, zIndex: 10 }}>
+        <ToolBtn label="S" title="Sticky note (S)" active={toolMode === "sticky"} onClick={() => setToolMode("sticky")} />
+        <ToolBtn label="R" title="Rectangle (R)" active={toolMode === "rect"} onClick={() => setToolMode("rect")} />
+      </div>
+
       {/* Zoom controls */}
       <div style={{ position: "absolute", bottom: 16, right: 16, display: "flex", gap: 4, zIndex: 10 }}>
         <ZoomBtn label="-" onClick={() => setScale((s) => Math.max(MIN_ZOOM, s / 1.2))} />
@@ -268,6 +311,20 @@ export function Board({ user, onLogout }: { user: AuthUser; onLogout: () => void
         <ZoomBtn label="+" onClick={() => setScale((s) => Math.min(MAX_ZOOM, s * 1.2))} />
       </div>
     </div>
+  );
+}
+
+function ToolBtn({ label, title, active, onClick }: { label: string; title: string; active: boolean; onClick: () => void }) {
+  return (
+    <button onClick={onClick} title={title} style={{
+      width: 32, height: 32,
+      background: active ? "#3b82f6" : "rgba(22, 33, 62, 0.9)",
+      border: active ? "1px solid #60a5fa" : "1px solid #334155",
+      borderRadius: 4, color: "#eee", cursor: "pointer", fontSize: "0.875rem",
+      fontWeight: active ? 700 : 400,
+    }}>
+      {label}
+    </button>
   );
 }
 

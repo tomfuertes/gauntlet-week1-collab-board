@@ -38,7 +38,7 @@ export type WSClientMessage =
 export type WSServerMessage =
   | { type: "cursor"; userId: string; username: string; x: number; y: number }
   | { type: "obj:create"; obj: BoardObject }
-  | { type: "obj:update"; obj: Partial<BoardObject> & { id: string } }
+  | { type: "obj:update"; obj: BoardObject }
   | { type: "obj:delete"; id: string }
   | { type: "presence"; users: { id: string; username: string }[] }
   | { type: "init"; objects: BoardObject[] };
