@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import { cors } from "hono/cors";
+import { auth } from "./auth";
 
 type Bindings = {
   DB: D1Database;
@@ -10,10 +11,14 @@ type Bindings = {
 const app = new Hono<{ Bindings: Bindings }>();
 
 app.use("/api/*", cors());
+app.use("/auth/*", cors());
 
 app.get("/api/health", (c) => {
   return c.json({ status: "ok", version: "0.0.1" });
 });
+
+// Mount auth routes
+app.route("/", auth);
 
 export default app;
 
