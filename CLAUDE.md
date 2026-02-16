@@ -11,7 +11,7 @@ CollabBoard - real-time collaborative whiteboard with AI agent integration. Gaun
 - **Frontend:** React + Vite + react-konva + TypeScript (SPA deployed as CF Workers static assets)
 - **Backend:** Cloudflare Workers + Hono router
 - **Real-time:** Durable Objects + WebSockets (one DO per board, LWW conflict resolution)
-- **Auth:** Custom (username/password, argon2 hash, D1 sessions, cookie-based)
+- **Auth:** Custom (username/password, PBKDF2 hash, D1 sessions, cookie-based)
 - **Database:** DO Storage (board objects as KV) + D1 (users/sessions/board metadata)
 - **AI:** Workers AI binding (`env.AI.run()` + `runWithTools()`) with AI Gateway upgrade path
 - **Deploy:** CF git integration auto-deploys on push to main
@@ -22,9 +22,13 @@ CollabBoard - real-time collaborative whiteboard with AI agent integration. Gaun
 # Dev
 npm run dev              # wrangler dev (backend + frontend)
 
-# Build & Deploy
-npm run build            # Vite build + wrangler deploy
-npm run deploy           # wrangler deploy
+# Build & Deploy (CF git integration auto-deploys on push to main)
+npm run build            # Vite build
+npm run deploy           # Vite build + wrangler deploy (manual fallback)
+
+# D1 Migrations
+npx wrangler d1 execute collabboard-db --local --file=migrations/XXXX.sql
+npx wrangler d1 execute collabboard-db --remote --file=migrations/XXXX.sql
 
 # Lint & Format
 npm run lint             # eslint
@@ -36,23 +40,20 @@ npm run typecheck        # tsc --noEmit
 
 ## Architecture
 
-### Monorepo Layout (planned)
+### Monorepo Layout
 
 ```
 src/
   client/               # React SPA
-    features/
-      board/            # Canvas, objects, toolbar, zoom controls
-      auth/             # Login/signup forms, auth state
-      ai/               # Chat panel, AI command UI
-    shared/             # Hooks, utils, context providers
+    index.html          # Vite entry
+    main.tsx            # React root
+    App.tsx             # App shell
   server/               # CF Worker
-    index.ts            # Hono app - routes auth, board CRUD, WebSocket upgrade
-    durable-objects/
-      board.ts          # Board DO - WebSocket handler, object storage, cursor broadcast
-    auth/               # signup/login/logout routes, session validation, argon2
+    index.ts            # Hono app - routes, DO export, WebSocket upgrade
+    auth.ts             # Auth routes + PBKDF2 hashing + session helpers
   shared/               # Types shared between client and server
     types.ts            # BoardObject, WSMessage, User, etc.
+migrations/             # D1 SQL migrations (applied via wrangler d1 execute)
 ```
 
 ### Data Flow
@@ -85,7 +86,8 @@ Each object stored as separate DO Storage key (`obj:{uuid}`, ~200 bytes). LWW vi
 
 - `docs/` is git-crypt encrypted - contains spec and internal planning docs
 - `private/` is .gitignore'd - contains original PDF, never committed
-- Auth is custom (no Better Auth) - 3 routes, D1 tables, argon2 hashing, session cookies. No email, no OAuth, no password reset.
+- Auth is custom (no Better Auth) - PBKDF2 hashing (Web Crypto, zero deps), D1 sessions, cookie-based. No email, no OAuth, no password reset.
+- Deploy via `git push` to main (CF git integration). Do NOT run `wrangler deploy` manually.
 - All AI calls are server-side in Worker - never expose API keys to client bundle
 - Performance targets: 60fps canvas, <100ms object sync, <50ms cursor sync, 500+ objects, 5+ users
 - Two-browser test is the primary validation method throughout development
