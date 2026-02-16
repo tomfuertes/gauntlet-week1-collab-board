@@ -49,7 +49,7 @@ export function Board({ user, onLogout }: { user: AuthUser; onLogout: () => void
   }, []);
 
   // Track mouse for cursor sync
-  const handleMouseMove = useCallback((e: KonvaEventObject<MouseEvent>) => {
+  const handleMouseMove = useCallback((_e: KonvaEventObject<MouseEvent>) => {
     const now = Date.now();
     if (now - lastCursorSend.current < CURSOR_THROTTLE_MS) return;
     lastCursorSend.current = now;
