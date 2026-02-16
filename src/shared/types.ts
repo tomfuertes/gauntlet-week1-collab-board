@@ -42,3 +42,9 @@ export type WSServerMessage =
   | { type: "obj:delete"; id: string }
   | { type: "presence"; users: { id: string; username: string }[] }
   | { type: "init"; objects: BoardObject[] };
+
+export interface ChatMessage {
+  id: string;
+  role: "user" | "assistant";
+  content: string;
+}

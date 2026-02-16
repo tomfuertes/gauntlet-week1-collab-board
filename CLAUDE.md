@@ -38,6 +38,28 @@ npm run format           # prettier --write
 npm run typecheck        # tsc --noEmit
 ```
 
+## Git Worktrees
+
+This repo uses git-crypt for `docs/`, which breaks `git worktree add` (smudge filter fails). Bypass it:
+
+```bash
+# Create worktree (bypass git-crypt smudge filter)
+GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=filter.git-crypt.smudge GIT_CONFIG_VALUE_0=cat \
+  git worktree add ../gauntlet-week1-collab-board-<branch> -b feat/<branch>
+
+# Then unlock git-crypt in the worktree (optional - only if you need encrypted docs)
+cd ../gauntlet-week1-collab-board-<branch> && git-crypt unlock
+
+# Start Claude session in the worktree
+cd ../gauntlet-week1-collab-board-<branch> && claude
+
+# Cleanup: remove worktree + branch after PR merged
+git worktree remove ../gauntlet-week1-collab-board-<branch>
+git branch -D feat/<branch>
+```
+
+When working in a worktree, use absolute paths for file tools and `git -C <abs-path>` for git commands (since `cd` doesn't persist between Bash calls).
+
 ## Browser Testing (playwright-cli)
 
 The `playwright-cli` skill is available for automated browser testing. **Use it proactively** for UAT, smoke tests, and verifying features - don't stop to ask, just run it.
@@ -75,11 +97,18 @@ src/
     index.html          # Vite entry
     main.tsx            # React root
     App.tsx             # App shell
+    components/
+      Board.tsx         # Canvas + toolbar + chat panel integration
+      ChatPanel.tsx     # AI chat sidebar
+    hooks/
+      useWebSocket.ts   # WebSocket state management
+      useAIChat.ts      # AI chat state + API calls
   server/               # CF Worker
     index.ts            # Hono app - routes, DO export, WebSocket upgrade
     auth.ts             # Auth routes + PBKDF2 hashing + session helpers
+    ai.ts               # AI route - runWithTools + board manipulation tools
   shared/               # Types shared between client and server
-    types.ts            # BoardObject, WSMessage, User, etc.
+    types.ts            # BoardObject, WSMessage, ChatMessage, User, etc.
 migrations/             # D1 SQL migrations (applied via wrangler d1 execute)
 ```
 
@@ -90,7 +119,7 @@ migrations/             # D1 SQL migrations (applied via wrangler d1 execute)
 3. Worker routes WebSocket to Board Durable Object
 4. DO manages all board state: objects in DO Storage (`obj:{uuid}`), cursors in memory
 5. Mutations flow: client applies optimistically -> sends to DO -> DO persists + broadcasts to other clients
-6. AI commands: client sends to Worker -> Worker calls Workers AI with function calling -> resulting mutations sent to DO as regular object operations
+6. AI commands: client POSTs to `/api/ai/chat` -> Worker runs `runWithTools()` with Llama 3.3 70B -> tool callbacks HTTP to Board DO `/read` and `/mutate` -> DO persists + broadcasts to all WebSocket clients
 
 ### WebSocket Protocol
 

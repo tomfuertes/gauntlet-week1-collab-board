@@ -5,6 +5,7 @@ import type Konva from "konva";
 import type { AuthUser } from "../App";
 import { useWebSocket } from "../hooks/useWebSocket";
 import { Cursors } from "./Cursors";
+import { ChatPanel } from "./ChatPanel";
 
 const MIN_ZOOM = 0.1;
 const MAX_ZOOM = 5;
@@ -22,6 +23,7 @@ export function Board({ user, onLogout }: { user: AuthUser; onLogout: () => void
   const [size, setSize] = useState({ width: window.innerWidth, height: window.innerHeight });
   const lastCursorSend = useRef(0);
   const [toolMode, setToolMode] = useState<ToolMode>("sticky");
+  const [chatOpen, setChatOpen] = useState(false);
 
   const { connected, cursors, objects, presence, send, createObject, updateObject } = useWebSocket(BOARD_ID);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -40,6 +42,7 @@ export function Board({ user, onLogout }: { user: AuthUser; onLogout: () => void
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
       if (e.key === "s" || e.key === "S") setToolMode("sticky");
       if (e.key === "r" || e.key === "R") setToolMode("rect");
+      if (e.key === "/") { e.preventDefault(); setChatOpen((o) => !o); }
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
@@ -302,7 +305,11 @@ export function Board({ user, onLogout }: { user: AuthUser; onLogout: () => void
       <div style={{ position: "absolute", bottom: 16, left: 16, display: "flex", gap: 4, zIndex: 10 }}>
         <ToolBtn label="S" title="Sticky note (S)" active={toolMode === "sticky"} onClick={() => setToolMode("sticky")} />
         <ToolBtn label="R" title="Rectangle (R)" active={toolMode === "rect"} onClick={() => setToolMode("rect")} />
+        <ToolBtn label="AI" title="AI Assistant (/)" active={chatOpen} onClick={() => setChatOpen((o) => !o)} />
       </div>
+
+      {/* AI Chat Panel */}
+      {chatOpen && <ChatPanel boardId={BOARD_ID} onClose={() => setChatOpen(false)} />}
 
       {/* Zoom controls */}
       <div style={{ position: "absolute", bottom: 16, right: 16, display: "flex", gap: 4, zIndex: 10 }}>
@@ -317,7 +324,7 @@ export function Board({ user, onLogout }: { user: AuthUser; onLogout: () => void
 function ToolBtn({ label, title, active, onClick }: { label: string; title: string; active: boolean; onClick: () => void }) {
   return (
     <button onClick={onClick} title={title} style={{
-      width: 32, height: 32,
+      minWidth: 32, height: 32, padding: "0 6px",
       background: active ? "#3b82f6" : "rgba(22, 33, 62, 0.9)",
       border: active ? "1px solid #60a5fa" : "1px solid #334155",
       borderRadius: 4, color: "#eee", cursor: "pointer", fontSize: "0.875rem",

@@ -21,6 +21,9 @@ bindings = [
 tag = "v1"
 new_sqlite_classes = ["Board"]
 
+[ai]
+binding = "AI"
+
 [vars]
 AUTH_SECRET = "dev-secret-change-in-production"
 
