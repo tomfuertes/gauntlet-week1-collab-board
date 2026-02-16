@@ -92,6 +92,16 @@ Each object stored as separate DO Storage key (`obj:{uuid}`, ~200 bytes). LWW vi
 - Performance targets: 60fps canvas, <100ms object sync, <50ms cursor sync, 500+ objects, 5+ users
 - Two-browser test is the primary validation method throughout development
 
+## Doc Sync Workflow
+
+Keep docs current without being told. Trigger automatically on these events:
+
+- **Stack/architecture change** (new dep, new pattern, changed approach): Update this file (CLAUDE.md) in the same commit.
+- **Increment completed** (feature shipped): Check the box in `docs/roadmap.md`.
+- **Decision made** (chose X over Y): Append to `docs/notes.md` with date and rationale.
+- **Session ending** (context limit approaching or user says stop): Write context dump to `docs/notes.md` covering: what's done, what's next, blockers, and the implementation plan for the next work item.
+- **Session starting**: Read `docs/notes.md` and `CLAUDE.md` first. Run `/timeline` to orient.
+
 ## Conventions
 
 - TypeScript strict mode

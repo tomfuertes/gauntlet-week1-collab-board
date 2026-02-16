@@ -1,24 +1,51 @@
-import React, { useState, useRef, useCallback } from "react";
+import React, { useState, useRef, useCallback, useEffect } from "react";
 import { Stage, Layer, Rect, Text } from "react-konva";
 import type { KonvaEventObject } from "konva/lib/Node";
 import type Konva from "konva";
 import type { AuthUser } from "../App";
+import { useWebSocket } from "../hooks/useWebSocket";
+import { Cursors } from "./Cursors";
 
 const MIN_ZOOM = 0.1;
 const MAX_ZOOM = 5;
+const CURSOR_THROTTLE_MS = 33; // ~30fps
+
+// Hardcoded board ID for MVP - will be dynamic later
+const BOARD_ID = "default";
 
 export function Board({ user, onLogout }: { user: AuthUser; onLogout: () => void }) {
   const stageRef = useRef<Konva.Stage>(null);
   const [stagePos, setStagePos] = useState({ x: 0, y: 0 });
   const [scale, setScale] = useState(1);
   const [size, setSize] = useState({ width: window.innerWidth, height: window.innerHeight });
+  const lastCursorSend = useRef(0);
+
+  const { connected, cursors, objects, presence, send } = useWebSocket(BOARD_ID);
 
   // Resize handler
-  useState(() => {
+  useEffect(() => {
     const onResize = () => setSize({ width: window.innerWidth, height: window.innerHeight });
     window.addEventListener("resize", onResize);
     return () => window.removeEventListener("resize", onResize);
-  });
+  }, []);
+
+  // Track mouse for cursor sync
+  const handleMouseMove = useCallback((e: KonvaEventObject<MouseEvent>) => {
+    const now = Date.now();
+    if (now - lastCursorSend.current < CURSOR_THROTTLE_MS) return;
+    lastCursorSend.current = now;
+
+    const stage = stageRef.current;
+    if (!stage) return;
+    const pointer = stage.getPointerPosition();
+    if (!pointer) return;
+
+    // Convert screen coords to world coords
+    const worldX = (pointer.x - stagePos.x) / scale;
+    const worldY = (pointer.y - stagePos.y) / scale;
+
+    send({ type: "cursor", x: worldX, y: worldY });
+  }, [send, stagePos, scale]);
 
   // Zoom toward cursor on wheel
   const handleWheel = useCallback((e: KonvaEventObject<WheelEvent>) => {
@@ -46,7 +73,6 @@ export function Board({ user, onLogout }: { user: AuthUser; onLogout: () => void
     });
   }, [scale, stagePos]);
 
-  // Pan via drag
   const handleDragEnd = useCallback((e: KonvaEventObject<DragEvent>) => {
     setStagePos({ x: e.target.x(), y: e.target.y() });
   }, []);
@@ -58,15 +84,32 @@ export function Board({ user, onLogout }: { user: AuthUser; onLogout: () => void
 
   return (
     <div style={{ width: "100vw", height: "100vh", overflow: "hidden", background: "#1a1a2e" }}>
-      {/* Header bar */}
+      {/* Header */}
       <div style={{
         position: "absolute", top: 0, left: 0, right: 0, height: 48, zIndex: 10,
         background: "rgba(22, 33, 62, 0.9)", borderBottom: "1px solid #334155",
         display: "flex", alignItems: "center", justifyContent: "space-between",
         padding: "0 1rem", color: "#eee", fontSize: "0.875rem",
       }}>
-        <span style={{ fontWeight: 600 }}>CollabBoard</span>
+        <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
+          <span style={{ fontWeight: 600 }}>CollabBoard</span>
+          <span style={{ color: connected ? "#4ade80" : "#f87171", fontSize: "0.75rem" }}>
+            {connected ? "connected" : "disconnected"}
+          </span>
+        </div>
         <div style={{ display: "flex", alignItems: "center", gap: "1rem" }}>
+          {/* Presence avatars */}
+          <div style={{ display: "flex", gap: 4 }}>
+            {presence.map((p) => (
+              <span key={p.id} style={{
+                background: "#3b82f6", borderRadius: "50%", width: 24, height: 24,
+                display: "flex", alignItems: "center", justifyContent: "center",
+                fontSize: "0.625rem", fontWeight: 600, color: "#fff",
+              }} title={p.username}>
+                {p.username[0].toUpperCase()}
+              </span>
+            ))}
+          </div>
           <span style={{ color: "#888" }}>{Math.round(scale * 100)}%</span>
           <span>{user.displayName}</span>
           <button onClick={handleLogout} style={{ background: "none", border: "1px solid #475569", borderRadius: 4, color: "#94a3b8", padding: "0.25rem 0.5rem", cursor: "pointer", fontSize: "0.75rem" }}>
@@ -87,15 +130,52 @@ export function Board({ user, onLogout }: { user: AuthUser; onLogout: () => void
         draggable
         onWheel={handleWheel}
         onDragEnd={handleDragEnd}
+        onMouseMove={handleMouseMove}
       >
         <Layer>
-          {/* Grid dots for spatial reference */}
           {renderGrid(stagePos, scale, size)}
 
-          {/* Placeholder content */}
-          <Rect x={100} y={100} width={200} height={150} fill="#fbbf24" cornerRadius={8} shadowBlur={5} shadowColor="rgba(0,0,0,0.3)" />
-          <Text x={110} y={120} text="Hello CollabBoard!" fontSize={16} fill="#1a1a2e" width={180} />
-          <Text x={110} y={145} text={`Logged in as ${user.displayName}`} fontSize={12} fill="#555" width={180} />
+          {/* Render synced objects */}
+          {[...objects.values()].map((obj) => {
+            if (obj.type === "sticky") {
+              return (
+                <React.Fragment key={obj.id}>
+                  <Rect
+                    x={obj.x} y={obj.y}
+                    width={obj.width} height={obj.height}
+                    fill={obj.props.color || "#fbbf24"}
+                    cornerRadius={8}
+                    shadowBlur={5} shadowColor="rgba(0,0,0,0.3)"
+                  />
+                  <Text
+                    x={obj.x + 10} y={obj.y + 10}
+                    text={obj.props.text || ""}
+                    fontSize={14} fill="#1a1a2e"
+                    width={obj.width - 20}
+                  />
+                </React.Fragment>
+              );
+            }
+            if (obj.type === "rect") {
+              return (
+                <Rect
+                  key={obj.id}
+                  x={obj.x} y={obj.y}
+                  width={obj.width} height={obj.height}
+                  fill={obj.props.fill || "#3b82f6"}
+                  stroke={obj.props.stroke || "#2563eb"}
+                  strokeWidth={2}
+                  cornerRadius={4}
+                />
+              );
+            }
+            return null;
+          })}
+        </Layer>
+
+        {/* Cursor layer on top */}
+        <Layer>
+          <Cursors cursors={cursors} />
         </Layer>
       </Stage>
 
@@ -124,26 +204,18 @@ function ZoomBtn({ label, onClick }: { label: string; onClick: () => void }) {
 function renderGrid(pos: { x: number; y: number }, scale: number, size: { width: number; height: number }) {
   const gridSize = 50;
   const dots: React.ReactElement[] = [];
-
-  // Calculate visible area in world coords
   const startX = Math.floor(-pos.x / scale / gridSize) * gridSize - gridSize;
   const startY = Math.floor(-pos.y / scale / gridSize) * gridSize - gridSize;
   const endX = startX + size.width / scale + gridSize * 2;
   const endY = startY + size.height / scale + gridSize * 2;
-
-  // Limit dots to prevent performance issues at low zoom
   const maxDots = 2000;
   let count = 0;
-
   for (let x = startX; x < endX; x += gridSize) {
     for (let y = startY; y < endY; y += gridSize) {
       if (count++ >= maxDots) break;
-      dots.push(
-        <Rect key={`${x},${y}`} x={x - 1} y={y - 1} width={2} height={2} fill="rgba(255,255,255,0.08)" listening={false} />
-      );
+      dots.push(<Rect key={`${x},${y}`} x={x - 1} y={y - 1} width={2} height={2} fill="rgba(255,255,255,0.08)" listening={false} />);
     }
     if (count >= maxDots) break;
   }
-
   return dots;
 }
