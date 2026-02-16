@@ -14,6 +14,23 @@ export class Board {
 
   async fetch(request: Request): Promise<Response> {
     const url = new URL(request.url);
+    const path = url.pathname;
+
+    // HTTP API for AI agent (no WebSocket needed)
+    if (path.endsWith("/read") && request.method === "GET") {
+      const objects = await this.getAllObjects();
+      return new Response(JSON.stringify(objects), {
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
+    if (path.endsWith("/mutate") && request.method === "POST") {
+      const msg = (await request.json()) as WSClientMessage;
+      await this.handleMutation(msg, "ai-agent");
+      return new Response(JSON.stringify({ ok: true }), {
+        headers: { "Content-Type": "application/json" },
+      });
+    }
 
     // WebSocket upgrade
     if (request.headers.get("Upgrade") === "websocket") {
@@ -51,33 +68,37 @@ export class Board {
 
     const msg = JSON.parse(raw as string) as WSClientMessage;
 
+    if (msg.type === "cursor") {
+      this.broadcast(
+        { type: "cursor", userId: meta.userId, username: meta.username, x: msg.x, y: msg.y },
+        ws
+      );
+      return;
+    }
+
+    await this.handleMutation(msg, meta.userId, ws);
+  }
+
+  private async handleMutation(msg: WSClientMessage, userId: string, excludeWs?: WebSocket) {
     switch (msg.type) {
-      case "cursor": {
-        this.broadcast(
-          { type: "cursor", userId: meta.userId, username: meta.username, x: msg.x, y: msg.y },
-          ws
-        );
-        break;
-      }
       case "obj:create": {
-        const obj = { ...msg.obj, createdBy: meta.userId, updatedAt: Date.now() };
+        const obj = { ...msg.obj, createdBy: userId, updatedAt: Date.now() };
         await this.state.storage.put(`obj:${obj.id}`, obj);
-        this.broadcast({ type: "obj:create", obj }, ws);
+        this.broadcast({ type: "obj:create", obj }, excludeWs);
         break;
       }
       case "obj:update": {
         const existing = await this.state.storage.get<BoardObject>(`obj:${msg.obj.id}`);
         if (!existing) break;
-        // LWW: reject if client's timestamp is older than stored
         if (msg.obj.updatedAt && msg.obj.updatedAt < existing.updatedAt) break;
         const updated = { ...existing, ...msg.obj, updatedAt: Date.now() };
         await this.state.storage.put(`obj:${updated.id}`, updated);
-        this.broadcast({ type: "obj:update", obj: updated }, ws);
+        this.broadcast({ type: "obj:update", obj: updated }, excludeWs);
         break;
       }
       case "obj:delete": {
         await this.state.storage.delete(`obj:${msg.id}`);
-        this.broadcast({ type: "obj:delete", id: msg.id }, ws);
+        this.broadcast({ type: "obj:delete", id: msg.id }, excludeWs);
         break;
       }
     }

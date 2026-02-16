@@ -2,12 +2,14 @@ import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { getCookie } from "hono/cookie";
 import { auth, getSessionUser } from "./auth";
+import { aiRoutes } from "./ai";
 
 export { Board } from "./board";
 
 type Bindings = {
   DB: D1Database;
   BOARD: DurableObjectNamespace;
+  AI: Ai;
   AUTH_SECRET: string;
 };
 
@@ -22,6 +24,9 @@ app.get("/api/health", (c) => {
 
 // Mount auth routes
 app.route("/", auth);
+
+// Mount AI routes
+app.route("/api/ai", aiRoutes);
 
 // WebSocket upgrade - authenticate then forward to Board DO
 app.get("/ws/board/:boardId", async (c) => {
