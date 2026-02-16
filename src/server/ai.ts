@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any -- Workers AI types require casts */
 import { Hono } from "hono";
 import { getCookie } from "hono/cookie";
 import { getSessionUser } from "./auth";
@@ -38,7 +39,7 @@ aiRoutes.post("/chat", async (c) => {
     history: ChatMessage[];
   }>();
 
-  console.log(`[ai] chat request from=${user.displayName} board=${boardId} msg="${message.slice(0, 80)}" history=${history.length}`);
+  console.debug(`[ai] chat request from=${user.displayName} board=${boardId} msg="${message.slice(0, 80)}" history=${history.length}`);
 
   // Get Board DO stub for tool callbacks
   const doId = c.env.BOARD.idFromName(boardId);
@@ -65,12 +66,11 @@ aiRoutes.post("/chat", async (c) => {
       const traced = <T extends (...args: any[]) => Promise<string>>(
         name: string, label: string, fn: T,
       ): T => (async (...args: any[]) => {
-        console.log(`[ai] tool:${name}`, JSON.stringify(args[0]));
+        console.debug(`[ai] tool:${name}`, JSON.stringify(args[0]));
         emit({ type: "tool", name, label, args: args[0] });
         return fn(...args);
       }) as T;
 
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- heterogeneous tool params
       const tools: any[] = [
         {
           name: "create_sticky",
@@ -216,7 +216,6 @@ aiRoutes.post("/chat", async (c) => {
       try {
         emit({ type: "status", label: "Thinking..." });
 
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Ai type mismatch between workers-types versions
         const response = await runWithTools(
           c.env.AI as any,
           MODEL as Parameters<typeof runWithTools>[1],
@@ -228,7 +227,7 @@ aiRoutes.post("/chat", async (c) => {
           ? response
           : (response as { response?: string }).response ?? "I performed the requested actions on the board.";
 
-        console.log("[ai] final response:", text.slice(0, 200));
+        console.debug("[ai] final response:", text.slice(0, 200));
         emit({ type: "done", response: text });
       } catch (err) {
         console.error("[ai] error:", err);
