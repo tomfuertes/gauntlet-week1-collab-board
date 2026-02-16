@@ -38,6 +38,33 @@ npm run format           # prettier --write
 npm run typecheck        # tsc --noEmit
 ```
 
+## Browser Testing (playwright-cli)
+
+The `playwright-cli` skill is available for automated browser testing. **Use it proactively** for UAT, smoke tests, and verifying features - don't stop to ask, just run it.
+
+```bash
+# Basic flow
+playwright-cli open http://localhost:5173    # open app
+playwright-cli snapshot                       # get element refs (e.g., e3, e15)
+playwright-cli fill e5 "username"             # interact by ref
+playwright-cli click e3                       # click by ref
+playwright-cli screenshot                     # visual verification
+playwright-cli close                          # cleanup
+
+# Two-browser sync testing (primary validation method)
+playwright-cli -s=user1 open http://localhost:5173
+playwright-cli -s=user2 open http://localhost:5173
+# ...interact in each session independently...
+playwright-cli close-all
+
+# Auth state
+playwright-cli cookie-list                    # inspect session cookies
+playwright-cli state-save auth-user1.json     # save auth state for reuse
+playwright-cli state-load auth-user1.json     # restore auth state
+```
+
+Artifacts go to `.playwright-cli/` (gitignored). Snapshots are YAML accessibility trees - prefer them over screenshots for understanding page structure.
+
 ## Architecture
 
 ### Monorepo Layout
@@ -103,7 +130,7 @@ Each object stored as separate DO Storage key (`obj:{uuid}`, ~200 bytes). LWW vi
 | Decision made (chose X over Y) | Append with date + rationale | `docs/notes.md` |
 | New dependency added | Add to Stack section | `CLAUDE.md` |
 | Session ending or context pressure | Full context dump: done, next, blockers, impl plan | `docs/notes.md` |
-| Session starting | Read `docs/notes.md` + `CLAUDE.md`, run `/timeline` | (read only) |
+| Session starting | Read `docs/notes.md` + `CLAUDE.md` + `docs/roadmap.md`, git log, summarize status | (read only) |
 
 Hooks enforce the bookends: `SessionStart` reminds to read context, `PreCompact` reminds to dump context. Everything in between is your responsibility.
 
