@@ -13,7 +13,7 @@ Real-time collaborative whiteboard with AI agent integration.
 | Frontend | React + Vite + react-konva + TypeScript |
 | Backend | Cloudflare Workers + Hono |
 | Real-time | Durable Objects + WebSockets |
-| Auth | Custom (username/password, argon2, D1 sessions) |
+| Auth | Custom (username/password, PBKDF2, D1 sessions) |
 | Database | DO Storage (board state) + D1 (users, sessions, metadata) |
 | AI | Workers AI + function calling |
 | Deploy | Cloudflare (auto-deploy on push) |
