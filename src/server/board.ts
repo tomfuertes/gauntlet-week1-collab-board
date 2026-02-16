@@ -7,7 +7,6 @@ interface ConnectionMeta {
 
 export class Board {
   state: DurableObjectState;
-  connections: Map<WebSocket, ConnectionMeta> = new Map();
 
   constructor(state: DurableObjectState) {
     this.state = state;
@@ -27,8 +26,9 @@ export class Board {
       const pair = new WebSocketPair();
       const [client, server] = [pair[0], pair[1]];
 
+      // Store metadata on the WebSocket itself (survives hibernation)
       this.state.acceptWebSocket(server);
-      this.connections.set(server, { userId, username });
+      server.serializeAttachment({ userId, username } satisfies ConnectionMeta);
 
       // Send init: all objects + presence
       const objects = await this.getAllObjects();
@@ -46,14 +46,13 @@ export class Board {
   }
 
   async webSocketMessage(ws: WebSocket, raw: string | ArrayBuffer) {
-    const meta = this.connections.get(ws);
+    const meta = ws.deserializeAttachment() as ConnectionMeta | null;
     if (!meta) return;
 
     const msg = JSON.parse(raw as string) as WSClientMessage;
 
     switch (msg.type) {
       case "cursor": {
-        // Broadcast cursor to everyone except sender
         this.broadcast(
           { type: "cursor", userId: meta.userId, username: meta.username, x: msg.x, y: msg.y },
           ws
@@ -84,22 +83,30 @@ export class Board {
   }
 
   async webSocketClose(ws: WebSocket) {
-    this.connections.delete(ws);
+    ws.close();
     const users = this.getPresenceList();
     this.broadcast({ type: "presence", users });
   }
 
   async webSocketError(ws: WebSocket) {
-    this.connections.delete(ws);
+    ws.close();
     const users = this.getPresenceList();
     this.broadcast({ type: "presence", users });
   }
 
   // --- Helpers ---
 
+  private getWebSockets(): WebSocket[] {
+    return this.state.getWebSockets();
+  }
+
+  private getMeta(ws: WebSocket): ConnectionMeta | null {
+    return ws.deserializeAttachment() as ConnectionMeta | null;
+  }
+
   private broadcast(msg: WSServerMessage, exclude?: WebSocket) {
     const data = JSON.stringify(msg);
-    for (const [ws] of this.connections) {
+    for (const ws of this.getWebSockets()) {
       if (ws !== exclude) {
         try {
           ws.send(data);
@@ -118,8 +125,9 @@ export class Board {
   private getPresenceList(): { id: string; username: string }[] {
     const seen = new Set<string>();
     const users: { id: string; username: string }[] = [];
-    for (const meta of this.connections.values()) {
-      if (!seen.has(meta.userId)) {
+    for (const ws of this.getWebSockets()) {
+      const meta = this.getMeta(ws);
+      if (meta && !seen.has(meta.userId)) {
         seen.add(meta.userId);
         users.push({ id: meta.userId, username: meta.username });
       }
