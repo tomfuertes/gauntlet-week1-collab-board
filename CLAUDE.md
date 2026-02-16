@@ -94,13 +94,18 @@ Each object stored as separate DO Storage key (`obj:{uuid}`, ~200 bytes). LWW vi
 
 ## Doc Sync Workflow
 
-Keep docs current without being told. Trigger automatically on these events:
+**MANDATORY: Every commit that touches `src/` must also update relevant docs.** This is not optional. Do not ask "should I update docs?" - just do it as part of the commit.
 
-- **Stack/architecture change** (new dep, new pattern, changed approach): Update this file (CLAUDE.md) in the same commit.
-- **Increment completed** (feature shipped): Check the box in `docs/roadmap.md`.
-- **Decision made** (chose X over Y): Append to `docs/notes.md` with date and rationale.
-- **Session ending** (context limit approaching or user says stop): Write context dump to `docs/notes.md` covering: what's done, what's next, blockers, and the implementation plan for the next work item.
-- **Session starting**: Read `docs/notes.md` and `CLAUDE.md` first. Run `/timeline` to orient.
+| Trigger | Action | File |
+|---------|--------|------|
+| Any `src/` change | Update if layout, data flow, or constraints changed | `CLAUDE.md` |
+| Feature completed | Check the box | `docs/roadmap.md` |
+| Decision made (chose X over Y) | Append with date + rationale | `docs/notes.md` |
+| New dependency added | Add to Stack section | `CLAUDE.md` |
+| Session ending or context pressure | Full context dump: done, next, blockers, impl plan | `docs/notes.md` |
+| Session starting | Read `docs/notes.md` + `CLAUDE.md`, run `/timeline` | (read only) |
+
+Hooks enforce the bookends: `SessionStart` reminds to read context, `PreCompact` reminds to dump context. Everything in between is your responsibility.
 
 ## Conventions
 
