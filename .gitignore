@@ -1,0 +1,6 @@
+private/
+node_modules/
+.env*
+dist/
+.wrangler/
+.DS_Store
