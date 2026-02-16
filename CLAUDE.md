@@ -21,6 +21,8 @@ CollabBoard - real-time collaborative whiteboard with AI agent integration. Gaun
 ```bash
 # Dev
 npm run dev              # wrangler dev (backend + frontend)
+# In worktrees (avoid port conflicts with main repo):
+VITE_PORT=5174 WRANGLER_PORT=8788 npm run dev
 
 # Build & Deploy (CF git integration auto-deploys on push to main)
 npm run build            # Vite build
