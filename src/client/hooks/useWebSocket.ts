@@ -64,7 +64,12 @@ export function useWebSocket(boardId: string): UseWebSocketReturn {
           setObjects((prev) => {
             const next = new Map(prev);
             const existing = next.get(msg.obj.id);
-            if (existing) next.set(msg.obj.id, { ...existing, ...msg.obj });
+            if (!existing) return prev;
+            // Server sends full object - LWW: only apply if newer
+            const merged = msg.obj as BoardObject;
+            if (merged.updatedAt && merged.updatedAt >= existing.updatedAt) {
+              next.set(msg.obj.id, merged);
+            }
             return next;
           });
           break;
@@ -96,13 +101,14 @@ export function useWebSocket(boardId: string): UseWebSocketReturn {
   }, [send]);
 
   const updateObject = useCallback((partial: Partial<BoardObject> & { id: string }) => {
+    const now = Date.now();
     setObjects((prev) => {
       const next = new Map(prev);
       const existing = next.get(partial.id);
-      if (existing) next.set(partial.id, { ...existing, ...partial, updatedAt: Date.now() });
+      if (existing) next.set(partial.id, { ...existing, ...partial, updatedAt: now });
       return next;
     });
-    send({ type: "obj:update", obj: partial });
+    send({ type: "obj:update", obj: { ...partial, updatedAt: now } });
   }, [send]);
 
   const deleteObject = useCallback((id: string) => {
