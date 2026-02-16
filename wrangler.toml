@@ -1,0 +1,27 @@
+account_id = "fb531f0c4c22637ae5d5e812ca3e56b1"
+name = "collabboard"
+main = "src/server/index.ts"
+compatibility_date = "2025-02-01"
+compatibility_flags = ["nodejs_als"]
+
+[assets]
+directory = "dist"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "collabboard-db"
+database_id = "746bc930-1ec4-4424-9209-29ca4f185f43"
+
+[durable_objects]
+bindings = [
+  { name = "BOARD", class_name = "Board" }
+]
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["Board"]
+
+[vars]
+AUTH_SECRET = "dev-secret-change-in-production"
+
+# For production, set via: wrangler secret put AUTH_SECRET
