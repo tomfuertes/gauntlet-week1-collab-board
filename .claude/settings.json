@@ -1,0 +1,26 @@
+{
+  "hooks": {
+    "PreCompact": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo 'CONTEXT COMPACTION IMMINENT. Before continuing: write a context dump to docs/notes.md covering what was done this session, what is next, any blockers, and the implementation plan for the next work item. Also update docs/roadmap.md checkboxes and CLAUDE.md if architecture changed.'",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo 'Session starting. Read docs/notes.md for context from previous sessions, then CLAUDE.md for architecture. Run /timeline to orient.'",
+            "timeout": 5
+          }
+        ]
+      }
+    ]
+  }
+}
