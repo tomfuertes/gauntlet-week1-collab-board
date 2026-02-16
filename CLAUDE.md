@@ -47,8 +47,13 @@ This repo uses git-crypt for `docs/`, which breaks `git worktree add` (smudge fi
 GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=filter.git-crypt.smudge GIT_CONFIG_VALUE_0=cat \
   git worktree add ../gauntlet-week1-collab-board-<branch> -b feat/<branch>
 
-# Then unlock git-crypt in the worktree (optional - only if you need encrypted docs)
-cd ../gauntlet-week1-collab-board-<branch> && git-crypt unlock
+# Unlock git-crypt in the worktree (3-step: bypass filters, unlock, filters auto-restore)
+# Without this, git status/diff/commit all fail on encrypted files
+WT=../gauntlet-week1-collab-board-<branch>
+git -C "$WT" config filter.git-crypt.clean cat
+git -C "$WT" config filter.git-crypt.smudge cat
+git -C "$WT" config filter.git-crypt.required false
+cd "$WT" && git-crypt unlock "$(git rev-parse --path-format=absolute --git-common-dir)/git-crypt/keys/default"
 
 # Start Claude session in the worktree
 cd ../gauntlet-week1-collab-board-<branch> && claude
