@@ -4,7 +4,7 @@ Real-time collaborative whiteboard with AI agent integration.
 
 ## Live Demo
 
-> Deployed URL: *coming soon*
+> **https://collabboard.thomas-fuertes.workers.dev**
 
 ## Stack
 
