@@ -1,50 +1,124 @@
 import { useState, useCallback } from "react";
-import type { ChatMessage } from "@shared/types";
+
+interface ToolCall {
+  name: string;
+  label: string;
+}
+
+export interface AIChatMessage {
+  id: string;
+  role: "user" | "assistant";
+  content: string;
+  tools?: ToolCall[];
+}
 
 export function useAIChat(boardId: string) {
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [messages, setMessages] = useState<AIChatMessage[]>([]);
   const [loading, setLoading] = useState(false);
+  const [status, setStatus] = useState("");
 
   const sendMessage = useCallback(
     async (text: string) => {
-      const userMsg: ChatMessage = {
+      const userMsg: AIChatMessage = {
         id: crypto.randomUUID(),
         role: "user",
         content: text,
       };
       setMessages((prev) => [...prev, userMsg]);
       setLoading(true);
+      setStatus("Thinking...");
 
       try {
+        console.debug("[ai-chat] sending:", text, "history:", messages.length);
+        const controller = new AbortController();
+        const timeout = setTimeout(() => {
+          console.warn("[ai-chat] request timed out after 60s");
+          controller.abort();
+        }, 60_000);
+
         const res = await fetch("/api/ai/chat", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             message: text,
             boardId,
-            history: messages,
+            history: messages.map((m) => ({ id: m.id, role: m.role, content: m.content })),
           }),
+          signal: controller.signal,
         });
+        clearTimeout(timeout);
+        console.debug("[ai-chat] response status:", res.status);
 
-        const data = await res.json<{ response?: string; error?: string }>();
+        // Parse SSE stream
+        const tools: ToolCall[] = [];
+        let responseText = "";
 
-        const assistantMsg: ChatMessage = {
-          id: crypto.randomUUID(),
-          role: "assistant",
-          content: data.response ?? data.error ?? "Something went wrong.",
-        };
-        setMessages((prev) => [...prev, assistantMsg]);
-      } catch {
+        if (res.headers.get("Content-Type")?.includes("text/event-stream") && res.body) {
+          const reader = res.body.getReader();
+          const decoder = new TextDecoder();
+          let buffer = "";
+
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            buffer += decoder.decode(value, { stream: true });
+
+            // Parse complete SSE events from buffer
+            const lines = buffer.split("\n");
+            buffer = lines.pop() ?? "";
+
+            for (const line of lines) {
+              if (!line.startsWith("data: ")) continue;
+              try {
+                const event = JSON.parse(line.slice(6));
+                console.debug("[ai-chat] event:", event);
+
+                if (event.type === "status") {
+                  setStatus(event.label);
+                } else if (event.type === "tool") {
+                  tools.push({ name: event.name, label: event.label });
+                  setStatus(`${event.label}...`);
+                } else if (event.type === "done") {
+                  responseText = event.response;
+                } else if (event.type === "error") {
+                  responseText = event.message;
+                }
+              } catch {
+                // partial JSON, ignore
+              }
+            }
+          }
+        } else {
+          // Fallback: non-streaming JSON response
+          const data = await res.json<{ response?: string; error?: string }>();
+          responseText = data.response ?? data.error ?? "Something went wrong.";
+        }
+
         setMessages((prev) => [
           ...prev,
-          { id: crypto.randomUUID(), role: "assistant", content: "Failed to reach AI. Try again." },
+          {
+            id: crypto.randomUUID(),
+            role: "assistant",
+            content: responseText || "I performed the requested actions on the board.",
+            tools: tools.length > 0 ? tools : undefined,
+          },
+        ]);
+      } catch (err) {
+        const msg = err instanceof DOMException && err.name === "AbortError"
+          ? "AI request timed out (60s). The model may be cold-starting - try again."
+          : "Failed to reach AI. Try again.";
+        console.error("[ai-chat] error:", err);
+        setMessages((prev) => [
+          ...prev,
+          { id: crypto.randomUUID(), role: "assistant", content: msg },
         ]);
       } finally {
         setLoading(false);
+        setStatus("");
       }
     },
     [boardId, messages],
   );
 
-  return { messages, loading, sendMessage };
+  return { messages, loading, status, sendMessage };
 }
