@@ -43,7 +43,7 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
   const trRef = useRef<Konva.Transformer>(null);
   const shapeRefs = useRef<Map<string, Konva.Group>>(new Map());
 
-  const { connectionState, cursors, objects, presence, send, createObject: wsCreate, updateObject: wsUpdate, deleteObject: wsDelete } = useWebSocket(boardId);
+  const { connectionState, initialized, cursors, objects, presence, send, createObject: wsCreate, updateObject: wsUpdate, deleteObject: wsDelete } = useWebSocket(boardId);
   const { createObject, updateObject, deleteObject, undo, redo } = useUndoRedo(objects, wsCreate, wsUpdate, wsDelete);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -236,9 +236,10 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
             fontSize: "0.875rem", padding: 0,
           }}>&larr; Boards</button>
           <span style={{ fontWeight: 600 }}>CollabBoard</span>
-          <span style={{ color: CONNECTION_COLORS[connectionState], fontSize: "0.75rem" }}>
-            {connectionState === "reconnecting" ? "reconnecting\u2026" : connectionState}
-          </span>
+          <span style={{
+            width: 8, height: 8, borderRadius: "50%", display: "inline-block",
+            background: CONNECTION_COLORS[connectionState],
+          }} title={connectionState} />
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: "1rem" }}>
           {/* Presence avatars */}
@@ -261,15 +262,43 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
         </div>
       </div>
 
-      {/* Reconnecting banner */}
-      {connectionState === "reconnecting" && (
+      {/* Connection status toast */}
+      <ConnectionToast connectionState={connectionState} />
+      <style>{`@keyframes cb-pulse { 0%,100% { opacity: 0.4 } 50% { opacity: 1 } }`}</style>
+
+      {/* Loading skeleton while WebSocket connects */}
+      {!initialized && connectionState !== "disconnected" && (
         <div style={{
-          position: "absolute", top: 48, left: 0, right: 0, zIndex: 10,
-          background: "rgba(250, 204, 21, 0.15)", borderBottom: "1px solid rgba(250, 204, 21, 0.3)",
-          padding: "6px 1rem", textAlign: "center",
-          color: "#facc15", fontSize: "0.8rem", fontWeight: 500,
+          position: "absolute", inset: 0, top: 48, display: "flex",
+          alignItems: "center", justifyContent: "center", zIndex: 5, pointerEvents: "none",
         }}>
-          Connection lost - reconnecting{"\u2026"}
+          <div style={{ textAlign: "center" }}>
+            <div style={{ display: "flex", gap: 16, marginBottom: 16 }}>
+              {[0, 1, 2].map((i) => (
+                <div key={i} style={{
+                  width: 80, height: 80, borderRadius: 8,
+                  background: "rgba(255,255,255,0.06)",
+                  animation: `cb-pulse 1.5s ease-in-out ${i * 0.2}s infinite`,
+                }} />
+              ))}
+            </div>
+            <div style={{ color: "rgba(255,255,255,0.3)", fontSize: "0.875rem" }}>
+              Loading board...
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Empty board hint */}
+      {initialized && objects.size === 0 && (
+        <div style={{
+          position: "absolute", top: "50%", left: "50%", transform: "translate(-50%, -50%)",
+          textAlign: "center", pointerEvents: "none", zIndex: 5, color: "rgba(255,255,255,0.35)",
+        }}>
+          <div style={{ fontSize: "2.5rem", marginBottom: 12 }}>+</div>
+          <div style={{ fontSize: "0.95rem", lineHeight: 1.6 }}>
+            Double-click to add a sticky, or use the toolbar
+          </div>
         </div>
       )}
 
@@ -498,6 +527,43 @@ function ZoomBtn({ label, onClick }: { label: string; onClick: () => void }) {
     }}>
       {label}
     </button>
+  );
+}
+
+const TOAST_CONFIG: Record<ConnectionState, { label: string; bg: string; border: string }> = {
+  connecting: { label: "Connecting...", bg: "#78350f", border: "#f59e0b" },
+  connected: { label: "Connected", bg: "#065f46", border: "#10b981" },
+  reconnecting: { label: "Reconnecting...", bg: "#78350f", border: "#f59e0b" },
+  disconnected: { label: "Disconnected", bg: "#7f1d1d", border: "#ef4444" },
+};
+
+function ConnectionToast({ connectionState }: { connectionState: ConnectionState }) {
+  const [show, setShow] = useState(false);
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    clearTimeout(timer.current!);
+    if (connectionState === "connecting") return;
+
+    setShow(true);
+    if (connectionState === "connected") {
+      timer.current = setTimeout(() => setShow(false), 3000);
+    }
+
+    return () => clearTimeout(timer.current!);
+  }, [connectionState]);
+
+  if (!show) return null;
+
+  const c = TOAST_CONFIG[connectionState];
+  return (
+    <div style={{
+      position: "absolute", top: 56, left: "50%", transform: "translateX(-50%)",
+      background: c.bg, border: `1px solid ${c.border}`, borderRadius: 6,
+      padding: "6px 16px", color: "#fff", fontSize: "0.8rem", zIndex: 30,
+    }}>
+      {c.label}
+    </div>
   );
 }
 

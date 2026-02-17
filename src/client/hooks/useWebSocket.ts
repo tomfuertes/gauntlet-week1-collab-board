@@ -12,6 +12,7 @@ interface CursorState {
 
 interface UseWebSocketReturn {
   connectionState: ConnectionState;
+  initialized: boolean;
   cursors: Map<string, CursorState>;
   objects: Map<string, BoardObject>;
   presence: { id: string; username: string }[];
@@ -27,6 +28,7 @@ const BACKOFF_CAP_MS = 8000;
 export function useWebSocket(boardId: string): UseWebSocketReturn {
   const wsRef = useRef<WebSocket | null>(null);
   const [connectionState, setConnectionState] = useState<ConnectionState>("connecting");
+  const [initialized, setInitialized] = useState(false);
   const [cursors, setCursors] = useState<Map<string, CursorState>>(new Map());
   const [objects, setObjects] = useState<Map<string, BoardObject>>(new Map());
   const [presence, setPresence] = useState<{ id: string; username: string }[]>([]);
@@ -80,6 +82,7 @@ export function useWebSocket(boardId: string): UseWebSocketReturn {
           case "init":
             setObjects(new Map(msg.objects.map((o) => [o.id, o])));
             setCursors(new Map());
+            setInitialized(true);
             break;
           case "cursor":
             setCursors((prev) => {
@@ -119,6 +122,7 @@ export function useWebSocket(boardId: string): UseWebSocketReturn {
     }
 
     setConnectionState("connecting");
+    setInitialized(false);
     connect();
 
     return () => {
@@ -132,6 +136,8 @@ export function useWebSocket(boardId: string): UseWebSocketReturn {
   const send = useCallback((msg: WSClientMessage) => {
     if (wsRef.current?.readyState === WebSocket.OPEN) {
       wsRef.current.send(JSON.stringify(msg));
+    } else if (msg.type !== "cursor") {
+      console.warn("[WS] dropping message while disconnected:", msg.type);
     }
   }, []);
 
@@ -160,5 +166,5 @@ export function useWebSocket(boardId: string): UseWebSocketReturn {
     send({ type: "obj:delete", id });
   }, [send]);
 
-  return { connectionState, cursors, objects, presence, send, createObject, updateObject, deleteObject };
+  return { connectionState, initialized, cursors, objects, presence, send, createObject, updateObject, deleteObject };
 }

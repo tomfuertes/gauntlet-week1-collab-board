@@ -54,6 +54,12 @@ scripts/worktree.sh list               # list active worktrees
 
 When working in a worktree, use absolute paths for file tools. Run git commands directly (not `git -C`) - the working directory is already the repo/worktree.
 
+When printing worktree startup commands for the user, pass the task prompt directly to claude:
+```bash
+cd /path/to/worktree && claude "your task prompt here"
+```
+This launches Claude with the prompt pre-loaded so the user just hits enter. Always include a specific, actionable prompt describing the feature to build. **Always start worktree prompts with "Enter plan mode first."** to force planning before implementation.
+
 ## Browser Testing (playwright-cli)
 
 The `playwright-cli` skill is available for automated browser testing. **Use it proactively** for UAT, smoke tests, and verifying features - don't stop to ask, just run it.
@@ -126,6 +132,8 @@ DO -> Client: cursor | obj:create | obj:update | obj:delete | presence | init
 
 DO echoes mutations to OTHER clients only (sender already applied optimistically).
 
+**IMPORTANT:** The WS message field for objects is `obj` (not `object`). Example: `{ type: "obj:create", obj: { id, type, x, y, ... } }`. Using `object` instead of `obj` silently fails - the DO ignores the message.
+
 ### Board Object Shape
 
 ```typescript
@@ -143,6 +151,7 @@ Each object stored as separate DO Storage key (`obj:{uuid}`, ~200 bytes). LWW vi
 - All AI calls are server-side in Worker - never expose API keys to client bundle
 - AI uses `@cloudflare/ai-utils` `runWithTools()` with `maxRecursiveToolRuns: 3` (counts LLM round-trips, not tool calls). Llama 3.3 needs explicit system prompt guardrails for tool discipline.
 - D1 migrations tracked via `d1_migrations` table. Use `npm run migrate` (not raw `wrangler d1 execute`). Create new: `wrangler d1 migrations create collabboard-db "name"`
+- WebSocket reconnect with exponential backoff (1s-10s cap), `disconnected` after 5 initial failures
 - Performance targets: 60fps canvas, <100ms object sync, <50ms cursor sync, 500+ objects, 5+ users
 - Two-browser test is the primary validation method throughout development
 - Hash-based routing (`#board/{id}`) - no React Router, no server-side routing needed
@@ -176,3 +185,4 @@ Hooks enforce the bookends: `SessionStart` reminds to read context, `PreCompact`
 - Use `npx <tool>` or `npm run <script>`, never `./node_modules/.bin/<tool>` directly (matches permission allowlist, works in worktrees)
 - **Never use `git -C <path>`** - run git commands directly (e.g., `git status`, `git commit`). The working directory is already the repo. `git -C` bypasses the permission allowlist and forces manual approval on every invocation. This applies to both the main repo and worktrees.
 - Use `scripts/localcurl.sh` instead of `curl` for local API testing (localhost-only wrapper, whitelisted in worktrees)
+- Start dev servers with `run_in_background: true` on the Bash tool, not `&` or `2>&1 &`. The background task mechanism handles this cleanly without needing shell backgrounding.
