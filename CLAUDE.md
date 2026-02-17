@@ -13,7 +13,7 @@ CollabBoard - real-time collaborative whiteboard with AI agent integration. Gaun
 - **Real-time:** Durable Objects + WebSockets (one DO per board, LWW conflict resolution)
 - **Auth:** Custom (username/password, PBKDF2 hash, D1 sessions, cookie-based)
 - **Database:** DO Storage (board objects as KV) + D1 (users/sessions/board metadata)
-- **AI:** Workers AI binding (`env.AI.run()` + `runWithTools()`) - Llama 3.3 70B (free tier, weak tool-use). Haiku via AI Gateway is the upgrade path ($0.001/req, much better tool discipline).
+- **AI:** Workers AI binding (`env.AI.run()` + `runWithTools()`) - Llama 3.3 70B (free tier, weak tool-use). 7 tools: `create_sticky`, `create_rect`, `create_circle`, `create_line`, `read_board`, `update_object`, `delete_object`. Haiku via AI Gateway is the upgrade path ($0.001/req, much better tool discipline).
 - **Deploy:** CF git integration auto-deploys on push to main
 
 ## Commands
@@ -104,6 +104,7 @@ src/
     hooks/
       useWebSocket.ts   # WebSocket state management
       useAIChat.ts      # AI chat state + API calls
+      useUndoRedo.ts    # Local undo/redo stack (max 50, Cmd+Z/Cmd+Shift+Z)
   server/               # CF Worker
     index.ts            # Hono app - routes, board CRUD, DO export, WebSocket upgrade
     auth.ts             # Auth routes + PBKDF2 hashing + session helpers
