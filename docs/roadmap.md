@@ -28,10 +28,10 @@
 - [x] Chat panel UI (sidebar for AI interaction)
 - [x] Multi-board support (CRUD, hash routing, board list page)
 - [x] Circles, lines, connectors/arrows
-- [ ] Standalone text
+- [x] Standalone text
 - [x] Multi-select, copy/paste, duplicate
 - [x] Undo/redo (local)
-- [ ] Frames/groups
+- [x] Frames/groups
 
 ## Post-MVP: UX Polish (Thu-Fri)
 
@@ -52,7 +52,7 @@
 - [ ] Ambient grid parallax (subtle depth on pan)
 - [x] Gradient or noise background instead of flat color (radial indigo glow)
 - [x] Presence cursor trails (fading ghost trail behind cursors)
-- [ ] Board minimap (small overview in corner)
+- [ ] Board minimap (scaled-down canvas overview in corner - separate feature, not polish)
 - [x] Keyboard shortcut cheat sheet (? key to toggle overlay)
 
 ## Polish (Sat-Sun)

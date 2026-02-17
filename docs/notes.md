@@ -171,7 +171,7 @@ Detection: `env.OPENAI_API_KEY?.length > 0`
 - [x] **Object entrance animations** - Konva Tween: scale 0.8->1 + opacity 0->1 on create (200ms EaseOut)
 - [x] **Confetti on first object** - 40 CSS particles with custom property animation, triggered on 0->1 object transition, auto-cleanup 1.8s
 - [x] **Presence cursor trails** - Konva Line polyline per cursor, tension=0.4 smooth curve, 12 sample points at ~20Hz, opacity 0.3, updated imperatively in rAF loop
-- [ ] **Board minimap** - small overview in corner
+- [ ] **Board minimap** - scaled-down canvas overview in corner. Separate feature, not polish.
 - [x] **Keyboard shortcut overlay** - ? key to toggle, lists all 19 shortcuts in a modal grid
 
 **Sequential (after all code):**
