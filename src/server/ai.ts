@@ -4,15 +4,7 @@ import { getCookie } from "hono/cookie";
 import { getSessionUser } from "./auth";
 import { runWithTools } from "@cloudflare/ai-utils";
 import type { ChatMessage, BoardObject } from "../shared/types";
-import type { Board } from "./board";
-
-type Bindings = {
-  DB: D1Database;
-  BOARD: DurableObjectNamespace<Board>;
-  AI: Ai;
-  AUTH_SECRET: string;
-  ANTHROPIC_API_KEY?: string;
-};
+import type { Bindings } from "./env";
 
 const SYSTEM_PROMPT = `You are a whiteboard assistant for CollabBoard. You help users by manipulating objects on a shared collaborative whiteboard.
 
@@ -360,7 +352,8 @@ aiRoutes.post("/chat", async (c) => {
             if (Object.keys(props).length > 0) partial.props = props;
             partial.updatedAt = Date.now();
 
-            await stub.mutate({ type: "obj:update", obj: partial });
+            const result = await stub.mutate({ type: "obj:update", obj: partial });
+            if (!result.ok) return JSON.stringify({ error: result.error });
             return JSON.stringify({ updated: args.id });
           }),
         },
@@ -375,7 +368,8 @@ aiRoutes.post("/chat", async (c) => {
             required: ["id"] as const,
           },
           function: traced("delete_object", "Deleting object", async (args: { id: string }) => {
-            await stub.mutate({ type: "obj:delete", id: args.id });
+            const result = await stub.mutate({ type: "obj:delete", id: args.id });
+            if (!result.ok) return JSON.stringify({ error: result.error });
             return JSON.stringify({ deleted: args.id });
           }),
         },

@@ -4,15 +4,8 @@ import { getCookie } from "hono/cookie";
 import { auth, getSessionUser } from "./auth";
 import { aiRoutes } from "./ai";
 
-import type { Board } from "./board";
+import type { Bindings } from "./env";
 export { Board } from "./board";
-
-type Bindings = {
-  DB: D1Database;
-  BOARD: DurableObjectNamespace<Board>;
-  AI: Ai;
-  AUTH_SECRET: string;
-};
 
 const app = new Hono<{ Bindings: Bindings }>();
 

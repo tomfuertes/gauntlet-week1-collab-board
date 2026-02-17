@@ -1,5 +1,6 @@
 import { DurableObject } from "cloudflare:workers";
 import type { BoardObject, WSClientMessage, WSServerMessage } from "../shared/types";
+import type { MutateResult } from "./env";
 
 interface ConnectionMeta {
   userId: string;
@@ -31,8 +32,8 @@ export class Board extends DurableObject {
     return keys.size;
   }
 
-  async mutate(msg: WSClientMessage): Promise<void> {
-    await this.handleMutation(msg, "ai-agent");
+  async mutate(msg: WSClientMessage): Promise<MutateResult> {
+    return this.handleMutation(msg, "ai-agent");
   }
 
   // --- WebSocket upgrade (requires HTTP) ---
@@ -137,28 +138,29 @@ export class Board extends DurableObject {
     return users;
   }
 
-  private async handleMutation(msg: WSClientMessage, userId: string, excludeWs?: WebSocket) {
+  private async handleMutation(msg: WSClientMessage, userId: string, excludeWs?: WebSocket): Promise<MutateResult> {
     switch (msg.type) {
       case "obj:create": {
         const obj = { ...msg.obj, createdBy: userId, updatedAt: Date.now() };
         await this.ctx.storage.put(`obj:${obj.id}`, obj);
         this.broadcast({ type: "obj:create", obj }, excludeWs);
-        break;
+        return { ok: true };
       }
       case "obj:update": {
         const existing = await this.ctx.storage.get<BoardObject>(`obj:${msg.obj.id}`);
-        if (!existing) break;
-        if (msg.obj.updatedAt && msg.obj.updatedAt < existing.updatedAt) break;
+        if (!existing) return { ok: false, error: `Object ${msg.obj.id} not found` };
+        if (msg.obj.updatedAt && msg.obj.updatedAt < existing.updatedAt) return { ok: false, error: "Stale update (LWW conflict)" };
         const updated = { ...existing, ...msg.obj, updatedAt: Date.now() };
         await this.ctx.storage.put(`obj:${updated.id}`, updated);
         this.broadcast({ type: "obj:update", obj: updated }, excludeWs);
-        break;
+        return { ok: true };
       }
       case "obj:delete": {
         await this.ctx.storage.delete(`obj:${msg.id}`);
         this.broadcast({ type: "obj:delete", id: msg.id }, excludeWs);
-        break;
+        return { ok: true };
       }
     }
+    return { ok: false, error: `Unknown message type` };
   }
 }

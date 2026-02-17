@@ -1,10 +1,6 @@
 import { Hono } from "hono";
 import { getCookie, setCookie, deleteCookie } from "hono/cookie";
-
-type Bindings = {
-  DB: D1Database;
-  AUTH_SECRET: string;
-};
+import type { Bindings } from "./env";
 
 // 7-day session expiry
 const SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
