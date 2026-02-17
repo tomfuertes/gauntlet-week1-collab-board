@@ -11,7 +11,10 @@
     "deploy": "npm run build && wrangler deploy",
     "typecheck": "tsc --noEmit",
     "lint": "eslint src/",
-    "format": "prettier --write \"src/**/*.{ts,tsx}\""
+    "format": "prettier --write \"src/**/*.{ts,tsx}\"",
+    "migrate:local": "wrangler d1 migrations apply collabboard-db --local",
+    "migrate:remote": "wrangler d1 migrations apply collabboard-db --remote",
+    "migrate": "npm run migrate:local && npm run migrate:remote"
   },
   "dependencies": {
     "@cloudflare/ai-utils": "^1.0.1",
