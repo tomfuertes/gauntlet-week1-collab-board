@@ -118,6 +118,7 @@ src/
     index.html          # Vite entry
     main.tsx            # React root
     App.tsx             # App shell + hash routing (#board/{id})
+    theme.ts            # Shared color constants (accent, surfaces, borders, cursors)
     components/
       Board.tsx         # Canvas + toolbar + chat panel integration
       BoardList.tsx     # Board grid (CRUD) - landing page after login

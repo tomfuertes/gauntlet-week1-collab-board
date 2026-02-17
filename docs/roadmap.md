@@ -46,14 +46,14 @@
 
 ## Post-MVP: Pizzazz (Fri)
 
-- [ ] Cursor smoothing (lerp between positions for buttery animation)
-- [ ] Object entrance animations (scale-in on create, fade-out on delete)
-- [ ] Confetti burst on first object created (onboarding delight)
+- [x] Cursor smoothing (lerp between positions via rAF loop)
+- [x] Object entrance animations (scale-in on create via Konva Tween)
+- [x] Confetti burst on first object created (onboarding delight)
 - [ ] Ambient grid parallax (subtle depth on pan)
-- [ ] Gradient or noise background instead of flat color
-- [ ] Presence cursor trails (fading ghost trail behind cursors)
+- [x] Gradient or noise background instead of flat color (radial indigo glow)
+- [x] Presence cursor trails (fading ghost trail behind cursors)
 - [ ] Board minimap (small overview in corner)
-- [ ] Keyboard shortcut cheat sheet (? key to toggle overlay)
+- [x] Keyboard shortcut cheat sheet (? key to toggle overlay)
 
 ## Polish (Sat-Sun)
 

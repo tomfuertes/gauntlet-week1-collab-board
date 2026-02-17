@@ -155,24 +155,24 @@ Detection: `env.OPENAI_API_KEY?.length > 0`
 
 ## Visual Differentiation Backlog
 
-*No CSS files exist - all 72 style occurrences are inline `style={}`. No framework. Keep it inline but extract a shared color/spacing constants file if touching 3+ components.*
+*Shared constants extracted to `src/client/theme.ts`. Still inline `style={}`, no CSS framework.*
 
 **High impact (demo video differentiators):**
-- [ ] **Micro-interactions** (~1hr) - object fade-in on create, scale-out on delete, toolbar hover states with subtle scale. Makes AI demo look polished when objects appear.
-- [ ] **Consistent dark theme** (~1hr) - pick one accent color (e.g., indigo-500 `#6366f1`), apply to toolbar active state, selection highlight, buttons, presence dots. Consistency reads as "designed."
-- [ ] **Cursor lerp** (~30min) - smooth interpolation between cursor positions instead of teleporting. Overlaps with pizzazz roadmap.
+- [x] **Micro-interactions** - object fade-in on create (Konva Tween: opacity 0->1, scale 0.8->1, 200ms EaseOut), toolbar hover scale(1.1) transition. Skips initial load objects via `wasInitializedRef` lag.
+- [x] **Consistent dark theme** - indigo-500 `#6366f1` accent across: toolbar active/hover, Transformer, marquee, presence avatars, color picker outline, ChatPanel send button, user message bubbles, BoardList hover. Shared via `colors` from `theme.ts`.
+- [x] **Cursor lerp** - rAF loop with LERP_FACTOR=0.25, Konva Group refs bypass React re-renders, target/display positions in refs. ~200ms to 95% of target.
 
 **Medium impact (first impression):**
-- [ ] **Branded login page** (~30min) - split-screen with gradient/illustration + form. Signals "product" not "homework."
-- [ ] **Canvas background** (~15min) - subtle dot grid with depth or soft gradient. The canvas is on screen 99% of the time.
-- [ ] **Custom cursor icons per tool** (~15min) - sticky tool gets sticky cursor, line tool gets crosshair, etc.
+- [x] **Branded login page** - two-column layout: left gradient panel (indigo->dark) with app name + tagline + decorative dot grid, right panel with form. Dark theme.
+- [x] **Canvas background** - subtle radial indigo glow (fillRadialGradient on Rect) behind grid dots, dot opacity bumped 0.08->0.1.
+- [x] **Custom cursor icons per tool** - crosshair for drawing tools, text for text tool, default for select. CSS cursor set on outer wrapper div via `toolCursors` map.
 
 **Low impact (nice-to-have):**
-- [ ] **Object entrance animations** - Konva tween: scale 0->1 + opacity on create
-- [ ] **Confetti on first object** - onboarding delight
-- [ ] **Presence cursor trails** - fading ghost trail
+- [x] **Object entrance animations** - Konva Tween: scale 0.8->1 + opacity 0->1 on create (200ms EaseOut)
+- [x] **Confetti on first object** - 40 CSS particles with custom property animation, triggered on 0->1 object transition, auto-cleanup 1.8s
+- [x] **Presence cursor trails** - Konva Line polyline per cursor, tension=0.4 smooth curve, 12 sample points at ~20Hz, opacity 0.3, updated imperatively in rAF loop
 - [ ] **Board minimap** - small overview in corner
-- [ ] **Keyboard shortcut overlay** - ? key to toggle
+- [x] **Keyboard shortcut overlay** - ? key to toggle, lists all 19 shortcuts in a modal grid
 
 **Sequential (after all code):**
 - Prod smoke test

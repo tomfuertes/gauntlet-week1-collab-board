@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import type { AuthUser } from "../App";
+import { colors } from "../theme";
 
 interface BoardMeta {
   id: string;
@@ -95,8 +96,8 @@ export function BoardList({ user, onSelectBoard, onLogout }: {
                 cursor: "pointer", minHeight: 120, color: "#94a3b8",
                 fontSize: "1rem", transition: "border-color 0.15s",
               }}
-              onMouseEnter={(e) => (e.currentTarget.style.borderColor = "#60a5fa")}
-              onMouseLeave={(e) => (e.currentTarget.style.borderColor = "#475569")}
+              onMouseEnter={(e) => (e.currentTarget.style.borderColor = colors.accentLight)}
+              onMouseLeave={(e) => (e.currentTarget.style.borderColor = colors.borderLight)}
             >
               + New Board
             </div>
@@ -112,8 +113,8 @@ export function BoardList({ user, onSelectBoard, onLogout }: {
                   display: "flex", flexDirection: "column", justifyContent: "space-between",
                   transition: "border-color 0.15s",
                 }}
-                onMouseEnter={(e) => (e.currentTarget.style.borderColor = "#60a5fa")}
-                onMouseLeave={(e) => (e.currentTarget.style.borderColor = "#334155")}
+                onMouseEnter={(e) => (e.currentTarget.style.borderColor = colors.accentLight)}
+                onMouseLeave={(e) => (e.currentTarget.style.borderColor = colors.border)}
               >
                 <div>
                   <div style={{ fontWeight: 600, marginBottom: 4 }}>{board.name}</div>
