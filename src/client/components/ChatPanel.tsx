@@ -1,6 +1,7 @@
 import React, { useRef, useEffect, useState } from "react";
 import { useAIChat } from "../hooks/useAIChat";
 import type { AIChatMessage } from "../hooks/useAIChat";
+import { colors } from "../theme";
 
 interface ChatPanelProps {
   boardId: string;
@@ -116,7 +117,7 @@ export function ChatPanel({ boardId, onClose }: ChatPanelProps) {
             <div style={{
               padding: "0.5rem 0.75rem",
               borderRadius: msg.role === "user" ? "12px 12px 4px 12px" : "12px 12px 12px 4px",
-              background: msg.role === "user" ? "#3b82f6" : "#1e293b",
+              background: msg.role === "user" ? colors.accent : "#1e293b",
               color: msg.role === "user" ? "#fff" : "#e2e8f0",
               fontSize: "0.8125rem",
               lineHeight: 1.5,
@@ -159,7 +160,7 @@ export function ChatPanel({ boardId, onClose }: ChatPanelProps) {
           onClick={handleSubmit}
           disabled={loading}
           style={{
-            background: loading ? "#1e40af" : "#3b82f6",
+            background: loading ? colors.accentDark : colors.accent,
             border: "none", borderRadius: 8, color: "#fff",
             padding: "0.5rem 0.75rem", cursor: loading ? "not-allowed" : "pointer",
             fontSize: "0.8125rem", fontWeight: 600, flexShrink: 0,

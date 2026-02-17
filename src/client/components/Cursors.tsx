@@ -1,10 +1,18 @@
+import { useRef, useEffect } from "react";
 import { Group, Line, Text } from "react-konva";
+import type Konva from "konva";
 
 // Distinct colors for up to 10 users
 const CURSOR_COLORS = [
   "#f87171", "#60a5fa", "#4ade80", "#fbbf24", "#a78bfa",
   "#f472b6", "#34d399", "#fb923c", "#818cf8", "#22d3ee",
 ];
+
+// Each frame the cursor moves 25% of the remaining distance.
+// At 60fps with 30fps cursor updates, a 100px jump reaches 95% in ~200ms.
+const LERP_FACTOR = 0.25;
+const TRAIL_LENGTH = 12;
+const TRAIL_SAMPLE_INTERVAL = 3; // sample every N rAF frames
 
 interface CursorState {
   userId: string;
@@ -13,13 +21,125 @@ interface CursorState {
   y: number;
 }
 
+interface LerpPos {
+  x: number;
+  y: number;
+  tx: number;
+  ty: number;
+}
+
 export function Cursors({ cursors }: { cursors: Map<string, CursorState> }) {
+  const groupRefs = useRef<Map<string, Konva.Group>>(new Map());
+  const trailRefs = useRef<Map<string, Konva.Line>>(new Map());
+  const positions = useRef<Map<string, LerpPos>>(new Map());
+  const trails = useRef<Map<string, number[]>>(new Map());
+
+  // Update targets on every render (no deps needed - runs synchronously before paint)
+  for (const [userId, cursor] of cursors) {
+    const pos = positions.current.get(userId);
+    if (pos) {
+      pos.tx = cursor.x;
+      pos.ty = cursor.y;
+    } else {
+      positions.current.set(userId, { x: cursor.x, y: cursor.y, tx: cursor.x, ty: cursor.y });
+    }
+  }
+  // Clean stale cursors
+  for (const userId of positions.current.keys()) {
+    if (!cursors.has(userId)) {
+      positions.current.delete(userId);
+      groupRefs.current.delete(userId);
+      trailRefs.current.delete(userId);
+      trails.current.delete(userId);
+    }
+  }
+
+  // Single rAF loop for lerp + trail sampling (runs for component lifetime)
+  useEffect(() => {
+    let animId: number;
+    let frameCount = 0;
+    const animate = () => {
+      frameCount++;
+      for (const [userId, pos] of positions.current) {
+        const dx = pos.tx - pos.x;
+        const dy = pos.ty - pos.y;
+        if (Math.abs(dx) > 0.5 || Math.abs(dy) > 0.5) {
+          pos.x += dx * LERP_FACTOR;
+          pos.y += dy * LERP_FACTOR;
+        } else {
+          pos.x = pos.tx;
+          pos.y = pos.ty;
+        }
+        const group = groupRefs.current.get(userId);
+        if (group) {
+          group.x(pos.x);
+          group.y(pos.y);
+        }
+
+        // Sample trail position periodically
+        if (frameCount % TRAIL_SAMPLE_INTERVAL === 0) {
+          let trail = trails.current.get(userId);
+          if (!trail) {
+            trail = [];
+            trails.current.set(userId, trail);
+          }
+          trail.push(pos.x, pos.y);
+          if (trail.length > TRAIL_LENGTH * 2) {
+            trail.splice(0, 2); // remove oldest point (x,y pair)
+          }
+          // Update trail line imperatively
+          const trailLine = trailRefs.current.get(userId);
+          if (trailLine && trail.length >= 4) {
+            trailLine.points(trail);
+          }
+        }
+      }
+      animId = requestAnimationFrame(animate);
+    };
+    animId = requestAnimationFrame(animate);
+    return () => cancelAnimationFrame(animId);
+  }, []);
+
   return (
     <>
+      {/* Trail lines (rendered behind cursor shapes) */}
       {[...cursors.values()].map((cursor, i) => {
         const color = CURSOR_COLORS[i % CURSOR_COLORS.length];
         return (
-          <Group key={cursor.userId} x={cursor.x} y={cursor.y}>
+          <Line
+            key={`trail-${cursor.userId}`}
+            ref={(node: Konva.Line | null) => {
+              if (node) trailRefs.current.set(cursor.userId, node);
+              else trailRefs.current.delete(cursor.userId);
+            }}
+            points={[]}
+            stroke={color}
+            strokeWidth={2}
+            opacity={0.3}
+            lineCap="round"
+            lineJoin="round"
+            tension={0.4}
+            listening={false}
+          />
+        );
+      })}
+      {/* Cursor shapes */}
+      {[...cursors.values()].map((cursor, i) => {
+        const color = CURSOR_COLORS[i % CURSOR_COLORS.length];
+        return (
+          <Group
+            key={cursor.userId}
+            ref={(node: Konva.Group | null) => {
+              if (node) {
+                groupRefs.current.set(cursor.userId, node);
+                // Set initial position immediately to avoid 0,0 flash
+                const pos = positions.current.get(cursor.userId);
+                if (pos) { node.x(pos.x); node.y(pos.y); }
+              } else {
+                groupRefs.current.delete(cursor.userId);
+              }
+            }}
+          >
             {/* Arrow cursor shape */}
             <Line
               points={[0, 0, 0, 16, 4, 12, 8, 20, 11, 19, 7, 11, 12, 11]}
@@ -36,7 +156,6 @@ export function Cursors({ cursors }: { cursors: Map<string, CursorState> }) {
               fontSize={11}
               fill="#fff"
               padding={2}
-              // Background via Konva text background
             />
           </Group>
         );

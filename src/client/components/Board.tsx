@@ -1,11 +1,12 @@
 import React, { useState, useRef, useCallback, useEffect } from "react";
 import { Stage, Layer, Rect, Text, Group, Transformer, Ellipse, Line as KonvaLine, Arrow } from "react-konva";
 import type { KonvaEventObject } from "konva/lib/Node";
-import type Konva from "konva";
+import Konva from "konva";
 import type { AuthUser } from "../App";
 import type { BoardObject } from "@shared/types";
 import { useWebSocket, type ConnectionState } from "../hooks/useWebSocket";
 import { useUndoRedo } from "../hooks/useUndoRedo";
+import { colors, toolCursors } from "../theme";
 
 const CONNECTION_COLORS: Record<ConnectionState, string> = {
   connected: "#4ade80",
@@ -51,8 +52,19 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
   const lastCursorSend = useRef(0);
   const [toolMode, setToolMode] = useState<ToolMode>("select");
   const [chatOpen, setChatOpen] = useState(false);
+  const [showShortcuts, setShowShortcuts] = useState(false);
   const trRef = useRef<Konva.Transformer>(null);
   const shapeRefs = useRef<Map<string, Konva.Group>>(new Map());
+
+  // Object fade-in animation tracking
+  const wasInitializedRef = useRef(false);
+  useEffect(() => { wasInitializedRef.current = initialized; });
+  const animatedIdsRef = useRef(new Set<string>());
+
+  // Confetti on first object
+  const [confettiPos, setConfettiPos] = useState<{ x: number; y: number } | null>(null);
+  const initObjectCount = useRef<number | null>(null);
+  const confettiDone = useRef(false);
 
   // Marquee selection state
   const [marquee, setMarquee] = useState<{ x: number; y: number; w: number; h: number } | null>(null);
@@ -164,6 +176,18 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
     });
   }, [objects]);
 
+  // Confetti trigger: first object on an empty board
+  if (initialized && initObjectCount.current === null) {
+    initObjectCount.current = objects.size;
+  }
+  useEffect(() => {
+    if (initObjectCount.current !== 0 || confettiDone.current) return;
+    if (objects.size > 0) {
+      confettiDone.current = true;
+      setConfettiPos({ x: size.width / 2, y: size.height / 2 });
+    }
+  }, [objects.size, size.width, size.height]);
+
   // Clear selection when switching away from select mode
   useEffect(() => {
     if (toolMode !== "select") setSelectedIds(new Set());
@@ -197,6 +221,7 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
       if (e.key === "t" || e.key === "T") setToolMode("text");
       if (e.key === "f" || e.key === "F") setToolMode("frame");
       if (e.key === "/") { e.preventDefault(); setChatOpen((o) => !o); }
+      if (e.key === "?") { e.preventDefault(); setShowShortcuts((o) => !o); }
       if ((e.key === "Delete" || e.key === "Backspace") && selectedIds.size > 0 && !editingId) {
         e.preventDefault();
         deleteSelected();
@@ -423,11 +448,29 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
     });
   }, [updateObject]);
 
-  // Ref callback to track shape nodes for Transformer
+  // Ref callback to track shape nodes for Transformer + fade-in animation
   const setShapeRef = useCallback((id: string) => {
     return (node: Konva.Group | null) => {
-      if (node) shapeRefs.current.set(id, node);
-      else shapeRefs.current.delete(id);
+      if (node) {
+        shapeRefs.current.set(id, node);
+        // Animate newly created objects (skip initial load via lagged ref)
+        if (wasInitializedRef.current && !animatedIdsRef.current.has(id)) {
+          animatedIdsRef.current.add(id);
+          node.opacity(0);
+          node.scaleX(0.8);
+          node.scaleY(0.8);
+          new Konva.Tween({
+            node,
+            duration: 0.2,
+            opacity: 1,
+            scaleX: 1,
+            scaleY: 1,
+            easing: Konva.Easings.EaseOut,
+          }).play();
+        }
+      } else {
+        shapeRefs.current.delete(id);
+      }
     };
   }, []);
 
@@ -575,7 +618,7 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
   };
 
   return (
-    <div style={{ width: "100vw", height: "100vh", overflow: "hidden", background: "#1a1a2e" }}>
+    <div style={{ width: "100vw", height: "100vh", overflow: "hidden", background: colors.bg, cursor: toolCursors[toolMode] || "default" }}>
       {/* Header */}
       <div style={{
         position: "absolute", top: 0, left: 0, right: 0, height: 48, zIndex: 10,
@@ -599,7 +642,7 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
           <div style={{ display: "flex", gap: 4 }}>
             {presence.map((p) => (
               <span key={p.id} style={{
-                background: "#3b82f6", borderRadius: "50%", width: 24, height: 24,
+                background: colors.accent, borderRadius: "50%", width: 24, height: 24,
                 display: "flex", alignItems: "center", justifyContent: "center",
                 fontSize: "0.625rem", fontWeight: 600, color: "#fff",
               }} title={p.username}>
@@ -617,7 +660,10 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
 
       {/* Connection status toast */}
       <ConnectionToast connectionState={connectionState} />
-      <style>{`@keyframes cb-pulse { 0%,100% { opacity: 0.4 } 50% { opacity: 1 } }`}</style>
+      <style>{`
+        @keyframes cb-pulse { 0%,100% { opacity: 0.4 } 50% { opacity: 1 } }
+        @keyframes cb-confetti { 0% { transform: translate(0,0) scale(0); opacity: 1 } 15% { transform: translate(0,0) scale(1); opacity: 1 } 100% { transform: translate(var(--cx),var(--cy)) scale(0.3); opacity: 0 } }
+      `}</style>
 
       {/* Loading skeleton while WebSocket connects */}
       {!initialized && connectionState !== "disconnected" && (
@@ -896,8 +942,8 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
             <Rect
               x={marquee.x} y={marquee.y}
               width={marquee.w} height={marquee.h}
-              fill="rgba(59, 130, 246, 0.1)"
-              stroke="#3b82f6" strokeWidth={1}
+              fill={colors.accentSubtle}
+              stroke={colors.accent} strokeWidth={1}
               dash={[6, 3]} listening={false}
             />
           )}
@@ -911,8 +957,8 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
               if (Math.abs(newBox.width) < 20 || Math.abs(newBox.height) < 20) return _oldBox;
               return newBox;
             }}
-            borderStroke="#0084FF"
-            anchorStroke="#0084FF"
+            borderStroke={colors.accent}
+            anchorStroke={colors.accent}
             anchorFill="#fff"
             anchorSize={8}
             anchorCornerRadius={2}
@@ -1105,7 +1151,7 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
                   width: 28, height: 28, borderRadius: "50%", border: "2px solid",
                   borderColor: currentColor === color ? "#fff" : "transparent",
                   background: color, cursor: "pointer", padding: 0,
-                  outline: currentColor === color ? "2px solid #3b82f6" : "none",
+                  outline: currentColor === color ? `2px solid ${colors.accent}` : "none",
                   outlineOffset: 1,
                 }}
               />
@@ -1120,6 +1166,12 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
         <ZoomBtn label="Reset" onClick={() => { setScale(1); setStagePos({ x: 0, y: 0 }); }} />
         <ZoomBtn label="+" onClick={() => setScale((s) => Math.min(MAX_ZOOM, s * 1.2))} />
       </div>
+
+      {/* Keyboard shortcut overlay */}
+      {showShortcuts && <ShortcutOverlay onClose={() => setShowShortcuts(false)} />}
+
+      {/* Confetti burst on first object */}
+      {confettiPos && <ConfettiBurst x={confettiPos.x} y={confettiPos.y} onDone={() => setConfettiPos(null)} />}
     </div>
   );
 }
@@ -1127,14 +1179,25 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
 function ToolIconBtn({ icon, title, active, onClick, disabled }: {
   icon: React.ReactNode; title: string; active: boolean; onClick: () => void; disabled?: boolean;
 }) {
+  const [hovered, setHovered] = useState(false);
   return (
-    <button onClick={onClick} title={title} disabled={disabled} style={{
-      width: 36, height: 36, display: "flex", alignItems: "center", justifyContent: "center",
-      background: active ? "#3b82f6" : "transparent",
-      border: active ? "1px solid #60a5fa" : "1px solid transparent",
-      borderRadius: 6, color: disabled ? "#475569" : active ? "#fff" : "#94a3b8",
-      cursor: disabled ? "default" : "pointer", padding: 0,
-    }}>
+    <button
+      onClick={onClick}
+      title={title}
+      disabled={disabled}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      style={{
+        width: 36, height: 36, display: "flex", alignItems: "center", justifyContent: "center",
+        background: active ? colors.accent : hovered && !disabled ? colors.accentSubtle : "transparent",
+        border: active ? `1px solid ${colors.accentLight}` : "1px solid transparent",
+        borderRadius: 6,
+        color: disabled ? "#475569" : active ? "#fff" : hovered ? colors.accentLight : colors.textMuted,
+        cursor: disabled ? "default" : "pointer", padding: 0,
+        transform: hovered && !disabled ? "scale(1.1)" : "scale(1)",
+        transition: "transform 0.15s ease, background 0.15s ease, color 0.15s ease",
+      }}
+    >
       {icon}
     </button>
   );
@@ -1278,7 +1341,29 @@ function ConnectionToast({ connectionState }: { connectionState: ConnectionState
 
 function renderGrid(pos: { x: number; y: number }, scale: number, size: { width: number; height: number }) {
   const gridSize = 50;
-  const dots: React.ReactElement[] = [];
+  const elements: React.ReactElement[] = [];
+
+  // Subtle radial glow for canvas depth
+  const viewCenterX = (-pos.x + size.width / 2) / scale;
+  const viewCenterY = (-pos.y + size.height / 2) / scale;
+  const glowRadius = Math.max(size.width, size.height) / scale * 0.7;
+  elements.push(
+    <Rect
+      key="glow"
+      x={viewCenterX - glowRadius}
+      y={viewCenterY - glowRadius}
+      width={glowRadius * 2}
+      height={glowRadius * 2}
+      fillRadialGradientStartPoint={{ x: glowRadius, y: glowRadius }}
+      fillRadialGradientEndPoint={{ x: glowRadius, y: glowRadius }}
+      fillRadialGradientStartRadius={0}
+      fillRadialGradientEndRadius={glowRadius}
+      fillRadialGradientColorStops={[0, "rgba(99,102,241,0.06)", 0.5, "rgba(99,102,241,0.02)", 1, "transparent"]}
+      listening={false}
+    />
+  );
+
+  // Grid dots
   const startX = Math.floor(-pos.x / scale / gridSize) * gridSize - gridSize;
   const startY = Math.floor(-pos.y / scale / gridSize) * gridSize - gridSize;
   const endX = startX + size.width / scale + gridSize * 2;
@@ -1288,9 +1373,123 @@ function renderGrid(pos: { x: number; y: number }, scale: number, size: { width:
   for (let x = startX; x < endX; x += gridSize) {
     for (let y = startY; y < endY; y += gridSize) {
       if (count++ >= maxDots) break;
-      dots.push(<Rect key={`${x},${y}`} x={x - 1} y={y - 1} width={2} height={2} fill="rgba(255,255,255,0.08)" listening={false} />);
+      elements.push(<Rect key={`${x},${y}`} x={x - 1} y={y - 1} width={2} height={2} fill="rgba(255,255,255,0.1)" listening={false} />);
     }
     if (count >= maxDots) break;
   }
-  return dots;
+  return elements;
+}
+
+const SHORTCUTS = [
+  ["V", "Select"],
+  ["S", "Sticky note"],
+  ["R", "Rectangle"],
+  ["C", "Circle"],
+  ["L", "Line"],
+  ["A", "Arrow"],
+  ["T", "Text"],
+  ["F", "Frame"],
+  ["/", "AI Assistant"],
+  ["?", "This overlay"],
+  ["Del", "Delete selected"],
+  ["Esc", "Deselect"],
+  ["\u2318Z", "Undo"],
+  ["\u2318\u21E7Z", "Redo"],
+  ["\u2318C", "Copy"],
+  ["\u2318V", "Paste"],
+  ["\u2318D", "Duplicate"],
+  ["Shift+Click", "Multi-select"],
+  ["Dbl-click", "Create object"],
+] as const;
+
+function ShortcutOverlay({ onClose }: { onClose: () => void }) {
+  return (
+    <div
+      onClick={onClose}
+      style={{
+        position: "absolute", inset: 0, zIndex: 50,
+        background: "rgba(0,0,0,0.5)", display: "flex",
+        alignItems: "center", justifyContent: "center",
+      }}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          background: colors.surface, border: `1px solid ${colors.border}`,
+          borderRadius: 12, padding: "1.5rem 2rem", maxWidth: 360, width: "90%",
+        }}
+      >
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1rem" }}>
+          <span style={{ fontWeight: 600, color: colors.text, fontSize: "1rem" }}>Keyboard Shortcuts</span>
+          <button onClick={onClose} style={{
+            background: "none", border: "none", color: colors.textMuted,
+            cursor: "pointer", fontSize: "1.25rem", lineHeight: 1, padding: "0.25rem",
+          }}>
+            ✕
+          </button>
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "auto 1fr", gap: "6px 16px" }}>
+          {SHORTCUTS.map(([key, label]) => (
+            <React.Fragment key={key}>
+              <kbd style={{
+                background: colors.surfaceAlt, border: `1px solid ${colors.border}`,
+                borderRadius: 4, padding: "2px 8px", fontSize: "0.75rem",
+                fontFamily: "inherit", color: colors.accentLight, textAlign: "center",
+                minWidth: 32,
+              }}>
+                {key}
+              </kbd>
+              <span style={{ color: colors.textMuted, fontSize: "0.8125rem", lineHeight: "24px" }}>
+                {label}
+              </span>
+            </React.Fragment>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+const CONFETTI_COLORS = ["#6366f1", "#818cf8", "#f472b6", "#fbbf24", "#4ade80", "#60a5fa", "#f87171", "#a78bfa"];
+
+function ConfettiBurst({ x, y, onDone }: { x: number; y: number; onDone: () => void }) {
+  const particles = useRef(
+    Array.from({ length: 40 }, () => {
+      const angle = -Math.PI / 2 + (Math.random() - 0.5) * Math.PI * 1.8;
+      const dist = 50 + Math.random() * 120;
+      return {
+        cx: `${Math.cos(angle) * dist}px`,
+        cy: `${Math.sin(angle) * dist + 80}px`, // gravity pull
+        color: CONFETTI_COLORS[Math.floor(Math.random() * CONFETTI_COLORS.length)],
+        size: 4 + Math.random() * 6,
+        delay: Math.random() * 0.15,
+      };
+    })
+  ).current;
+
+  useEffect(() => {
+    const t = setTimeout(onDone, 1800);
+    return () => clearTimeout(t);
+  }, [onDone]);
+
+  return (
+    <div style={{ position: "absolute", left: x, top: y, pointerEvents: "none", zIndex: 45 }}>
+      {particles.map((p, i) => (
+        <div
+          key={i}
+          style={{
+            position: "absolute",
+            width: p.size,
+            height: p.size,
+            background: p.color,
+            borderRadius: p.size > 7 ? "50%" : "1px",
+            "--cx": p.cx,
+            "--cy": p.cy,
+            animation: `cb-confetti 1.4s ${p.delay}s cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards`,
+            opacity: 0,
+          } as React.CSSProperties}
+        />
+      ))}
+    </div>
+  );
 }
