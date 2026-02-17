@@ -11,12 +11,9 @@ const MIN_ZOOM = 0.1;
 const MAX_ZOOM = 5;
 const CURSOR_THROTTLE_MS = 33; // ~30fps
 
-// Hardcoded board ID for MVP - will be dynamic later
-const BOARD_ID = "default";
-
 type ToolMode = "sticky" | "rect";
 
-export function Board({ user, onLogout }: { user: AuthUser; onLogout: () => void }) {
+export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boardId: string; onLogout: () => void; onBack: () => void }) {
   const stageRef = useRef<Konva.Stage>(null);
   const [stagePos, setStagePos] = useState({ x: 0, y: 0 });
   const [scale, setScale] = useState(1);
@@ -25,7 +22,7 @@ export function Board({ user, onLogout }: { user: AuthUser; onLogout: () => void
   const [toolMode, setToolMode] = useState<ToolMode>("sticky");
   const [chatOpen, setChatOpen] = useState(false);
 
-  const { connected, cursors, objects, presence, send, createObject, updateObject, deleteObject } = useWebSocket(BOARD_ID);
+  const { connected, cursors, objects, presence, send, createObject, updateObject, deleteObject } = useWebSocket(boardId);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
@@ -167,6 +164,10 @@ export function Board({ user, onLogout }: { user: AuthUser; onLogout: () => void
         padding: "0 1rem", color: "#eee", fontSize: "0.875rem",
       }}>
         <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
+          <button onClick={onBack} style={{
+            background: "none", border: "none", color: "#94a3b8", cursor: "pointer",
+            fontSize: "0.875rem", padding: 0,
+          }}>&larr; Boards</button>
           <span style={{ fontWeight: 600 }}>CollabBoard</span>
           <span style={{ color: connected ? "#4ade80" : "#f87171", fontSize: "0.75rem" }}>
             {connected ? "connected" : "disconnected"}
@@ -330,7 +331,7 @@ export function Board({ user, onLogout }: { user: AuthUser; onLogout: () => void
       </div>
 
       {/* AI Chat Panel */}
-      {chatOpen && <ChatPanel boardId={BOARD_ID} onClose={() => setChatOpen(false)} />}
+      {chatOpen && <ChatPanel boardId={boardId} onClose={() => setChatOpen(false)} />}
 
       {/* Zoom controls */}
       <div style={{ position: "absolute", bottom: 16, right: 16, display: "flex", gap: 4, zIndex: 10 }}>

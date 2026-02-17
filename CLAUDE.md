@@ -103,15 +103,16 @@ src/
   client/               # React SPA
     index.html          # Vite entry
     main.tsx            # React root
-    App.tsx             # App shell
+    App.tsx             # App shell + hash routing (#board/{id})
     components/
       Board.tsx         # Canvas + toolbar + chat panel integration
+      BoardList.tsx     # Board grid (CRUD) - landing page after login
       ChatPanel.tsx     # AI chat sidebar
     hooks/
       useWebSocket.ts   # WebSocket state management
       useAIChat.ts      # AI chat state + API calls
   server/               # CF Worker
-    index.ts            # Hono app - routes, DO export, WebSocket upgrade
+    index.ts            # Hono app - routes, board CRUD, DO export, WebSocket upgrade
     auth.ts             # Auth routes + PBKDF2 hashing + session helpers
     ai.ts               # AI route - runWithTools + board manipulation tools
   shared/               # Types shared between client and server
@@ -122,7 +123,8 @@ migrations/             # D1 SQL migrations (applied via wrangler d1 execute)
 ### Data Flow
 
 1. Client authenticates via POST /auth/signup or /auth/login (session cookie set)
-2. Client opens WebSocket to `wss://host/board/:id` (cookie validated before upgrade)
+2. Client shows BoardList (fetches `GET /api/boards`), user selects/creates a board -> hash route `#board/{id}`
+3. Client opens WebSocket to `wss://host/board/:id` (cookie validated before upgrade)
 3. Worker routes WebSocket to Board Durable Object
 4. DO manages all board state: objects in DO Storage (`obj:{uuid}`), cursors in memory
 5. Mutations flow: client applies optimistically -> sends to DO -> DO persists + broadcasts to other clients
@@ -154,6 +156,8 @@ Each object stored as separate DO Storage key (`obj:{uuid}`, ~200 bytes). LWW vi
 - All AI calls are server-side in Worker - never expose API keys to client bundle
 - Performance targets: 60fps canvas, <100ms object sync, <50ms cursor sync, 500+ objects, 5+ users
 - Two-browser test is the primary validation method throughout development
+- Hash-based routing (`#board/{id}`) - no React Router, no server-side routing needed
+- Board list shows user's own boards + system boards; any auth'd user can access any board via URL
 
 ## Doc Sync Workflow
 
