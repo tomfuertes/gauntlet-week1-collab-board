@@ -119,7 +119,7 @@ src/
     ai.ts               # AI route - runWithTools + board manipulation tools
   shared/               # Types shared between client and server
     types.ts            # BoardObject, WSMessage, ChatMessage, User, etc.
-migrations/             # D1 SQL migrations (applied via wrangler d1 execute)
+migrations/             # D1 SQL migrations (tracked via d1_migrations table, npm run migrate)
 ```
 
 ### Data Flow
@@ -127,10 +127,10 @@ migrations/             # D1 SQL migrations (applied via wrangler d1 execute)
 1. Client authenticates via POST /auth/signup or /auth/login (session cookie set)
 2. Client shows BoardList (fetches `GET /api/boards`), user selects/creates a board -> hash route `#board/{id}`
 3. Client opens WebSocket to `wss://host/board/:id` (cookie validated before upgrade)
-3. Worker routes WebSocket to Board Durable Object
-4. DO manages all board state: objects in DO Storage (`obj:{uuid}`), cursors in memory
-5. Mutations flow: client applies optimistically -> sends to DO -> DO persists + broadcasts to other clients
-6. AI commands: client POSTs to `/api/ai/chat` -> Worker runs `runWithTools()` with Llama 3.3 70B -> tool callbacks HTTP to Board DO `/read` and `/mutate` -> DO persists + broadcasts to all WebSocket clients
+4. Worker routes WebSocket to Board Durable Object
+5. DO manages all board state: objects in DO Storage (`obj:{uuid}`), cursors in memory
+6. Mutations flow: client applies optimistically -> sends to DO -> DO persists + broadcasts to other clients
+7. AI commands: client POSTs to `/api/ai/chat` -> Worker runs `runWithTools()` with Llama 3.3 70B -> tool callbacks HTTP to Board DO `/read` and `/mutate` -> DO persists + broadcasts to all WebSocket clients
 
 ### WebSocket Protocol
 
