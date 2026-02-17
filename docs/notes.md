@@ -105,7 +105,7 @@ Detection: `env.OPENAI_API_KEY?.length > 0`
 | Move/resize/rotate | Required | DONE | |
 | Multi-select | Required | Not started | `feat/multi-select` IN FLIGHT |
 | Delete | Required | DONE | |
-| Copy/paste/duplicate | Required | NOT STARTED | Wave 2 |
+| Copy/paste/duplicate | Required | DONE | `feat/copy-paste` |
 
 **Real-time (all DONE):** cursors, sync, presence, LWW, reconnect, persistence.
 

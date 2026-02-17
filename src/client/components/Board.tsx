@@ -3,6 +3,7 @@ import { Stage, Layer, Rect, Text, Group, Transformer, Ellipse, Line as KonvaLin
 import type { KonvaEventObject } from "konva/lib/Node";
 import type Konva from "konva";
 import type { AuthUser } from "../App";
+import type { BoardObject } from "@shared/types";
 import { useWebSocket, type ConnectionState } from "../hooks/useWebSocket";
 import { useUndoRedo } from "../hooks/useUndoRedo";
 
@@ -79,6 +80,7 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
   objectsRef.current = objects;
   const [editingId, setEditingId] = useState<string | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const clipboardRef = useRef<BoardObject[]>([]);
 
   // Shared helper: batch-delete all selected objects
   const deleteSelected = useCallback(() => {
@@ -92,6 +94,67 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
       if (isBatch) commitBatch();
     }
   }, [selectedIds, deleteObject, startBatch, commitBatch]);
+
+  // Shared: create offset copies of items, wrap in a batch if >1, select the new set
+  const placeItems = useCallback((items: BoardObject[]) => {
+    if (items.length === 0) return;
+    const isBatch = items.length > 1;
+    if (isBatch) startBatch();
+    const newIds = new Set<string>();
+    try {
+      for (const item of items) {
+        const id = crypto.randomUUID();
+        newIds.add(id);
+        createObject({
+          ...item,
+          id,
+          x: item.x + 20,
+          y: item.y + 20,
+          props: { ...item.props },
+          createdBy: user.id,
+          updatedAt: Date.now(),
+        });
+      }
+    } finally {
+      if (isBatch) commitBatch();
+    }
+    setSelectedIds(newIds);
+  }, [createObject, startBatch, commitBatch, user.id]);
+
+  // Copy selected objects to in-memory clipboard
+  const copySelected = useCallback(() => {
+    if (selectedIds.size === 0) return;
+    const copied: BoardObject[] = [];
+    for (const id of selectedIds) {
+      const obj = objectsRef.current.get(id);
+      if (obj) copied.push({ ...obj, props: { ...obj.props } });
+    }
+    clipboardRef.current = copied;
+  }, [selectedIds]);
+
+  // Paste clipboard objects with 20px offset, new UUIDs, select the pasted set
+  const pasteClipboard = useCallback(() => {
+    const items = clipboardRef.current;
+    if (items.length === 0) return;
+    placeItems(items);
+    // Advance clipboard positions so repeated pastes cascade
+    clipboardRef.current = items.map(item => ({
+      ...item,
+      x: item.x + 20,
+      y: item.y + 20,
+      props: { ...item.props },
+    }));
+  }, [placeItems]);
+
+  // Duplicate selected objects with 20px offset without touching the clipboard
+  const duplicateSelected = useCallback(() => {
+    const items: BoardObject[] = [];
+    for (const id of selectedIds) {
+      const obj = objectsRef.current.get(id);
+      if (obj) items.push({ ...obj, props: { ...obj.props } });
+    }
+    placeItems(items);
+  }, [selectedIds, placeItems]);
 
   // Clear selection if objects were deleted (by another user or AI)
   useEffect(() => {
@@ -122,6 +185,9 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
       if ((e.metaKey || e.ctrlKey) && e.key === "z" && !e.shiftKey) { e.preventDefault(); undo(); return; }
       if ((e.metaKey || e.ctrlKey) && e.key === "z" && e.shiftKey) { e.preventDefault(); redo(); return; }
       if ((e.metaKey || e.ctrlKey) && e.key === "y") { e.preventDefault(); redo(); return; }
+      if ((e.metaKey || e.ctrlKey) && e.key === "c") { if (selectedIds.size > 0) e.preventDefault(); copySelected(); return; }
+      if ((e.metaKey || e.ctrlKey) && e.key === "v") { e.preventDefault(); pasteClipboard(); return; }
+      if ((e.metaKey || e.ctrlKey) && e.key === "d") { if (selectedIds.size > 0) e.preventDefault(); duplicateSelected(); return; }
       if (e.key === "v" || e.key === "V") setToolMode("select");
       if (e.key === "s" || e.key === "S") setToolMode("sticky");
       if (e.key === "r" || e.key === "R") setToolMode("rect");
@@ -138,7 +204,7 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [selectedIds, editingId, deleteSelected, undo, redo]);
+  }, [selectedIds, editingId, deleteSelected, copySelected, pasteClipboard, duplicateSelected, undo, redo]);
 
   // Sync Transformer with selected nodes
   useEffect(() => {
