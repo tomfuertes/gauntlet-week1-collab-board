@@ -21,8 +21,10 @@ IMPORTANT RULES:
 
 When creating multiple objects, spread them out so they don't overlap. Use a grid layout with ~220px spacing.
 
+Available shapes: sticky notes (text), rectangles (fill+stroke), circles (fill+stroke), and lines (stroke only).
 Available colors for stickies: #fbbf24 (yellow, default), #f87171 (red), #4ade80 (green), #60a5fa (blue), #c084fc (purple), #fb923c (orange).
-Available colors for rectangles: fill any hex color, stroke should be a slightly darker variant.
+Available colors for rectangles and circles: fill any hex color, stroke should be a slightly darker variant.
+Available colors for lines: stroke any hex color (no fill). Default: #94a3b8.
 
 When describing the board, be brief. List objects by type and key content.`;
 
@@ -145,6 +147,81 @@ aiRoutes.post("/chat", async (c) => {
               headers: { "Content-Type": "application/json" },
             }));
             return JSON.stringify({ created: id, type: "rect" });
+          }),
+        },
+        {
+          name: "create_circle",
+          description: "Create a circle shape on the whiteboard",
+          parameters: {
+            type: "object" as const,
+            properties: {
+              x: { type: "number" as const, description: "Center X position (default: random 100-800)" },
+              y: { type: "number" as const, description: "Center Y position (default: random 100-600)" },
+              radius: { type: "number" as const, description: "Radius in pixels (default: 50)" },
+              fill: { type: "string" as const, description: "Fill color hex (default: #3b82f6)" },
+              stroke: { type: "string" as const, description: "Stroke color hex (default: #2563eb)" },
+            },
+            required: [] as const,
+          },
+          function: traced("create_circle", "Creating circle", async (args: { x?: number; y?: number; radius?: number; fill?: string; stroke?: string }) => {
+            const id = crypto.randomUUID();
+            const r = args.radius ?? 50;
+            const cx = args.x ?? 100 + Math.random() * 700;
+            const cy = Math.max(60, args.y ?? 100 + Math.random() * 500);
+            const obj = {
+              id,
+              type: "circle" as const,
+              x: cx - r,
+              y: cy - r,
+              width: r * 2,
+              height: r * 2,
+              rotation: 0,
+              props: { fill: args.fill || "#3b82f6", stroke: args.stroke || "#2563eb" },
+              createdBy: "ai-agent",
+              updatedAt: Date.now(),
+            };
+            await stub.fetch(new Request("http://do/mutate", {
+              method: "POST",
+              body: JSON.stringify({ type: "obj:create", obj }),
+              headers: { "Content-Type": "application/json" },
+            }));
+            return JSON.stringify({ created: id, type: "circle", radius: r });
+          }),
+        },
+        {
+          name: "create_line",
+          description: "Create a line on the whiteboard from point A to point B",
+          parameters: {
+            type: "object" as const,
+            properties: {
+              x1: { type: "number" as const, description: "Start X position" },
+              y1: { type: "number" as const, description: "Start Y position" },
+              x2: { type: "number" as const, description: "End X position" },
+              y2: { type: "number" as const, description: "End Y position" },
+              stroke: { type: "string" as const, description: "Stroke color hex (default: #94a3b8)" },
+            },
+            required: ["x1", "y1", "x2", "y2"] as const,
+          },
+          function: traced("create_line", "Creating line", async (args: { x1: number; y1: number; x2: number; y2: number; stroke?: string }) => {
+            const id = crypto.randomUUID();
+            const obj = {
+              id,
+              type: "line" as const,
+              x: args.x1,
+              y: args.y1,
+              width: args.x2 - args.x1,
+              height: args.y2 - args.y1,
+              rotation: 0,
+              props: { stroke: args.stroke || "#94a3b8" },
+              createdBy: "ai-agent",
+              updatedAt: Date.now(),
+            };
+            await stub.fetch(new Request("http://do/mutate", {
+              method: "POST",
+              body: JSON.stringify({ type: "obj:create", obj }),
+              headers: { "Content-Type": "application/json" },
+            }));
+            return JSON.stringify({ created: id, type: "line" });
           }),
         },
         {
