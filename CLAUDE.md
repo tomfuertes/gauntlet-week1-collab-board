@@ -145,7 +145,7 @@ Each object stored as separate DO Storage key (`obj:{uuid}`, ~200 bytes). LWW vi
 
 ## Key Constraints
 
-- `docs/` is git-crypt encrypted - contains spec and internal planning docs
+- `docs/encrypted/` is git-crypt encrypted (spec, pre-search). Everything else in `docs/` is plaintext and merges normally across worktrees.
 - `private/` is .gitignore'd - contains original PDF, never committed
 - Auth is custom (no Better Auth) - PBKDF2 hashing (Web Crypto, zero deps), D1 sessions, cookie-based. No email, no OAuth, no password reset.
 - Deploy via `git push` to main (CF git integration). Do NOT run `wrangler deploy` manually.

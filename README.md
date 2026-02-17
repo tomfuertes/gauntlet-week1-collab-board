@@ -43,9 +43,9 @@ Requires: Node.js 20+, Cloudflare account with Workers Paid plan ($5/mo for DOs)
 
 ## Documentation
 
-Internal planning docs are in `docs/` (git-crypt encrypted). See `CLAUDE.md` for architecture details and development conventions.
+Sensitive docs are in `docs/encrypted/` (git-crypt). Everything else in `docs/` is human-readable. See `CLAUDE.md` for architecture and conventions.
 
 Submission deliverables:
-- [Pre-Search Document](docs/pre-search.md) - Architecture discovery process
+- [Pre-Search Document](docs/encrypted/pre-search.md) - Architecture discovery process
 - [AI Development Log](docs/ai-dev-log.md) - AI-first development methodology
 - [AI Cost Analysis](docs/ai-cost-analysis.md) - Unit economics and scaling projections
