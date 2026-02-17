@@ -143,6 +143,7 @@ Each object stored as separate DO Storage key (`obj:{uuid}`, ~200 bytes). LWW vi
 - All AI calls are server-side in Worker - never expose API keys to client bundle
 - AI uses `@cloudflare/ai-utils` `runWithTools()` with `maxRecursiveToolRuns: 3` (counts LLM round-trips, not tool calls). Llama 3.3 needs explicit system prompt guardrails for tool discipline.
 - D1 migrations tracked via `d1_migrations` table. Use `npm run migrate` (not raw `wrangler d1 execute`). Create new: `wrangler d1 migrations create collabboard-db "name"`
+- WebSocket reconnect with exponential backoff (1s-10s cap), `disconnected` after 5 initial failures
 - Performance targets: 60fps canvas, <100ms object sync, <50ms cursor sync, 500+ objects, 5+ users
 - Two-browser test is the primary validation method throughout development
 - Hash-based routing (`#board/{id}`) - no React Router, no server-side routing needed
