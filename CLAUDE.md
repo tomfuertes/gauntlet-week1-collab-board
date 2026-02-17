@@ -130,6 +130,8 @@ DO -> Client: cursor | obj:create | obj:update | obj:delete | presence | init
 
 DO echoes mutations to OTHER clients only (sender already applied optimistically).
 
+**IMPORTANT:** The WS message field for objects is `obj` (not `object`). Example: `{ type: "obj:create", obj: { id, type, x, y, ... } }`. Using `object` instead of `obj` silently fails - the DO ignores the message.
+
 ### Board Object Shape
 
 ```typescript
@@ -181,3 +183,4 @@ Hooks enforce the bookends: `SessionStart` reminds to read context, `PreCompact`
 - Use `npx <tool>` or `npm run <script>`, never `./node_modules/.bin/<tool>` directly (matches permission allowlist, works in worktrees)
 - In worktrees, run git commands directly (e.g., `git commit`), not via `git -C <path>`. `git -C` bypasses the permission allowlist and every invocation requires manual approval. The worktree IS the working directory.
 - Use `scripts/localcurl.sh` instead of `curl` for local API testing (localhost-only wrapper, whitelisted in worktrees)
+- Start dev servers with `run_in_background: true` on the Bash tool, not `&` or `2>&1 &`. The background task mechanism handles this cleanly without needing shell backgrounding.
