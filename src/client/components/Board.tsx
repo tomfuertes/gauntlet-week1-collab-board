@@ -19,7 +19,7 @@ const MIN_ZOOM = 0.1;
 const MAX_ZOOM = 5;
 const CURSOR_THROTTLE_MS = 33; // ~30fps
 
-type ToolMode = "select" | "sticky" | "rect" | "circle" | "line" | "arrow" | "text";
+type ToolMode = "select" | "sticky" | "rect" | "circle" | "line" | "arrow" | "text" | "frame";
 
 const COLOR_PRESETS = [
   "#fbbf24", // amber (sticky default)
@@ -49,6 +49,9 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
   const { createObject, updateObject, deleteObject, undo, redo } = useUndoRedo(objects, wsCreate, wsUpdate, wsDelete);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [frameDraft, setFrameDraft] = useState<{startX: number; startY: number; x: number; y: number; width: number; height: number} | null>(null);
+  const [pendingFrame, setPendingFrame] = useState<{x: number; y: number; width: number; height: number} | null>(null);
+  const pendingFrameCancelled = useRef(false);
 
   // Clear selection if object was deleted (by another user or AI)
   useEffect(() => {
@@ -78,6 +81,7 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
       if (e.key === "l" || e.key === "L") setToolMode("line");
       if (e.key === "a" || e.key === "A") setToolMode("arrow");
       if (e.key === "t" || e.key === "T") setToolMode("text");
+      if (e.key === "f" || e.key === "F") setToolMode("frame");
       if (e.key === "/") { e.preventDefault(); setChatOpen((o) => !o); }
       if ((e.key === "Delete" || e.key === "Backspace") && selectedId && !editingId) {
         e.preventDefault();
@@ -182,10 +186,70 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
     };
   }, []);
 
+  // Frame drag-to-create handlers
+  const handleStageMouseDown = useCallback((e: KonvaEventObject<MouseEvent>) => {
+    if (toolMode !== "frame") return;
+    if (e.target !== stageRef.current) return;
+    const stage = stageRef.current;
+    if (!stage) return;
+    const pointer = stage.getPointerPosition();
+    if (!pointer) return;
+    const worldX = (pointer.x - stagePos.x) / scale;
+    const worldY = (pointer.y - stagePos.y) / scale;
+    setFrameDraft({ startX: worldX, startY: worldY, x: worldX, y: worldY, width: 0, height: 0 });
+  }, [toolMode, stagePos, scale]);
+
+  const handleStageMouseMove = useCallback((e: KonvaEventObject<MouseEvent>) => {
+    handleMouseMove(e); // cursor sync (throttled)
+    if (!frameDraft) return;
+    const stage = stageRef.current;
+    if (!stage) return;
+    const pointer = stage.getPointerPosition();
+    if (!pointer) return;
+    const worldX = (pointer.x - stagePos.x) / scale;
+    const worldY = (pointer.y - stagePos.y) / scale;
+    setFrameDraft(prev => {
+      if (!prev) return null;
+      return {
+        ...prev,
+        x: Math.min(prev.startX, worldX),
+        y: Math.min(prev.startY, worldY),
+        width: Math.abs(worldX - prev.startX),
+        height: Math.abs(worldY - prev.startY),
+      };
+    });
+  }, [handleMouseMove, frameDraft, stagePos, scale]);
+
+  const handleStageMouseUp = useCallback(() => {
+    if (!frameDraft) return;
+    if (frameDraft.width >= 20 && frameDraft.height >= 20) {
+      setPendingFrame({ x: frameDraft.x, y: frameDraft.y, width: frameDraft.width, height: frameDraft.height });
+    }
+    setFrameDraft(null);
+  }, [frameDraft]);
+
+  const commitPendingFrame = useCallback((title: string) => {
+    if (!pendingFrame) return;
+    createObject({
+      id: crypto.randomUUID(),
+      type: "frame",
+      x: pendingFrame.x,
+      y: pendingFrame.y,
+      width: pendingFrame.width,
+      height: pendingFrame.height,
+      rotation: 0,
+      props: { text: title || "Frame" },
+      createdBy: user.id,
+      updatedAt: Date.now(),
+    });
+    setPendingFrame(null);
+    setToolMode("select");
+  }, [pendingFrame, createObject, user.id]);
+
   // Double-click on empty canvas -> create object based on active tool
   const handleStageDblClick = useCallback((e: KonvaEventObject<MouseEvent>) => {
     if (e.target !== stageRef.current) return;
-    if (toolMode === "select") return;
+    if (toolMode === "select" || toolMode === "frame") return;
 
     const stage = stageRef.current;
     if (!stage) return;
@@ -375,18 +439,74 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
         y={stagePos.y}
         scaleX={scale}
         scaleY={scale}
-        draggable
+        draggable={toolMode !== "frame"}
         onWheel={handleWheel}
         onDragEnd={handleDragEnd}
-        onMouseMove={handleMouseMove}
+        onMouseDown={handleStageMouseDown}
+        onMouseMove={handleStageMouseMove}
+        onMouseUp={handleStageMouseUp}
         onClick={(e: KonvaEventObject<MouseEvent>) => { if (e.target === stageRef.current) setSelectedId(null); }}
         onDblClick={handleStageDblClick}
       >
         <Layer>
           {renderGrid(stagePos, scale, size)}
 
-          {/* Render synced objects */}
-          {[...objects.values()].map((obj) => {
+          {/* Pass 1: frames (behind everything) */}
+          {[...objects.values()].filter(o => o.type === "frame").map((obj) => (
+            <Group
+              key={obj.id}
+              ref={setShapeRef(obj.id)}
+              x={obj.x}
+              y={obj.y}
+              rotation={obj.rotation}
+              draggable
+              onClick={(e) => { e.cancelBubble = true; setSelectedId(obj.id); }}
+              onDragEnd={(e) => {
+                updateObject({ id: obj.id, x: e.target.x(), y: e.target.y() });
+              }}
+              onDblClick={(e) => {
+                e.cancelBubble = true;
+                setSelectedId(null);
+                setEditingId(obj.id);
+              }}
+              onTransformEnd={(e) => handleObjectTransform(e, obj)}
+            >
+              <Rect
+                width={obj.width}
+                height={obj.height}
+                fill="rgba(99,102,241,0.06)"
+                stroke="#6366f1"
+                strokeWidth={2}
+                dash={[10, 5]}
+                cornerRadius={4}
+              />
+              <Text
+                x={8}
+                y={-20}
+                text={obj.props.text || "Frame"}
+                fontSize={13}
+                fill="#6366f1"
+                fontStyle="600"
+              />
+            </Group>
+          ))}
+          {/* Frame drag preview */}
+          {frameDraft && frameDraft.width > 0 && frameDraft.height > 0 && (
+            <Rect
+              x={frameDraft.x}
+              y={frameDraft.y}
+              width={frameDraft.width}
+              height={frameDraft.height}
+              fill="rgba(99,102,241,0.06)"
+              stroke="#6366f1"
+              strokeWidth={2 / scale}
+              dash={[10 / scale, 5 / scale]}
+              cornerRadius={4}
+              listening={false}
+            />
+          )}
+          {/* Pass 2: non-frame objects */}
+          {[...objects.values()].filter(o => o.type !== "frame").map((obj) => {
             if (obj.type === "sticky") {
               return (
                 <Group
@@ -564,6 +684,40 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
       {editingId && (() => {
         const obj = objects.get(editingId);
         if (!obj) return null;
+        if (obj.type === "frame") {
+          return (
+            <input
+              autoFocus
+              defaultValue={obj.props.text || ""}
+              style={{
+                position: "absolute",
+                left: obj.x * scale + stagePos.x,
+                top: obj.y * scale + stagePos.y - 32,
+                width: Math.min(200, obj.width * scale),
+                height: 28,
+                background: "rgba(22, 33, 62, 0.95)",
+                border: "2px solid #6366f1",
+                borderRadius: 4,
+                padding: "0 8px",
+                fontSize: 13,
+                color: "#e0e7ff",
+                outline: "none",
+                zIndex: 20,
+                boxSizing: "border-box" as const,
+              }}
+              onBlur={(e) => {
+                updateObject({ id: editingId, props: { ...obj.props, text: e.target.value } });
+                setEditingId(null);
+              }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === "Escape") {
+                  updateObject({ id: editingId, props: { ...obj.props, text: (e.target as HTMLInputElement).value } });
+                  setEditingId(null);
+                }
+              }}
+            />
+          );
+        }
         const isText = obj.type === "text";
         return (
           <textarea
@@ -601,6 +755,43 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
         );
       })()}
 
+      {/* Pending frame title input */}
+      {pendingFrame && (
+        <input
+          autoFocus
+          placeholder="Frame title..."
+          style={{
+            position: "absolute",
+            left: pendingFrame.x * scale + stagePos.x,
+            top: pendingFrame.y * scale + stagePos.y - 32,
+            width: Math.min(200, pendingFrame.width * scale),
+            height: 28,
+            background: "rgba(22, 33, 62, 0.95)",
+            border: "2px solid #6366f1",
+            borderRadius: 4,
+            padding: "0 8px",
+            fontSize: 13,
+            color: "#e0e7ff",
+            outline: "none",
+            zIndex: 20,
+            boxSizing: "border-box" as const,
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              (e.target as HTMLInputElement).blur(); // commit via onBlur
+            } else if (e.key === "Escape") {
+              pendingFrameCancelled.current = true;
+              setPendingFrame(null);
+              setToolMode("select");
+            }
+          }}
+          onBlur={(e) => {
+            if (pendingFrameCancelled.current) { pendingFrameCancelled.current = false; return; }
+            commitPendingFrame(e.target.value);
+          }}
+        />
+      )}
+
       {/* Vertical Toolbar - Left Sidebar */}
       <div style={{
         position: "absolute", left: 0, top: 48, bottom: 0, width: SIDEBAR_W, zIndex: 10,
@@ -615,6 +806,7 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
         <ToolIconBtn icon={<IconLine />} title="Line (L)" active={toolMode === "line"} onClick={() => setToolMode("line")} />
         <ToolIconBtn icon={<IconArrow />} title="Arrow (A)" active={toolMode === "arrow"} onClick={() => setToolMode("arrow")} />
         <ToolIconBtn icon={<IconText />} title="Text (T)" active={toolMode === "text"} onClick={() => setToolMode("text")} />
+        <ToolIconBtn icon={<IconFrame />} title="Frame (F)" active={toolMode === "frame"} onClick={() => setToolMode("frame")} />
         <div style={{ width: 28, borderTop: "1px solid #334155", margin: "4px 0" }} />
         <ToolIconBtn
           icon={<IconDelete />}
@@ -635,6 +827,7 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
       {selectedId && (() => {
         const selectedObj = objects.get(selectedId);
         if (!selectedObj) return null;
+        if (selectedObj.type === "frame") return null;
         const propKey = selectedObj.type === "sticky" || selectedObj.type === "text" ? "color" : selectedObj.type === "line" ? "stroke" : "fill";
         const currentColor = selectedObj.props[propKey];
         return (
@@ -750,6 +943,15 @@ function IconText() {
       <polyline points="4 7 4 4 20 4 20 7"/>
       <line x1="9" y1="20" x2="15" y2="20"/>
       <line x1="12" y1="4" x2="12" y2="20"/>
+    </svg>
+  );
+}
+
+function IconFrame() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <rect x="3" y="5" width="18" height="16" rx="2" strokeDasharray="4 2"/>
+      <line x1="3" y1="5" x2="10" y2="5" strokeWidth="2.5"/>
     </svg>
   );
 }

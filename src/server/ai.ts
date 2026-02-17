@@ -21,7 +21,7 @@ IMPORTANT RULES:
 
 When creating multiple objects, spread them out so they don't overlap. Use a grid layout with ~220px spacing.
 
-Available shapes: sticky notes (text), standalone text, rectangles (fill+stroke), circles (fill+stroke), lines (stroke only), and connectors/arrows (stroke + arrowheads).
+Available shapes: sticky notes (text), standalone text, rectangles (fill+stroke), circles (fill+stroke), lines (stroke only), connectors/arrows (stroke + arrowheads), and frames (labeled containers for grouping).
 Available colors for stickies: #fbbf24 (yellow, default), #f87171 (red), #4ade80 (green), #60a5fa (blue), #c084fc (purple), #fb923c (orange).
 Available colors for text: any hex color (default: #ffffff white).
 Available colors for rectangles and circles: fill any hex color, stroke should be a slightly darker variant.
@@ -309,6 +309,43 @@ aiRoutes.post("/chat", async (c) => {
           }),
         },
         {
+          name: "create_frame",
+          description: "Create a frame (labeled container/region) on the whiteboard to group or organize objects. Frames render behind other objects.",
+          parameters: {
+            type: "object" as const,
+            properties: {
+              title: { type: "string" as const, description: "The frame title/label" },
+              x: { type: "number" as const, description: "X position (default: random 100-800)" },
+              y: { type: "number" as const, description: "Y position (default: random 100-600)" },
+              width: { type: "number" as const, description: "Width in pixels (default: 400)" },
+              height: { type: "number" as const, description: "Height in pixels (default: 300)" },
+            },
+            required: ["title"] as const,
+          },
+          function: traced("create_frame", "Creating frame", async (args: { title: string; x?: number; y?: number; width?: number; height?: number }) => {
+            const id = crypto.randomUUID();
+            const obj = {
+              id,
+              type: "frame" as const,
+              x: args.x ?? 100 + Math.random() * 700,
+              y: Math.max(60, args.y ?? 100 + Math.random() * 500),
+              width: args.width ?? 400,
+              height: args.height ?? 300,
+              rotation: 0,
+              props: { text: typeof args.title === "string" && args.title.trim() ? args.title.trim() : "Frame" },
+              createdBy: "ai-agent",
+              updatedAt: Date.now(),
+            };
+            const res = await stub.fetch(new Request("http://do/mutate", {
+              method: "POST",
+              body: JSON.stringify({ type: "obj:create", obj }),
+              headers: { "Content-Type": "application/json" },
+            }));
+            if (!res.ok) throw new Error(`Board mutation failed (${res.status})`);
+            return JSON.stringify({ created: id, type: "frame", title: obj.props.text });
+          }),
+        },
+        {
           name: "read_board",
           description: "Read all objects currently on the whiteboard. Returns a list of objects with their id, type, text, position, and color.",
           parameters: {
@@ -329,7 +366,7 @@ aiRoutes.post("/chat", async (c) => {
             type: "object" as const,
             properties: {
               id: { type: "string" as const, description: "The ID of the object to update" },
-              text: { type: "string" as const, description: "New text content (for stickies)" },
+              text: { type: "string" as const, description: "New text content (for stickies and frame titles)" },
               x: { type: "number" as const, description: "New X position" },
               y: { type: "number" as const, description: "New Y position" },
               color: { type: "string" as const, description: "New color (for stickies)" },
