@@ -29,7 +29,7 @@
 - [x] 10 tools (exceeds 6 minimum): create_sticky, create_text, create_rect, create_circle, create_line, create_connector, create_frame, read_board, update_object, delete_object
 - [x] Shared AI state (all users see results in real-time)
 - [x] Multiple users can issue commands simultaneously
-- [ ] **`resizeObject(objectId, width, height)`** - MISSING. `update_object` does not accept width/height params.
+- [x] **`resizeObject(objectId, width, height)`** - FIXED. `update_object` now accepts width/height params.
 - [ ] **`createConnector(fromId, toId, style)`** - PARTIAL. Uses coordinates (x1,y1,x2,y2) not object IDs.
 - [ ] **SWOT analysis command** - Llama 3.3 unreliable. Haiku path merged (PR #16) but needs ANTHROPIC_API_KEY on prod.
 - [ ] **"Arrange in a grid" command** - Multi-step spatial reasoning. Model quality issue.
@@ -50,8 +50,8 @@
 - [ ] **AI dev log** - template exists, all content sections are TODOs
 - [ ] **AI cost analysis** - projections done, dev spend actuals missing
 - [ ] **Social post** - NOT STARTED
-- [ ] **Privacy policy page** - NOT STARTED
-- [ ] **Data deletion endpoint** - NOT STARTED
+- [x] **Privacy policy page** - DONE (`#privacy` route)
+- [x] **Data deletion endpoint** - DONE (`DELETE /api/user`)
 - [ ] **Prod smoke test (2-browser)** - NOT DONE
 
 ---
@@ -68,15 +68,15 @@ One incident: notes.md binary rebase conflict during frames PR, caught and fixed
 
 ## React/Konva Performance
 
-### CRITICAL
-1. **Grid renders 2000+ `<Rect>` nodes per frame** during pan/zoom. Called inline in JSX, regenerated on every render including cursor updates. Fix: `useMemo` or custom Konva `sceneFunc`.
-2. **All 500 objects re-render on any single object change.** Array spread + filter on every render, no memoized child components. Fix: extract memoized shape components with `React.memo`.
-3. **3000 event handler swaps per render at 500 objects.** Inline arrow functions in JSX create new refs every render, forcing Konva to unbind/rebind all listeners. Fix: stable callbacks in memoized children.
+### CRITICAL (ALL FIXED - Tier 2)
+1. ~~**Grid renders 2000+ `<Rect>` nodes per frame**~~ - FIXED: single `<Shape>` with canvas 2D `sceneFunc`.
+2. ~~**All 500 objects re-render on any single object change.**~~ - FIXED: `React.memo` on `BoardObjectRenderer`.
+3. ~~**3000 event handler swaps per render at 500 objects.**~~ - FIXED: ref-mirror pattern stabilizes all callbacks.
 
-### HIGH
-4. **`handleWheel` + `handleMouseMove` recreated at 60fps** during zoom/pan. `stagePos` and `scale` in deps. Fix: ref-mirror pattern (already used for `objectsRef`).
-5. **`handleStageMouseMove` recreated during frame drag.** Reads `frameDraft` state instead of `frameDraftRef.current`. Fix: use ref, remove from deps.
-6. **Cursor updates trigger full Board re-render.** `useWebSocket` returns both objects and cursors; cursor changes re-render everything. Fix: split into `useObjects` + `useCursors`.
+### HIGH (FIXED/MITIGATED - Tier 2)
+4. ~~**`handleWheel` + `handleMouseMove` recreated at 60fps**~~ - FIXED: ref-mirror for `stagePos`/`scale`.
+5. ~~**`handleStageMouseMove` recreated during frame drag.**~~ - FIXED: ref-mirror for `frameDraft`.
+6. ~~**Cursor updates trigger full Board re-render.**~~ - MITIGATED: `React.memo` prevents child re-renders. Split `useWebSocket` skipped.
 
 ### GOOD (no action needed)
 - Cursor lerp (Cursors.tsx): imperative rAF with Konva refs, correct pattern
@@ -89,10 +89,10 @@ One incident: notes.md binary rebase conflict during frames PR, caught and fixed
 
 ## Senior React Patterns
 
-### Memory Leaks
-- **Konva Tweens never destroyed** - created on every object ref attach, never stored or cleaned up. Fix: Map ref + destroy on unmount.
-- **SSE stream reader not cancelled on unmount** - `useAIChat` while(true) loop continues after ChatPanel closes. Fix: check `controller.signal.aborted` in loop.
-- **AuthForm/BoardList fetch no AbortController** - state set on unmounted component. Low real-world impact.
+### Memory Leaks (ALL FIXED - Tier 3)
+- ~~**Konva Tweens never destroyed**~~ - FIXED: `onFinish: () => tween.destroy()`.
+- ~~**SSE stream reader not cancelled on unmount**~~ - FIXED: AbortController ref + useEffect cleanup in `useAIChat`.
+- ~~**AuthForm/BoardList fetch no AbortController**~~ - FIXED: AbortController on BoardList fetch, guard state updates.
 
 ### Stale Closures
 - `handleStageMouseMove` depends on `frameDraft` state (should use ref) - handler recreated every mouse-move
@@ -119,12 +119,12 @@ One incident: notes.md binary rebase conflict during frames PR, caught and fixed
 - One DO per board (no global singleton)
 
 ### NEEDS_WORK
-- **Uncaught JSON.parse in WS handler** (medium, trivial fix) - bad message crashes connection
-- **Board delete doesn't close live WS connections** (medium, small fix) - cleared board keeps serving
+- ~~**Uncaught JSON.parse in WS handler**~~ - FIXED (Tier 1): try/catch added
+- ~~**Board delete doesn't close live WS connections**~~ - FIXED (Tier 4): broadcasts `board:deleted` + closes connections
 - **No rate limiting on login + AI endpoints** (medium, small - CF config)
-- **DO internal endpoints unauthenticated** (low - only Worker can reach them)
+- ~~**DO internal endpoints unauthenticated**~~ - RESOLVED: RPC refactor removed HTTP endpoints, only `fetch()` remains for WS upgrade
 - **KV storage on SQLite-backed DO** (low - functional, not leveraging SQL)
-- **fetch-based DO communication** (low - RPC is the modern pattern)
+- ~~**fetch-based DO communication**~~ - FIXED: refactored to typed RPC methods (`readObjects`, `mutate`, `clearBoard`, `deleteBoard`)
 - **Session rows never cleaned up** (low at current scale)
 - **Auth middleware inline, not Hono middleware** (medium - structural risk for new routes)
 
@@ -133,12 +133,12 @@ One incident: notes.md binary rebase conflict during frames PR, caught and fixed
 ## Security
 
 ### CRITICAL
-1. **`/api/board/:boardId/clear` no ownership check** - any auth'd user can wipe any board. DELETE route has the check, clear doesn't. One-line fix.
+1. ~~**`/api/board/:boardId/clear` no ownership check**~~ - FIXED (Tier 1): ownership check added.
 2. **Board mutation via WS has no board-level auth** - intentional design choice ("any auth'd user can access any board") but means any user can destructively mutate any board. Document explicitly.
 
 ### HIGH
-3. **Password min length = 4** - raise to 8+
-4. **No WS message validation** - no JSON.parse try/catch, no field validation, no size limit
+3. ~~**Password min length = 4**~~ - FIXED (Tier 1): raised to 8.
+4. ~~**No WS message validation**~~ - PARTIALLY FIXED (Tier 1): JSON.parse try/catch added. Size limit + field validation still open.
 5. **No rate limiting** on auth + AI endpoints
 6. **AI route accepts arbitrary boardId** - no D1 existence check, can create phantom DOs
 7. **No upper bound on AI chat history** - client sends full history, no server-side truncation
@@ -156,30 +156,29 @@ One incident: notes.md binary rebase conflict during frames PR, caught and fixed
 
 ## Prioritized Fix Plan
 
-### Tier 1: Fix Today (trivial, high impact) ~30min
-- [ ] `/clear` ownership check (1 line)
-- [ ] JSON.parse try/catch in DO WS handler (5 lines)
-- [ ] Password min length -> 8 (1 line)
-- [ ] Remove dead `getMeta` method (3 lines)
-- [ ] Remove redundant `ws.close()` in webSocketClose (2 lines)
+### Tier 1: Fix Today (DONE)
+- [x] `/clear` ownership check
+- [x] JSON.parse try/catch in DO WS handler
+- [x] Password min length -> 8
+- [x] `getMeta` inlined into `getPresenceList` (was used, not dead)
+- [x] Redundant `ws.close()` removed in webSocketClose
 
-### Tier 2: Performance (Mon-Tue) ~5hr
-- [ ] Grid: `useMemo` or custom Konva `sceneFunc`
-- [ ] Extract memoized shape components (`React.memo`)
-- [ ] Ref-mirror for `stagePos`/`scale` (stabilize handlers)
-- [ ] `frameDraftRef.current` instead of `frameDraft` in handleStageMouseMove
-- [ ] Split `useWebSocket` -> `useObjects` + `useCursors`
+### Tier 2: Performance (DONE, 3 of 4)
+- [x] Grid: custom Konva `sceneFunc` (single `<Shape>`)
+- [x] Extract memoized shape components (`React.memo`)
+- [x] Ref-mirror for `stagePos`/`scale`/`selectedIds` (stabilize handlers)
+- [ ] ~~Split `useWebSocket`~~ - skipped, memoization mitigates cursor re-render cost
 
-### Tier 3: Memory Leaks (Tue) ~1hr
-- [ ] Cancel SSE stream reader on unmount (`useAIChat`)
-- [ ] Destroy Konva Tweens on unmount/removal
-- [ ] AbortController on AuthForm/BoardList fetches
+### Tier 3: Memory Leaks (DONE)
+- [x] Cancel SSE stream reader on unmount (`useAIChat`)
+- [x] Destroy Konva Tweens on completion
+- [x] AbortController on BoardList fetch
 
-### Tier 4: Spec Gaps (Tue-Wed) ~2hr
-- [ ] Add `width`/`height` to `update_object` AI tool (fix `resizeObject`)
-- [ ] Privacy policy page
-- [ ] Data deletion endpoint (`DELETE /api/user`)
-- [ ] Board delete broadcasts `board:deleted` + closes WS connections
+### Tier 4: Spec Gaps (DONE)
+- [x] Add `width`/`height` to `update_object` AI tool
+- [x] Privacy policy page (`#privacy` route)
+- [x] Data deletion endpoint (`DELETE /api/user`)
+- [x] Board delete broadcasts `board:deleted` + closes WS connections
 
 ### Tier 5: Deliverables (Thu-Fri) ~6hr
 - [ ] AI dev log (fill all TODO sections)
@@ -191,7 +190,7 @@ One incident: notes.md binary rebase conflict during frames PR, caught and fixed
 
 ### Won't Fix (acceptable for Week 1)
 - KV-on-SQLite storage pattern
-- DO RPC vs fetch
+- ~~DO RPC vs fetch~~ - FIXED: refactored to typed RPC
 - Rate limiting (config-only but not blocking)
 - CORS wildcard (masked by same-origin)
 - Session row accumulation
@@ -206,6 +205,6 @@ One incident: notes.md binary rebase conflict during frames PR, caught and fixed
 
 **Biggest demo risk:** SWOT analysis eval criterion. Llama 3.3 will fail it. Haiku path is merged (PR #16) but needs `ANTHROPIC_API_KEY` set as Worker secret on prod.
 
-**Biggest technical risk:** The grid rendering issue (#1 above) is generating 2000+ React elements on every frame. During a live demo with pan/zoom, this will visibly stutter.
+**Biggest technical risk:** ~~The grid rendering issue~~ FIXED - single `<Shape>` sceneFunc. Remaining risk is Board.tsx complexity (1177 lines).
 
 **No lost work:** Git history is clean across all 9 worktree PRs. The rapid parallel development process worked.

@@ -1,3 +1,4 @@
+import { DurableObject } from "cloudflare:workers";
 import type { BoardObject, WSClientMessage, WSServerMessage } from "../shared/types";
 
 interface ConnectionMeta {
@@ -5,84 +6,65 @@ interface ConnectionMeta {
   username: string;
 }
 
-export class Board {
-  state: DurableObjectState;
+export class Board extends DurableObject {
 
-  constructor(state: DurableObjectState) {
-    this.state = state;
+  // --- RPC methods (called by Worker via stub) ---
+
+  async readObjects(): Promise<BoardObject[]> {
+    return this.getAllObjects();
   }
+
+  async clearBoard(): Promise<number> {
+    const keys = await this.ctx.storage.list({ prefix: "obj:" });
+    await this.ctx.storage.delete([...keys.keys()]);
+    this.broadcast({ type: "init", objects: [] });
+    return keys.size;
+  }
+
+  async deleteBoard(): Promise<number> {
+    const keys = await this.ctx.storage.list({ prefix: "obj:" });
+    await this.ctx.storage.delete([...keys.keys()]);
+    this.broadcast({ type: "board:deleted" });
+    for (const ws of this.getWebSockets()) {
+      try { ws.close(1000, "board deleted"); } catch { /* already closed */ }
+    }
+    return keys.size;
+  }
+
+  async mutate(msg: WSClientMessage): Promise<void> {
+    await this.handleMutation(msg, "ai-agent");
+  }
+
+  // --- WebSocket upgrade (requires HTTP) ---
 
   async fetch(request: Request): Promise<Response> {
+    if (request.headers.get("Upgrade") !== "websocket") {
+      return new Response("Expected WebSocket", { status: 400 });
+    }
+
     const url = new URL(request.url);
-    const path = url.pathname;
-
-    // HTTP API for AI agent (no WebSocket needed)
-    if (path.endsWith("/read") && request.method === "GET") {
-      const objects = await this.getAllObjects();
-      return new Response(JSON.stringify(objects), {
-        headers: { "Content-Type": "application/json" },
-      });
+    const userId = url.searchParams.get("userId");
+    const username = url.searchParams.get("username");
+    if (!userId || !username) {
+      return new Response("Missing user info", { status: 400 });
     }
 
-    if (path.endsWith("/clear") && request.method === "POST") {
-      const keys = await this.state.storage.list({ prefix: "obj:" });
-      await this.state.storage.delete([...keys.keys()]);
-      this.broadcast({ type: "init", objects: [] });
-      return new Response(JSON.stringify({ deleted: keys.size }), {
-        headers: { "Content-Type": "application/json" },
-      });
-    }
+    const pair = new WebSocketPair();
+    const [client, server] = [pair[0], pair[1]];
 
-    // Board deletion: broadcast board:deleted, close all WS connections, clear storage
-    if (path.endsWith("/delete") && request.method === "POST") {
-      const keys = await this.state.storage.list({ prefix: "obj:" });
-      await this.state.storage.delete([...keys.keys()]);
-      this.broadcast({ type: "board:deleted" });
-      for (const ws of this.getWebSockets()) {
-        try { ws.close(1000, "board deleted"); } catch { /* already closed */ }
-      }
-      return new Response(JSON.stringify({ deleted: keys.size }), {
-        headers: { "Content-Type": "application/json" },
-      });
-    }
+    this.ctx.acceptWebSocket(server);
+    server.serializeAttachment({ userId, username } satisfies ConnectionMeta);
 
-    if (path.endsWith("/mutate") && request.method === "POST") {
-      const msg = (await request.json()) as WSClientMessage;
-      await this.handleMutation(msg, "ai-agent");
-      return new Response(JSON.stringify({ ok: true }), {
-        headers: { "Content-Type": "application/json" },
-      });
-    }
+    const objects = await this.getAllObjects();
+    const users = this.getPresenceList();
+    server.send(JSON.stringify({ type: "init", objects } satisfies WSServerMessage));
+    server.send(JSON.stringify({ type: "presence", users } satisfies WSServerMessage));
+    this.broadcast({ type: "presence", users }, server);
 
-    // WebSocket upgrade
-    if (request.headers.get("Upgrade") === "websocket") {
-      const userId = url.searchParams.get("userId");
-      const username = url.searchParams.get("username");
-      if (!userId || !username) {
-        return new Response("Missing user info", { status: 400 });
-      }
-
-      const pair = new WebSocketPair();
-      const [client, server] = [pair[0], pair[1]];
-
-      // Store metadata on the WebSocket itself (survives hibernation)
-      this.state.acceptWebSocket(server);
-      server.serializeAttachment({ userId, username } satisfies ConnectionMeta);
-
-      // Send init: all objects + presence
-      const objects = await this.getAllObjects();
-      const users = this.getPresenceList();
-      server.send(JSON.stringify({ type: "init", objects } satisfies WSServerMessage));
-      server.send(JSON.stringify({ type: "presence", users } satisfies WSServerMessage));
-
-      // Broadcast updated presence to everyone else
-      this.broadcast({ type: "presence", users }, server);
-
-      return new Response(null, { status: 101, webSocket: client });
-    }
-
-    return new Response("Expected WebSocket", { status: 400 });
+    return new Response(null, { status: 101, webSocket: client });
   }
+
+  // --- WebSocket Hibernation API handlers ---
 
   async webSocketMessage(ws: WebSocket, raw: string | ArrayBuffer) {
     const meta = ws.deserializeAttachment() as ConnectionMeta | null;
@@ -106,31 +88,6 @@ export class Board {
     await this.handleMutation(msg, meta.userId, ws);
   }
 
-  private async handleMutation(msg: WSClientMessage, userId: string, excludeWs?: WebSocket) {
-    switch (msg.type) {
-      case "obj:create": {
-        const obj = { ...msg.obj, createdBy: userId, updatedAt: Date.now() };
-        await this.state.storage.put(`obj:${obj.id}`, obj);
-        this.broadcast({ type: "obj:create", obj }, excludeWs);
-        break;
-      }
-      case "obj:update": {
-        const existing = await this.state.storage.get<BoardObject>(`obj:${msg.obj.id}`);
-        if (!existing) break;
-        if (msg.obj.updatedAt && msg.obj.updatedAt < existing.updatedAt) break;
-        const updated = { ...existing, ...msg.obj, updatedAt: Date.now() };
-        await this.state.storage.put(`obj:${updated.id}`, updated);
-        this.broadcast({ type: "obj:update", obj: updated }, excludeWs);
-        break;
-      }
-      case "obj:delete": {
-        await this.state.storage.delete(`obj:${msg.id}`);
-        this.broadcast({ type: "obj:delete", id: msg.id }, excludeWs);
-        break;
-      }
-    }
-  }
-
   async webSocketClose(_ws: WebSocket) {
     // ws is already closed when this handler fires - no need to call ws.close()
     const users = this.getPresenceList();
@@ -143,10 +100,10 @@ export class Board {
     this.broadcast({ type: "presence", users });
   }
 
-  // --- Helpers ---
+  // --- Private helpers ---
 
   private getWebSockets(): WebSocket[] {
-    return this.state.getWebSockets();
+    return this.ctx.getWebSockets();
   }
 
   private broadcast(msg: WSServerMessage, exclude?: WebSocket) {
@@ -163,7 +120,7 @@ export class Board {
   }
 
   private async getAllObjects(): Promise<BoardObject[]> {
-    const entries = await this.state.storage.list<BoardObject>({ prefix: "obj:" });
+    const entries = await this.ctx.storage.list<BoardObject>({ prefix: "obj:" });
     return [...entries.values()];
   }
 
@@ -178,5 +135,30 @@ export class Board {
       }
     }
     return users;
+  }
+
+  private async handleMutation(msg: WSClientMessage, userId: string, excludeWs?: WebSocket) {
+    switch (msg.type) {
+      case "obj:create": {
+        const obj = { ...msg.obj, createdBy: userId, updatedAt: Date.now() };
+        await this.ctx.storage.put(`obj:${obj.id}`, obj);
+        this.broadcast({ type: "obj:create", obj }, excludeWs);
+        break;
+      }
+      case "obj:update": {
+        const existing = await this.ctx.storage.get<BoardObject>(`obj:${msg.obj.id}`);
+        if (!existing) break;
+        if (msg.obj.updatedAt && msg.obj.updatedAt < existing.updatedAt) break;
+        const updated = { ...existing, ...msg.obj, updatedAt: Date.now() };
+        await this.ctx.storage.put(`obj:${updated.id}`, updated);
+        this.broadcast({ type: "obj:update", obj: updated }, excludeWs);
+        break;
+      }
+      case "obj:delete": {
+        await this.ctx.storage.delete(`obj:${msg.id}`);
+        this.broadcast({ type: "obj:delete", id: msg.id }, excludeWs);
+        break;
+      }
+    }
   }
 }

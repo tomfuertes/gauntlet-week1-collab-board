@@ -74,6 +74,8 @@
 | Feb 16 | Custom agents over inline execution | Opus too expensive for playwright/worktree work |
 | Feb 16 | No freehand drawing | Spec doesn't require it |
 | Feb 17 | Force-push history rewrite | spec.pdf in plaintext, purged with git filter-repo |
+| Feb 17 | DO RPC over fetch routing | Type-safe, fewer lines, `DurableObjectNamespace<Board>` enables TS checking |
+| Feb 17 | Generated types over `@cloudflare/workers-types` | `wrangler types` generates full runtime types + env bindings |
 
 ---
 
@@ -81,10 +83,11 @@
 
 **From audit (see `docs/audit.md` for full details):**
 - ~~`/clear` endpoint missing ownership check~~ (FIXED)
-- Board delete doesn't close live WS connections
+- ~~Board delete doesn't close live WS connections~~ (FIXED - Tier 4: broadcasts `board:deleted` + closes connections)
 - No rate limiting on auth + AI endpoints
 - ~~No WS message validation (JSON.parse)~~ (FIXED - try/catch added). Size limit + field validation still open.
 - ~~AI `update_object` missing `width`/`height` params~~ (FIXED)
+- ~~DO fetch-based communication~~ (FIXED - refactored to typed RPC: `readObjects`, `mutate`, `clearBoard`, `deleteBoard`)
 
 **Pre-existing:**
 - Vite build >500KB chunk (konva + react) - code split in polish

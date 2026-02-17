@@ -3,11 +3,12 @@ import { Hono } from "hono";
 import { getCookie } from "hono/cookie";
 import { getSessionUser } from "./auth";
 import { runWithTools } from "@cloudflare/ai-utils";
-import type { ChatMessage } from "../shared/types";
+import type { ChatMessage, BoardObject } from "../shared/types";
+import type { Board } from "./board";
 
 type Bindings = {
   DB: D1Database;
-  BOARD: DurableObjectNamespace;
+  BOARD: DurableObjectNamespace<Board>;
   AI: Ai;
   AUTH_SECRET: string;
   ANTHROPIC_API_KEY?: string;
@@ -107,12 +108,7 @@ aiRoutes.post("/chat", async (c) => {
               createdBy: "ai-agent",
               updatedAt: Date.now(),
             };
-            const res = await stub.fetch(new Request("http://do/mutate", {
-              method: "POST",
-              body: JSON.stringify({ type: "obj:create", obj }),
-              headers: { "Content-Type": "application/json" },
-            }));
-            if (!res.ok) throw new Error(`DO mutate failed: ${res.status}`);
+            await stub.mutate({ type: "obj:create", obj });
             return JSON.stringify({ created: id, type: "sticky", text: args.text });
           }),
         },
@@ -143,12 +139,7 @@ aiRoutes.post("/chat", async (c) => {
               createdBy: "ai-agent",
               updatedAt: Date.now(),
             };
-            const res = await stub.fetch(new Request("http://do/mutate", {
-              method: "POST",
-              body: JSON.stringify({ type: "obj:create", obj }),
-              headers: { "Content-Type": "application/json" },
-            }));
-            if (!res.ok) throw new Error(`DO mutate failed: ${res.status}`);
+            await stub.mutate({ type: "obj:create", obj });
             return JSON.stringify({ created: id, type: "text", text: args.text });
           }),
         },
@@ -181,12 +172,7 @@ aiRoutes.post("/chat", async (c) => {
               createdBy: "ai-agent",
               updatedAt: Date.now(),
             };
-            const res = await stub.fetch(new Request("http://do/mutate", {
-              method: "POST",
-              body: JSON.stringify({ type: "obj:create", obj }),
-              headers: { "Content-Type": "application/json" },
-            }));
-            if (!res.ok) throw new Error(`DO mutate failed: ${res.status}`);
+            await stub.mutate({ type: "obj:create", obj });
             return JSON.stringify({ created: id, type: "rect" });
           }),
         },
@@ -221,12 +207,7 @@ aiRoutes.post("/chat", async (c) => {
               createdBy: "ai-agent",
               updatedAt: Date.now(),
             };
-            const res = await stub.fetch(new Request("http://do/mutate", {
-              method: "POST",
-              body: JSON.stringify({ type: "obj:create", obj }),
-              headers: { "Content-Type": "application/json" },
-            }));
-            if (!res.ok) throw new Error(`DO mutate failed: ${res.status}`);
+            await stub.mutate({ type: "obj:create", obj });
             return JSON.stringify({ created: id, type: "circle", radius: r });
           }),
         },
@@ -258,12 +239,7 @@ aiRoutes.post("/chat", async (c) => {
               createdBy: "ai-agent",
               updatedAt: Date.now(),
             };
-            const res = await stub.fetch(new Request("http://do/mutate", {
-              method: "POST",
-              body: JSON.stringify({ type: "obj:create", obj }),
-              headers: { "Content-Type": "application/json" },
-            }));
-            if (!res.ok) throw new Error(`DO mutate failed: ${res.status}`);
+            await stub.mutate({ type: "obj:create", obj });
             return JSON.stringify({ created: id, type: "line" });
           }),
         },
@@ -305,12 +281,7 @@ aiRoutes.post("/chat", async (c) => {
               createdBy: "ai-agent",
               updatedAt: Date.now(),
             };
-            const res = await stub.fetch(new Request("http://do/mutate", {
-              method: "POST",
-              body: JSON.stringify({ type: "obj:create", obj }),
-              headers: { "Content-Type": "application/json" },
-            }));
-            if (!res.ok) throw new Error(`DO mutate failed: ${res.status}`);
+            await stub.mutate({ type: "obj:create", obj });
             return JSON.stringify({ created: id, type: "connector", arrow: arrowStyle });
           }),
         },
@@ -342,12 +313,7 @@ aiRoutes.post("/chat", async (c) => {
               createdBy: "ai-agent",
               updatedAt: Date.now(),
             };
-            const res = await stub.fetch(new Request("http://do/mutate", {
-              method: "POST",
-              body: JSON.stringify({ type: "obj:create", obj }),
-              headers: { "Content-Type": "application/json" },
-            }));
-            if (!res.ok) throw new Error(`Board mutation failed (${res.status})`);
+            await stub.mutate({ type: "obj:create", obj });
             return JSON.stringify({ created: id, type: "frame", title: obj.props.text });
           }),
         },
@@ -360,9 +326,7 @@ aiRoutes.post("/chat", async (c) => {
             required: [] as const,
           },
           function: traced("read_board", "Reading board", async () => {
-            const res = await stub.fetch(new Request("http://do/read"));
-            if (!res.ok) throw new Error(`DO read failed: ${res.status}`);
-            const objects = await res.json();
+            const objects = await stub.readObjects();
             return JSON.stringify(objects);
           }),
         },
@@ -384,7 +348,7 @@ aiRoutes.post("/chat", async (c) => {
             required: ["id"] as const,
           },
           function: traced("update_object", "Updating object", async (args: { id: string; text?: string; x?: number; y?: number; width?: number; height?: number; color?: string; fill?: string }) => {
-            const partial: Record<string, unknown> = { id: args.id };
+            const partial: Partial<BoardObject> & { id: string } = { id: args.id };
             if (args.x !== undefined) partial.x = args.x;
             if (args.y !== undefined) partial.y = args.y;
             if (args.width !== undefined) partial.width = args.width;
@@ -396,12 +360,7 @@ aiRoutes.post("/chat", async (c) => {
             if (Object.keys(props).length > 0) partial.props = props;
             partial.updatedAt = Date.now();
 
-            const res = await stub.fetch(new Request("http://do/mutate", {
-              method: "POST",
-              body: JSON.stringify({ type: "obj:update", obj: partial }),
-              headers: { "Content-Type": "application/json" },
-            }));
-            if (!res.ok) throw new Error(`DO mutate failed for update ${args.id}: ${res.status}`);
+            await stub.mutate({ type: "obj:update", obj: partial });
             return JSON.stringify({ updated: args.id });
           }),
         },
@@ -416,12 +375,7 @@ aiRoutes.post("/chat", async (c) => {
             required: ["id"] as const,
           },
           function: traced("delete_object", "Deleting object", async (args: { id: string }) => {
-            const res = await stub.fetch(new Request("http://do/mutate", {
-              method: "POST",
-              body: JSON.stringify({ type: "obj:delete", id: args.id }),
-              headers: { "Content-Type": "application/json" },
-            }));
-            if (!res.ok) throw new Error(`DO mutate failed for delete ${args.id}: ${res.status}`);
+            await stub.mutate({ type: "obj:delete", id: args.id });
             return JSON.stringify({ deleted: args.id });
           }),
         },

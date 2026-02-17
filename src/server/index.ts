@@ -4,11 +4,12 @@ import { getCookie } from "hono/cookie";
 import { auth, getSessionUser } from "./auth";
 import { aiRoutes } from "./ai";
 
+import type { Board } from "./board";
 export { Board } from "./board";
 
 type Bindings = {
   DB: D1Database;
-  BOARD: DurableObjectNamespace;
+  BOARD: DurableObjectNamespace<Board>;
   AI: Ai;
   AUTH_SECRET: string;
 };
@@ -70,7 +71,7 @@ app.delete("/api/boards/:boardId", async (c) => {
   // Delete DO: broadcast board:deleted, close WS connections, clear storage
   const doId = c.env.BOARD.idFromName(boardId);
   const stub = c.env.BOARD.get(doId);
-  await stub.fetch(new Request("http://do/delete", { method: "POST" }));
+  await stub.deleteBoard();
 
   // Delete D1 row
   await c.env.DB.prepare("DELETE FROM boards WHERE id = ?").bind(boardId).run();
@@ -92,8 +93,8 @@ app.post("/api/board/:boardId/clear", async (c) => {
 
   const doId = c.env.BOARD.idFromName(boardId);
   const stub = c.env.BOARD.get(doId);
-  const res = await stub.fetch(new Request("http://do/clear", { method: "POST" }));
-  return new Response(res.body, { headers: { "Content-Type": "application/json" } });
+  const deleted = await stub.clearBoard();
+  return c.json({ deleted });
 });
 
 // Delete user account and all their data
@@ -109,7 +110,7 @@ app.delete("/api/user", async (c) => {
   for (const board of userBoards) {
     const doId = c.env.BOARD.idFromName(board.id as string);
     const stub = c.env.BOARD.get(doId);
-    await stub.fetch(new Request("http://do/delete", { method: "POST" }));
+    await stub.deleteBoard();
   }
   await c.env.DB.prepare("DELETE FROM boards WHERE created_by = ?").bind(user.id).run();
 
