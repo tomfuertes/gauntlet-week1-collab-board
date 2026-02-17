@@ -30,11 +30,11 @@
 - [x] Destroy Konva Tweens on completion (`onFinish: () => tween.destroy()`)
 - [x] AbortController on BoardList fetch (abort on unmount, guard state updates)
 
-**Tier 4 - Spec gaps (~2hr):**
-- Add `width`/`height` to `update_object` AI tool (resizeObject is overclaimed)
-- Privacy policy page
-- Data deletion endpoint (`DELETE /api/user`)
-- Board delete should broadcast `board:deleted` + close WS connections
+**Tier 4 - Spec gaps (DONE):**
+- [x] Add `width`/`height` to `update_object` AI tool
+- [x] Privacy policy page (`#privacy` route, linked from AuthForm)
+- [x] Data deletion endpoint (`DELETE /api/user` - deletes boards, sessions, user)
+- [x] Board delete broadcasts `board:deleted` + closes WS connections
 
 **Tier 5 - Deliverables (~6hr):**
 - AI dev log (fill TODOs), AI cost analysis (fill actuals), demo video, social post, README polish, prod smoke test
@@ -84,7 +84,7 @@
 - Board delete doesn't close live WS connections
 - No rate limiting on auth + AI endpoints
 - ~~No WS message validation (JSON.parse)~~ (FIXED - try/catch added). Size limit + field validation still open.
-- AI `update_object` missing `width`/`height` params (resizeObject broken)
+- ~~AI `update_object` missing `width`/`height` params~~ (FIXED)
 
 **Pre-existing:**
 - Vite build >500KB chunk (konva + react) - code split in polish

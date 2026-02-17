@@ -368,7 +368,7 @@ aiRoutes.post("/chat", async (c) => {
         },
         {
           name: "update_object",
-          description: "Update an existing object on the whiteboard. Can change text, position, or color.",
+          description: "Update an existing object on the whiteboard. Can change text, position, size, or color.",
           parameters: {
             type: "object" as const,
             properties: {
@@ -376,15 +376,19 @@ aiRoutes.post("/chat", async (c) => {
               text: { type: "string" as const, description: "New text content (for stickies and frame titles)" },
               x: { type: "number" as const, description: "New X position" },
               y: { type: "number" as const, description: "New Y position" },
+              width: { type: "number" as const, description: "New width" },
+              height: { type: "number" as const, description: "New height" },
               color: { type: "string" as const, description: "New color (for stickies)" },
               fill: { type: "string" as const, description: "New fill color (for rects)" },
             },
             required: ["id"] as const,
           },
-          function: traced("update_object", "Updating object", async (args: { id: string; text?: string; x?: number; y?: number; color?: string; fill?: string }) => {
+          function: traced("update_object", "Updating object", async (args: { id: string; text?: string; x?: number; y?: number; width?: number; height?: number; color?: string; fill?: string }) => {
             const partial: Record<string, unknown> = { id: args.id };
             if (args.x !== undefined) partial.x = args.x;
             if (args.y !== undefined) partial.y = args.y;
+            if (args.width !== undefined) partial.width = args.width;
+            if (args.height !== undefined) partial.height = args.height;
             const props: Record<string, string> = {};
             if (args.text !== undefined) props.text = args.text;
             if (args.color !== undefined) props.color = args.color;

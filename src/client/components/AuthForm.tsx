@@ -117,6 +117,7 @@ export function AuthForm({ onAuth }: { onAuth: (user: AuthUser) => void }) {
           >
             {mode === "login" ? "Need an account? Sign up" : "Have an account? Sign in"}
           </button>
+          <a href="#privacy" style={{ color: colors.textDim, fontSize: "0.75rem", textAlign: "center", textDecoration: "none" }}>Privacy Policy</a>
         </form>
       </div>
     </div>

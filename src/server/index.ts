@@ -67,10 +67,10 @@ app.delete("/api/boards/:boardId", async (c) => {
   if (!board) return c.text("Not found", 404);
   if (board.created_by !== user.id) return c.text("Forbidden", 403);
 
-  // Clear DO storage
+  // Delete DO: broadcast board:deleted, close WS connections, clear storage
   const doId = c.env.BOARD.idFromName(boardId);
   const stub = c.env.BOARD.get(doId);
-  await stub.fetch(new Request("http://do/clear", { method: "POST" }));
+  await stub.fetch(new Request("http://do/delete", { method: "POST" }));
 
   // Delete D1 row
   await c.env.DB.prepare("DELETE FROM boards WHERE id = ?").bind(boardId).run();
@@ -94,6 +94,30 @@ app.post("/api/board/:boardId/clear", async (c) => {
   const stub = c.env.BOARD.get(doId);
   const res = await stub.fetch(new Request("http://do/clear", { method: "POST" }));
   return new Response(res.body, { headers: { "Content-Type": "application/json" } });
+});
+
+// Delete user account and all their data
+app.delete("/api/user", async (c) => {
+  const sessionId = getCookie(c, "session");
+  const user = await getSessionUser(c.env.DB, sessionId);
+  if (!user) return c.text("Unauthorized", 401);
+
+  // Delete user's boards (and their DO storage)
+  const { results: userBoards } = await c.env.DB.prepare(
+    "SELECT id FROM boards WHERE created_by = ?"
+  ).bind(user.id).all();
+  for (const board of userBoards) {
+    const doId = c.env.BOARD.idFromName(board.id as string);
+    const stub = c.env.BOARD.get(doId);
+    await stub.fetch(new Request("http://do/delete", { method: "POST" }));
+  }
+  await c.env.DB.prepare("DELETE FROM boards WHERE created_by = ?").bind(user.id).run();
+
+  // Delete sessions and user
+  await c.env.DB.prepare("DELETE FROM sessions WHERE user_id = ?").bind(user.id).run();
+  await c.env.DB.prepare("DELETE FROM users WHERE id = ?").bind(user.id).run();
+
+  return c.json({ deleted: true });
 });
 
 // WebSocket upgrade - authenticate then forward to Board DO

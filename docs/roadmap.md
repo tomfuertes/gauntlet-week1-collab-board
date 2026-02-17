@@ -60,8 +60,8 @@
 - [ ] Demo video
 - [ ] AI dev log (finalize)
 - [ ] AI cost analysis (fill in actuals)
-- [ ] Privacy policy page
-- [ ] Data deletion endpoint
+- [x] Privacy policy page
+- [x] Data deletion endpoint
 - [ ] Social post
 - [ ] README polish with GIF/screenshot of real-time sync
 

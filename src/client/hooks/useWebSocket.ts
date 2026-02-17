@@ -117,6 +117,14 @@ export function useWebSocket(boardId: string): UseWebSocketReturn {
               return next;
             });
             break;
+          case "board:deleted":
+            // Board was deleted by owner - navigate away
+            intentionalClose = true;
+            wsRef.current?.close();
+            setConnectionState("disconnected");
+            setObjects(new Map());
+            setPresence([]);
+            break;
         }
       };
     }

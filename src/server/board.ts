@@ -33,6 +33,19 @@ export class Board {
       });
     }
 
+    // Board deletion: broadcast board:deleted, close all WS connections, clear storage
+    if (path.endsWith("/delete") && request.method === "POST") {
+      const keys = await this.state.storage.list({ prefix: "obj:" });
+      await this.state.storage.delete([...keys.keys()]);
+      this.broadcast({ type: "board:deleted" });
+      for (const ws of this.getWebSockets()) {
+        try { ws.close(1000, "board deleted"); } catch { /* already closed */ }
+      }
+      return new Response(JSON.stringify({ deleted: keys.size }), {
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
     if (path.endsWith("/mutate") && request.method === "POST") {
       const msg = (await request.json()) as WSClientMessage;
       await this.handleMutation(msg, "ai-agent");
