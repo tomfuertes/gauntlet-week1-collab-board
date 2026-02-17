@@ -9,3 +9,5 @@ dist/
 *.local.*
 .playwright-cli/
 .claude-prompt
+worktree.ports
+scripts/tomorrow.sh
