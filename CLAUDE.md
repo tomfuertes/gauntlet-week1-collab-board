@@ -87,6 +87,26 @@ playwright-cli state-load auth-user1.json     # restore auth state
 
 **All artifacts MUST go to `.playwright-cli/`** (gitignored). Always use `--filename=.playwright-cli/<name>.png` for screenshots. Never save screenshots to the repo root - no manual cleanup needed. Snapshots are YAML accessibility trees - prefer them over screenshots for understanding page structure.
 
+### E2E Tests (Playwright)
+
+```bash
+npx playwright test                    # run all tests
+npx playwright test e2e/sync.spec.ts   # run one file
+npx playwright test --reporter=dot     # minimal output (default 'list' floods context)
+```
+
+**Known gotchas:**
+- Sandbox blocks Playwright browser launch and `wrangler dev`. Use `dangerouslyDisableSandbox: true` for both.
+- Local wrangler WebSocket: first WS connection often drops; the app reconnects but E2E tests must account for this. Use `createObjectsViaWS()` helper (in `e2e/helpers.ts`) instead of UI double-click for reliable object creation in tests.
+- `wsRef.current` can be null after a drop even when React state shows "connected" - tests should retry or wait for `init` message.
+
+### Worktree Agent Conventions
+
+Worktree prompts must explicitly mention:
+- `source worktree.ports && npm run dev` (never hardcode ports)
+- `scripts/localcurl.sh` instead of `curl` (agents default to raw curl which isn't in the permission allowlist)
+- "Read CLAUDE.md and relevant source files before implementing" (not "Enter plan mode first")
+
 ## Architecture
 
 ### Monorepo Layout
