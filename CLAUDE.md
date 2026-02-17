@@ -52,7 +52,7 @@ scripts/worktree.sh remove <branch>    # remove worktree + delete feat/<branch>
 scripts/worktree.sh list               # list active worktrees
 ```
 
-When working in a worktree, use absolute paths for file tools and `git -C <abs-path>` for git commands (since `cd` doesn't persist between Bash calls).
+When working in a worktree, use absolute paths for file tools. Run git commands directly (not `git -C`) - the working directory is already the repo/worktree.
 
 ## Browser Testing (playwright-cli)
 
@@ -174,5 +174,5 @@ Hooks enforce the bookends: `SessionStart` reminds to read context, `PreCompact`
 - Vertical slices - each increment delivers user-visible behavior
 - Never break sync - every commit should pass the 2-browser test
 - Use `npx <tool>` or `npm run <script>`, never `./node_modules/.bin/<tool>` directly (matches permission allowlist, works in worktrees)
-- In worktrees, run git commands directly (e.g., `git commit`), not via `git -C <path>`. `git -C` bypasses the permission allowlist and every invocation requires manual approval. The worktree IS the working directory.
+- **Never use `git -C <path>`** - run git commands directly (e.g., `git status`, `git commit`). The working directory is already the repo. `git -C` bypasses the permission allowlist and forces manual approval on every invocation. This applies to both the main repo and worktrees.
 - Use `scripts/localcurl.sh` instead of `curl` for local API testing (localhost-only wrapper, whitelisted in worktrees)
