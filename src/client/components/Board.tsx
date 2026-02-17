@@ -34,6 +34,14 @@ const COLOR_PRESETS = [
 
 const SIDEBAR_W = 48;
 
+/** Check if two axis-aligned bounding boxes intersect */
+function rectsIntersect(
+  a: { x: number; y: number; w: number; h: number },
+  b: { x: number; y: number; width: number; height: number },
+): boolean {
+  return a.x < b.x + b.width && a.x + a.w > b.x && a.y < b.y + b.height && a.y + a.h > b.y;
+}
+
 export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boardId: string; onLogout: () => void; onBack: () => void }) {
   const stageRef = useRef<Konva.Stage>(null);
   const [stagePos, setStagePos] = useState({ x: 0, y: 0 });
@@ -45,18 +53,39 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
   const trRef = useRef<Konva.Transformer>(null);
   const shapeRefs = useRef<Map<string, Konva.Group>>(new Map());
 
-  const { connectionState, initialized, cursors, objects, presence, send, createObject: wsCreate, updateObject: wsUpdate, deleteObject: wsDelete } = useWebSocket(boardId);
-  const { createObject, updateObject, deleteObject, undo, redo } = useUndoRedo(objects, wsCreate, wsUpdate, wsDelete);
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  // Marquee selection state
+  const [marquee, setMarquee] = useState<{ x: number; y: number; w: number; h: number } | null>(null);
+  const marqueeRef = useRef(marquee);
+  marqueeRef.current = marquee;
+  const marqueeStartRef = useRef<{ x: number; y: number } | null>(null);
+  const isDraggingMarqueeRef = useRef(false);
+  const justFinishedMarqueeRef = useRef(false);
+
+  // Frame drag-to-create state
   const [frameDraft, setFrameDraft] = useState<{startX: number; startY: number; x: number; y: number; width: number; height: number} | null>(null);
   const [pendingFrame, setPendingFrame] = useState<{x: number; y: number; width: number; height: number} | null>(null);
   const pendingFrameCancelled = useRef(false);
 
-  // Clear selection if object was deleted (by another user or AI)
+  // Bulk drag state
+  const dragStartPositionsRef = useRef<Map<string, { x: number; y: number }>>(new Map());
+
+  const { connectionState, initialized, cursors, objects, presence, send, createObject: wsCreate, updateObject: wsUpdate, deleteObject: wsDelete } = useWebSocket(boardId);
+  const { createObject, updateObject, deleteObject, startBatch, commitBatch, undo, redo } = useUndoRedo(objects, wsCreate, wsUpdate, wsDelete);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+
+  // Clear selection if objects were deleted (by another user or AI)
   useEffect(() => {
-    if (selectedId && !objects.has(selectedId)) setSelectedId(null);
-  }, [selectedId, objects]);
+    setSelectedIds(prev => {
+      const next = new Set([...prev].filter(id => objects.has(id)));
+      return next.size === prev.size ? prev : next;
+    });
+  }, [objects]);
+
+  // Clear selection when switching away from select mode
+  useEffect(() => {
+    if (toolMode !== "select") setSelectedIds(new Set());
+  }, [toolMode]);
 
   // Resize handler
   useEffect(() => {
@@ -70,7 +99,7 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
     const onKeyDown = (e: KeyboardEvent) => {
       // Don't intercept when typing in an input/textarea
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
-      if (e.key === "Escape") { setSelectedId(null); return; }
+      if (e.key === "Escape") { setSelectedIds(new Set()); return; }
       if ((e.metaKey || e.ctrlKey) && e.key === "z" && !e.shiftKey) { e.preventDefault(); undo(); return; }
       if ((e.metaKey || e.ctrlKey) && e.key === "z" && e.shiftKey) { e.preventDefault(); redo(); return; }
       if ((e.metaKey || e.ctrlKey) && e.key === "y") { e.preventDefault(); redo(); return; }
@@ -83,49 +112,173 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
       if (e.key === "t" || e.key === "T") setToolMode("text");
       if (e.key === "f" || e.key === "F") setToolMode("frame");
       if (e.key === "/") { e.preventDefault(); setChatOpen((o) => !o); }
-      if ((e.key === "Delete" || e.key === "Backspace") && selectedId && !editingId) {
+      if ((e.key === "Delete" || e.key === "Backspace") && selectedIds.size > 0 && !editingId) {
         e.preventDefault();
-        deleteObject(selectedId);
-        setSelectedId(null);
+        if (selectedIds.size > 1) startBatch();
+        for (const id of selectedIds) deleteObject(id);
+        if (selectedIds.size > 1) commitBatch();
+        setSelectedIds(new Set());
       }
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [selectedId, editingId, deleteObject, undo, redo]);
+  }, [selectedIds, editingId, deleteObject, startBatch, commitBatch, undo, redo]);
 
-  // Sync Transformer with selected node
+  // Sync Transformer with selected nodes
   useEffect(() => {
     const tr = trRef.current;
     if (!tr) return;
-    if (selectedId && !editingId) {
-      const node = shapeRefs.current.get(selectedId);
-      if (node) {
-        tr.nodes([node]);
+    if (selectedIds.size > 0 && !editingId) {
+      const nodes = [...selectedIds]
+        .map(id => shapeRefs.current.get(id))
+        .filter((n): n is Konva.Group => !!n);
+      if (nodes.length > 0) {
+        tr.nodes(nodes);
         tr.getLayer()?.batchDraw();
         return;
       }
     }
     tr.nodes([]);
     tr.getLayer()?.batchDraw();
-  }, [selectedId, editingId, objects]);
+  }, [selectedIds, editingId, objects]);
 
-  // Track mouse for cursor sync
+  // Shared click handler for all shapes (supports shift+click multi-select)
+  const handleShapeClick = useCallback((e: KonvaEventObject<MouseEvent>, id: string) => {
+    e.cancelBubble = true;
+    if (e.evt.shiftKey) {
+      setSelectedIds(prev => {
+        const next = new Set(prev);
+        if (next.has(id)) next.delete(id);
+        else next.add(id);
+        return next;
+      });
+    } else {
+      setSelectedIds(new Set([id]));
+    }
+  }, []);
+
+  // Bulk drag handlers
+  const handleShapeDragStart = useCallback((_e: KonvaEventObject<DragEvent>, id: string) => {
+    if (selectedIds.has(id) && selectedIds.size > 1) {
+      const positions = new Map<string, { x: number; y: number }>();
+      for (const sid of selectedIds) {
+        const node = shapeRefs.current.get(sid);
+        if (node) positions.set(sid, { x: node.x(), y: node.y() });
+      }
+      dragStartPositionsRef.current = positions;
+    } else {
+      dragStartPositionsRef.current = new Map();
+    }
+  }, [selectedIds]);
+
+  const handleShapeDragMove = useCallback((e: KonvaEventObject<DragEvent>, id: string) => {
+    const positions = dragStartPositionsRef.current;
+    if (positions.size === 0) return;
+    const startPos = positions.get(id);
+    if (!startPos) return;
+    const dx = e.target.x() - startPos.x;
+    const dy = e.target.y() - startPos.y;
+    for (const [sid, spos] of positions) {
+      if (sid === id) continue;
+      const node = shapeRefs.current.get(sid);
+      if (node) {
+        node.x(spos.x + dx);
+        node.y(spos.y + dy);
+      }
+    }
+  }, []);
+
+  const handleShapeDragEnd = useCallback((e: KonvaEventObject<DragEvent>, id: string) => {
+    const positions = dragStartPositionsRef.current;
+    if (positions.size > 0) {
+      startBatch();
+      for (const sid of positions.keys()) {
+        const node = shapeRefs.current.get(sid);
+        if (node) {
+          updateObject({ id: sid, x: node.x(), y: node.y() });
+        }
+      }
+      commitBatch();
+      dragStartPositionsRef.current = new Map();
+    } else {
+      updateObject({ id, x: e.target.x(), y: e.target.y() });
+    }
+  }, [updateObject, startBatch, commitBatch]);
+
+  // Track mouse for cursor sync + marquee
   const handleMouseMove = useCallback((_e: KonvaEventObject<MouseEvent>) => {
-    const now = Date.now();
-    if (now - lastCursorSend.current < CURSOR_THROTTLE_MS) return;
-    lastCursorSend.current = now;
-
     const stage = stageRef.current;
     if (!stage) return;
     const pointer = stage.getPointerPosition();
     if (!pointer) return;
 
-    // Convert screen coords to world coords
     const worldX = (pointer.x - stagePos.x) / scale;
     const worldY = (pointer.y - stagePos.y) / scale;
 
+    // Update marquee if dragging
+    if (isDraggingMarqueeRef.current && marqueeStartRef.current) {
+      const start = marqueeStartRef.current;
+      setMarquee({
+        x: Math.min(start.x, worldX),
+        y: Math.min(start.y, worldY),
+        w: Math.abs(worldX - start.x),
+        h: Math.abs(worldY - start.y),
+      });
+    }
+
+    // Cursor sync (throttled)
+    const now = Date.now();
+    if (now - lastCursorSend.current < CURSOR_THROTTLE_MS) return;
+    lastCursorSend.current = now;
     send({ type: "cursor", x: worldX, y: worldY });
   }, [send, stagePos, scale]);
+
+  // Stage mousedown: marquee (select mode) or frame draft (frame mode)
+  const handleStageMouseDown = useCallback((e: KonvaEventObject<MouseEvent>) => {
+    if (e.target !== stageRef.current) return;
+
+    const stage = stageRef.current;
+    if (!stage) return;
+    const pointer = stage.getPointerPosition();
+    if (!pointer) return;
+    const worldX = (pointer.x - stagePos.x) / scale;
+    const worldY = (pointer.y - stagePos.y) / scale;
+
+    if (toolMode === "select") {
+      marqueeStartRef.current = { x: worldX, y: worldY };
+      isDraggingMarqueeRef.current = true;
+    } else if (toolMode === "frame") {
+      setFrameDraft({ startX: worldX, startY: worldY, x: worldX, y: worldY, width: 0, height: 0 });
+    }
+  }, [toolMode, stagePos, scale]);
+
+  // Stage mouseup: finish marquee or frame draft
+  const handleStageMouseUp = useCallback(() => {
+    // Marquee selection finish
+    if (isDraggingMarqueeRef.current) {
+      isDraggingMarqueeRef.current = false;
+      if (marquee && (marquee.w > 5 || marquee.h > 5)) {
+        const selected = new Set<string>();
+        for (const obj of objects.values()) {
+          if (rectsIntersect(marquee, obj)) {
+            selected.add(obj.id);
+          }
+        }
+        setSelectedIds(selected);
+        justFinishedMarqueeRef.current = true;
+      }
+      setMarquee(null);
+      marqueeStartRef.current = null;
+      return;
+    }
+    // Frame creation finish
+    if (frameDraft) {
+      if (frameDraft.width >= 20 && frameDraft.height >= 20) {
+        setPendingFrame({ x: frameDraft.x, y: frameDraft.y, width: frameDraft.width, height: frameDraft.height });
+      }
+      setFrameDraft(null);
+    }
+  }, [marquee, objects, frameDraft]);
 
   // Zoom toward cursor on wheel
   const handleWheel = useCallback((e: KonvaEventObject<WheelEvent>) => {
@@ -186,21 +339,9 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
     };
   }, []);
 
-  // Frame drag-to-create handlers
-  const handleStageMouseDown = useCallback((e: KonvaEventObject<MouseEvent>) => {
-    if (toolMode !== "frame") return;
-    if (e.target !== stageRef.current) return;
-    const stage = stageRef.current;
-    if (!stage) return;
-    const pointer = stage.getPointerPosition();
-    if (!pointer) return;
-    const worldX = (pointer.x - stagePos.x) / scale;
-    const worldY = (pointer.y - stagePos.y) / scale;
-    setFrameDraft({ startX: worldX, startY: worldY, x: worldX, y: worldY, width: 0, height: 0 });
-  }, [toolMode, stagePos, scale]);
-
+  // Combined stage mouse move: cursor sync + marquee tracking + frame draft
   const handleStageMouseMove = useCallback((e: KonvaEventObject<MouseEvent>) => {
-    handleMouseMove(e); // cursor sync (throttled)
+    handleMouseMove(e); // cursor sync (throttled) + marquee tracking
     if (!frameDraft) return;
     const stage = stageRef.current;
     if (!stage) return;
@@ -219,14 +360,6 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
       };
     });
   }, [handleMouseMove, frameDraft, stagePos, scale]);
-
-  const handleStageMouseUp = useCallback(() => {
-    if (!frameDraft) return;
-    if (frameDraft.width >= 20 && frameDraft.height >= 20) {
-      setPendingFrame({ x: frameDraft.x, y: frameDraft.y, width: frameDraft.width, height: frameDraft.height });
-    }
-    setFrameDraft(null);
-  }, [frameDraft]);
 
   const commitPendingFrame = useCallback((title: string) => {
     if (!pendingFrame) return;
@@ -259,7 +392,7 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
     const worldX = (pointer.x - stagePos.x) / scale;
     const worldY = (pointer.y - stagePos.y) / scale;
 
-    setSelectedId(null);
+    setSelectedIds(new Set());
 
     if (toolMode === "sticky") {
       createObject({
@@ -439,13 +572,21 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
         y={stagePos.y}
         scaleX={scale}
         scaleY={scale}
-        draggable={toolMode !== "frame"}
+        draggable={toolMode !== "select" && toolMode !== "frame"}
         onWheel={handleWheel}
         onDragEnd={handleDragEnd}
-        onMouseDown={handleStageMouseDown}
         onMouseMove={handleStageMouseMove}
+        onMouseDown={handleStageMouseDown}
         onMouseUp={handleStageMouseUp}
-        onClick={(e: KonvaEventObject<MouseEvent>) => { if (e.target === stageRef.current) setSelectedId(null); }}
+        onClick={(e: KonvaEventObject<MouseEvent>) => {
+          if (e.target === stageRef.current) {
+            if (justFinishedMarqueeRef.current) {
+              justFinishedMarqueeRef.current = false;
+              return;
+            }
+            setSelectedIds(new Set());
+          }
+        }}
         onDblClick={handleStageDblClick}
       >
         <Layer>
@@ -460,13 +601,13 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
               y={obj.y}
               rotation={obj.rotation}
               draggable
-              onClick={(e) => { e.cancelBubble = true; setSelectedId(obj.id); }}
-              onDragEnd={(e) => {
-                updateObject({ id: obj.id, x: e.target.x(), y: e.target.y() });
-              }}
+              onClick={(e) => handleShapeClick(e, obj.id)}
+              onDragStart={(e) => handleShapeDragStart(e, obj.id)}
+              onDragMove={(e) => handleShapeDragMove(e, obj.id)}
+              onDragEnd={(e) => handleShapeDragEnd(e, obj.id)}
               onDblClick={(e) => {
                 e.cancelBubble = true;
-                setSelectedId(null);
+                setSelectedIds(new Set());
                 setEditingId(obj.id);
               }}
               onTransformEnd={(e) => handleObjectTransform(e, obj)}
@@ -516,13 +657,13 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
                   y={obj.y}
                   rotation={obj.rotation}
                   draggable
-                  onClick={(e) => { e.cancelBubble = true; setSelectedId(obj.id); }}
-                  onDragEnd={(e) => {
-                    updateObject({ id: obj.id, x: e.target.x(), y: e.target.y() });
-                  }}
+                  onClick={(e) => handleShapeClick(e, obj.id)}
+                  onDragStart={(e) => handleShapeDragStart(e, obj.id)}
+                  onDragMove={(e) => handleShapeDragMove(e, obj.id)}
+                  onDragEnd={(e) => handleShapeDragEnd(e, obj.id)}
                   onDblClick={(e) => {
                     e.cancelBubble = true;
-                    setSelectedId(null);
+                    setSelectedIds(new Set());
                     setEditingId(obj.id);
                   }}
                   onTransformEnd={(e) => handleObjectTransform(e, obj)}
@@ -551,10 +692,10 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
                   y={obj.y}
                   rotation={obj.rotation}
                   draggable
-                  onClick={(e) => { e.cancelBubble = true; setSelectedId(obj.id); }}
-                  onDragEnd={(e) => {
-                    updateObject({ id: obj.id, x: e.target.x(), y: e.target.y() });
-                  }}
+                  onClick={(e) => handleShapeClick(e, obj.id)}
+                  onDragStart={(e) => handleShapeDragStart(e, obj.id)}
+                  onDragMove={(e) => handleShapeDragMove(e, obj.id)}
+                  onDragEnd={(e) => handleShapeDragEnd(e, obj.id)}
                   onTransformEnd={(e) => handleObjectTransform(e, obj)}
                 >
                   <Rect
@@ -576,10 +717,10 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
                   y={obj.y}
                   rotation={obj.rotation}
                   draggable
-                  onClick={(e) => { e.cancelBubble = true; setSelectedId(obj.id); }}
-                  onDragEnd={(e) => {
-                    updateObject({ id: obj.id, x: e.target.x(), y: e.target.y() });
-                  }}
+                  onClick={(e) => handleShapeClick(e, obj.id)}
+                  onDragStart={(e) => handleShapeDragStart(e, obj.id)}
+                  onDragMove={(e) => handleShapeDragMove(e, obj.id)}
+                  onDragEnd={(e) => handleShapeDragEnd(e, obj.id)}
                   onTransformEnd={(e) => handleObjectTransform(e, obj)}
                 >
                   <Ellipse
@@ -605,10 +746,10 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
                   y={obj.y}
                   rotation={obj.rotation}
                   draggable
-                  onClick={(e) => { e.cancelBubble = true; setSelectedId(obj.id); }}
-                  onDragEnd={(e) => {
-                    updateObject({ id: obj.id, x: e.target.x(), y: e.target.y() });
-                  }}
+                  onClick={(e) => handleShapeClick(e, obj.id)}
+                  onDragStart={(e) => handleShapeDragStart(e, obj.id)}
+                  onDragMove={(e) => handleShapeDragMove(e, obj.id)}
+                  onDragEnd={(e) => handleShapeDragEnd(e, obj.id)}
                   onTransformEnd={(e) => handleObjectTransform(e, obj)}
                 >
                   <LineComponent
@@ -635,13 +776,13 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
                   y={obj.y}
                   rotation={obj.rotation}
                   draggable
-                  onClick={(e) => { e.cancelBubble = true; setSelectedId(obj.id); }}
-                  onDragEnd={(e) => {
-                    updateObject({ id: obj.id, x: e.target.x(), y: e.target.y() });
-                  }}
+                  onClick={(e) => handleShapeClick(e, obj.id)}
+                  onDragStart={(e) => handleShapeDragStart(e, obj.id)}
+                  onDragMove={(e) => handleShapeDragMove(e, obj.id)}
+                  onDragEnd={(e) => handleShapeDragEnd(e, obj.id)}
                   onDblClick={(e) => {
                     e.cancelBubble = true;
-                    setSelectedId(null);
+                    setSelectedIds(new Set());
                     setEditingId(obj.id);
                   }}
                   onTransformEnd={(e) => handleObjectTransform(e, obj)}
@@ -657,6 +798,18 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
             }
             return null;
           })}
+
+          {/* Marquee selection visualization */}
+          {marquee && (
+            <Rect
+              x={marquee.x} y={marquee.y}
+              width={marquee.w} height={marquee.h}
+              fill="rgba(59, 130, 246, 0.1)"
+              stroke="#3b82f6" strokeWidth={1}
+              dash={[6, 3]} listening={false}
+            />
+          )}
+
           {/* Selection transformer */}
           <Transformer
             ref={trRef}
@@ -812,8 +965,15 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
           icon={<IconDelete />}
           title="Delete selected (Del)"
           active={false}
-          onClick={() => { if (selectedId) { deleteObject(selectedId); setSelectedId(null); } }}
-          disabled={!selectedId}
+          onClick={() => {
+            if (selectedIds.size > 0) {
+              if (selectedIds.size > 1) startBatch();
+              for (const id of selectedIds) deleteObject(id);
+              if (selectedIds.size > 1) commitBatch();
+              setSelectedIds(new Set());
+            }
+          }}
+          disabled={selectedIds.size === 0}
         />
         <div style={{ flex: 1 }} />
         <ToolIconBtn icon={<IconChat />} title="AI Assistant (/)" active={chatOpen} onClick={() => setChatOpen((o) => !o)} />
@@ -823,13 +983,14 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
       {/* AI Chat Panel */}
       {chatOpen && <ChatPanel boardId={boardId} onClose={() => setChatOpen(false)} />}
 
-      {/* Color picker - shown when an object is selected */}
-      {selectedId && (() => {
-        const selectedObj = objects.get(selectedId);
-        if (!selectedObj) return null;
-        if (selectedObj.type === "frame") return null;
-        const propKey = selectedObj.type === "sticky" || selectedObj.type === "text" ? "color" : selectedObj.type === "line" ? "stroke" : "fill";
-        const currentColor = selectedObj.props[propKey];
+      {/* Color picker - shown when objects are selected */}
+      {selectedIds.size > 0 && (() => {
+        const firstId = [...selectedIds][0];
+        const firstObj = objects.get(firstId);
+        if (!firstObj) return null;
+        if (firstObj.type === "frame") return null;
+        const propKey = firstObj.type === "sticky" || firstObj.type === "text" ? "color" : firstObj.type === "line" ? "stroke" : "fill";
+        const currentColor = firstObj.props[propKey];
         return (
           <div style={{
             position: "absolute", bottom: 16, left: "50%", transform: "translateX(-50%)",
@@ -842,10 +1003,14 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
                 key={color}
                 title={color}
                 onClick={() => {
-                  const freshObj = objects.get(selectedId);
-                  if (!freshObj) return;
-                  const key = freshObj.type === "sticky" || freshObj.type === "text" ? "color" : freshObj.type === "line" ? "stroke" : "fill";
-                  updateObject({ id: selectedId, props: { ...freshObj.props, [key]: color } });
+                  if (selectedIds.size > 1) startBatch();
+                  for (const id of selectedIds) {
+                    const obj = objects.get(id);
+                    if (!obj) continue;
+                    const key = obj.type === "sticky" || obj.type === "text" ? "color" : obj.type === "line" ? "stroke" : "fill";
+                    updateObject({ id, props: { ...obj.props, [key]: color } });
+                  }
+                  if (selectedIds.size > 1) commitBatch();
                 }}
                 style={{
                   width: 28, height: 28, borderRadius: "50%", border: "2px solid",

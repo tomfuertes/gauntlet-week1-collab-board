@@ -4,7 +4,8 @@ import type { BoardObject } from "@shared/types";
 type UndoableAction =
   | { type: "create"; obj: BoardObject }
   | { type: "update"; before: BoardObject; after: BoardObject }
-  | { type: "delete"; obj: BoardObject };
+  | { type: "delete"; obj: BoardObject }
+  | { type: "batch"; actions: UndoableAction[] };
 
 const MAX_UNDO = 50;
 
@@ -20,11 +21,36 @@ export function useUndoRedo(
   const stackRef = useRef<UndoableAction[]>([]);
   const indexRef = useRef(-1);
   const replayingRef = useRef(false);
+  const batchRef = useRef<UndoableAction[] | null>(null);
   // Ref avoids objects Map in useCallback deps (would destabilize every render)
   const objectsRef = useRef(objects);
   objectsRef.current = objects;
 
+  /** Replay a single (non-batch) action for undo or redo */
+  const replayAction = useCallback((action: UndoableAction, direction: "undo" | "redo") => {
+    if (action.type === "batch") {
+      const items = direction === "undo" ? [...action.actions].reverse() : action.actions;
+      for (const sub of items) replayAction(sub, direction);
+      return;
+    }
+    switch (action.type) {
+      case "create":
+        direction === "undo" ? wsDelete(action.obj.id) : wsCreate(action.obj);
+        break;
+      case "update":
+        wsUpdate(direction === "undo" ? action.before : action.after);
+        break;
+      case "delete":
+        direction === "undo" ? wsCreate(action.obj) : wsDelete(action.obj.id);
+        break;
+    }
+  }, [wsCreate, wsUpdate, wsDelete]);
+
   const push = useCallback((action: UndoableAction) => {
+    if (batchRef.current) {
+      batchRef.current.push(action);
+      return;
+    }
     // Trim any redo history beyond current index
     stackRef.current = stackRef.current.slice(0, indexRef.current + 1);
     stackRef.current.push(action);
@@ -33,6 +59,21 @@ export function useUndoRedo(
     }
     indexRef.current = stackRef.current.length - 1;
   }, []);
+
+  const startBatch = useCallback(() => {
+    batchRef.current = [];
+  }, []);
+
+  const commitBatch = useCallback(() => {
+    const actions = batchRef.current;
+    batchRef.current = null;
+    if (!actions || actions.length === 0) return;
+    if (actions.length === 1) {
+      push(actions[0]);
+    } else {
+      push({ type: "batch", actions });
+    }
+  }, [push]);
 
   const createObject = useCallback(
     (obj: BoardObject) => {
@@ -73,21 +114,11 @@ export function useUndoRedo(
     indexRef.current--;
     replayingRef.current = true;
     try {
-      switch (action.type) {
-        case "create":
-          wsDelete(action.obj.id);
-          break;
-        case "update":
-          wsUpdate(action.before);
-          break;
-        case "delete":
-          wsCreate(action.obj);
-          break;
-      }
+      replayAction(action, "undo");
     } finally {
       replayingRef.current = false;
     }
-  }, [wsCreate, wsUpdate, wsDelete]);
+  }, [replayAction]);
 
   const redo = useCallback(() => {
     if (indexRef.current >= stackRef.current.length - 1) return;
@@ -95,21 +126,11 @@ export function useUndoRedo(
     const action = stackRef.current[indexRef.current];
     replayingRef.current = true;
     try {
-      switch (action.type) {
-        case "create":
-          wsCreate(action.obj);
-          break;
-        case "update":
-          wsUpdate(action.after);
-          break;
-        case "delete":
-          wsDelete(action.obj.id);
-          break;
-      }
+      replayAction(action, "redo");
     } finally {
       replayingRef.current = false;
     }
-  }, [wsCreate, wsUpdate, wsDelete]);
+  }, [replayAction]);
 
-  return { createObject, updateObject, deleteObject, undo, redo };
+  return { createObject, updateObject, deleteObject, startBatch, commitBatch, undo, redo };
 }
