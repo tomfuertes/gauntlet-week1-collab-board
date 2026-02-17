@@ -19,11 +19,11 @@
 - [x] `getMeta` inlined into `getPresenceList` (was used, not dead - audit was wrong)
 - [x] Redundant `ws.close()` removed in `webSocketClose`
 
-**Tier 2 - Performance (~5hr, biggest demo impact):**
-- Grid rendering: 2000+ `<Rect>` nodes rebuilt every frame. Use `useMemo` or custom Konva `sceneFunc`.
-- Memoize object components with `React.memo` (all 500 re-render on any change)
-- Ref-mirror `stagePos`/`scale` to stabilize `handleWheel`/`handleMouseMove` callbacks
-- Split `useWebSocket` into `useObjects` + `useCursors` (cursor updates trigger full Board re-render)
+**Tier 2 - Performance (DONE, 3 of 4):**
+- [x] Grid rendering: 2000 `<Rect>` nodes -> 1 `<Shape>` with canvas 2D `sceneFunc`
+- [x] Memoize object components: `BoardObjectRenderer` wrapped in `React.memo`
+- [x] Ref-mirror `stagePos`/`scale`/`selectedIds` to stabilize all callbacks
+- [ ] ~~Split `useWebSocket`~~ - skipped, memoization mitigates cursor re-render cost
 
 **Tier 3 - Memory leaks (~1hr):**
 - Cancel SSE stream in `useAIChat` on unmount
@@ -96,8 +96,8 @@
 - No React error boundary
 
 **Performance (from audit):**
-- Grid renders 2000+ `<Rect>` nodes per frame (CRITICAL for 60fps)
-- All 500 objects re-render on any single change (no memoization)
-- Cursor updates trigger full Board re-render (useWebSocket coupling)
+- ~~Grid renders 2000+ `<Rect>` nodes per frame~~ (FIXED - single `<Shape>` sceneFunc)
+- ~~All 500 objects re-render on any single change~~ (FIXED - `React.memo` BoardObjectRenderer)
+- ~~Cursor updates trigger full Board re-render~~ (MITIGATED - memo prevents child re-renders)
 - Konva Tweens never destroyed (memory leak)
 - SSE stream reader not cancelled on unmount (memory leak)

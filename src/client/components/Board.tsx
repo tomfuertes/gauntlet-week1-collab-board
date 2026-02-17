@@ -1,5 +1,5 @@
 import React, { useState, useRef, useCallback, useEffect } from "react";
-import { Stage, Layer, Rect, Text, Group, Transformer, Ellipse, Line as KonvaLine, Arrow } from "react-konva";
+import { Stage, Layer, Rect, Text, Group, Transformer, Ellipse, Line as KonvaLine, Arrow, Shape } from "react-konva";
 import type { KonvaEventObject } from "konva/lib/Node";
 import Konva from "konva";
 import type { AuthUser } from "../App";
@@ -44,6 +44,102 @@ function rectsIntersect(
   return a.x < b.x + b.width && a.x + a.w > b.x && a.y < b.y + b.height && a.y + a.h > b.y;
 }
 
+// Memoized object renderer - prevents re-rendering unchanged objects when Board state changes
+interface BoardObjectRendererProps {
+  obj: BoardObject;
+  setShapeRef: (id: string) => (node: Konva.Group | null) => void;
+  onShapeClick: (e: KonvaEventObject<MouseEvent>, id: string) => void;
+  onDragStart: (e: KonvaEventObject<DragEvent>, id: string) => void;
+  onDragMove: (e: KonvaEventObject<DragEvent>, id: string) => void;
+  onDragEnd: (e: KonvaEventObject<DragEvent>, id: string) => void;
+  onTransformEnd: (e: KonvaEventObject<Event>, obj: { id: string; type: string; width: number; height: number }) => void;
+  onDblClickEdit: (id: string) => void;
+}
+
+const BoardObjectRenderer = React.memo(function BoardObjectRenderer({
+  obj, setShapeRef, onShapeClick, onDragStart, onDragMove, onDragEnd, onTransformEnd, onDblClickEdit,
+}: BoardObjectRendererProps) {
+  const editable = obj.type === "sticky" || obj.type === "text" || obj.type === "frame";
+
+  const groupProps = {
+    ref: setShapeRef(obj.id),
+    x: obj.x,
+    y: obj.y,
+    rotation: obj.rotation,
+    draggable: true as const,
+    onClick: (e: KonvaEventObject<MouseEvent>) => onShapeClick(e, obj.id),
+    onDragStart: (e: KonvaEventObject<DragEvent>) => onDragStart(e, obj.id),
+    onDragMove: (e: KonvaEventObject<DragEvent>) => onDragMove(e, obj.id),
+    onDragEnd: (e: KonvaEventObject<DragEvent>) => onDragEnd(e, obj.id),
+    onTransformEnd: (e: KonvaEventObject<Event>) => onTransformEnd(e, obj),
+    ...(editable ? {
+      onDblClick: (e: KonvaEventObject<MouseEvent>) => {
+        e.cancelBubble = true;
+        onDblClickEdit(obj.id);
+      },
+    } : {}),
+  };
+
+  if (obj.type === "frame") {
+    return (
+      <Group {...groupProps}>
+        <Rect width={obj.width} height={obj.height} fill="rgba(99,102,241,0.06)" stroke="#6366f1" strokeWidth={2} dash={[10, 5]} cornerRadius={4} />
+        <Text x={8} y={-20} text={obj.props.text || "Frame"} fontSize={13} fill="#6366f1" fontStyle="600" />
+      </Group>
+    );
+  }
+  if (obj.type === "sticky") {
+    return (
+      <Group {...groupProps}>
+        <Rect width={obj.width} height={obj.height} fill={obj.props.color || "#fbbf24"} cornerRadius={8} shadowBlur={5} shadowColor="rgba(0,0,0,0.3)" />
+        <Text x={10} y={10} text={obj.props.text || ""} fontSize={14} fill="#1a1a2e" width={obj.width - 20} />
+      </Group>
+    );
+  }
+  if (obj.type === "rect") {
+    return (
+      <Group {...groupProps}>
+        <Rect width={obj.width} height={obj.height} fill={obj.props.fill || "#3b82f6"} stroke={obj.props.stroke || "#2563eb"} strokeWidth={2} cornerRadius={4} />
+      </Group>
+    );
+  }
+  if (obj.type === "circle") {
+    return (
+      <Group {...groupProps}>
+        <Ellipse x={obj.width / 2} y={obj.height / 2} radiusX={obj.width / 2} radiusY={obj.height / 2} fill={obj.props.fill || "#8b5cf6"} stroke={obj.props.stroke || "#7c3aed"} strokeWidth={2} />
+      </Group>
+    );
+  }
+  if (obj.type === "line") {
+    const useArrow = obj.props.arrow === "end" || obj.props.arrow === "both";
+    const LineComponent = useArrow ? Arrow : KonvaLine;
+    return (
+      <Group {...groupProps}>
+        <LineComponent
+          points={[0, 0, obj.width, obj.height]}
+          stroke={obj.props.stroke || "#f43f5e"}
+          strokeWidth={3}
+          hitStrokeWidth={12}
+          lineCap="round"
+          {...(useArrow ? {
+            pointerLength: 12,
+            pointerWidth: 10,
+            ...(obj.props.arrow === "both" ? { pointerAtBeginning: true } : {}),
+          } : {})}
+        />
+      </Group>
+    );
+  }
+  if (obj.type === "text") {
+    return (
+      <Group {...groupProps}>
+        <Text text={obj.props.text || ""} fontSize={16} fill={obj.props.color || "#ffffff"} width={obj.width} />
+      </Group>
+    );
+  }
+  return null;
+});
+
 export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boardId: string; onLogout: () => void; onBack: () => void }) {
   const stageRef = useRef<Konva.Stage>(null);
   const [stagePos, setStagePos] = useState({ x: 0, y: 0 });
@@ -87,11 +183,17 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
   const { connectionState, initialized, cursors, objects, presence, send, createObject: wsCreate, updateObject: wsUpdate, deleteObject: wsDelete } = useWebSocket(boardId);
   const { createObject, updateObject, deleteObject, startBatch, commitBatch, undo, redo } = useUndoRedo(objects, wsCreate, wsUpdate, wsDelete);
 
-  // Stable refs to avoid recreating callbacks on every WS message
+  // Stable refs to avoid recreating callbacks on every state change
   const objectsRef = useRef(objects);
   objectsRef.current = objects;
+  const stagePosRef = useRef(stagePos);
+  stagePosRef.current = stagePos;
+  const scaleRef = useRef(scale);
+  scaleRef.current = scale;
   const [editingId, setEditingId] = useState<string | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const selectedIdsRef = useRef(selectedIds);
+  selectedIdsRef.current = selectedIds;
   const clipboardRef = useRef<BoardObject[]>([]);
 
   // Shared helper: batch-delete all selected objects
@@ -264,11 +366,12 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
     }
   }, []);
 
-  // Bulk drag handlers
+  // Bulk drag handlers (reads selectedIds from ref for stability)
   const handleShapeDragStart = useCallback((_e: KonvaEventObject<DragEvent>, id: string) => {
-    if (selectedIds.has(id) && selectedIds.size > 1) {
+    const sel = selectedIdsRef.current;
+    if (sel.has(id) && sel.size > 1) {
       const positions = new Map<string, { x: number; y: number }>();
-      for (const sid of selectedIds) {
+      for (const sid of sel) {
         const node = shapeRefs.current.get(sid);
         if (node) positions.set(sid, { x: node.x(), y: node.y() });
       }
@@ -276,7 +379,7 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
     } else {
       dragStartPositionsRef.current = new Map();
     }
-  }, [selectedIds]);
+  }, []);
 
   const handleShapeDragMove = useCallback((e: KonvaEventObject<DragEvent>, id: string) => {
     const positions = dragStartPositionsRef.current;
@@ -315,15 +418,15 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
     }
   }, [updateObject, startBatch, commitBatch]);
 
-  // Track mouse for cursor sync + marquee
+  // Track mouse for cursor sync + marquee (reads stagePos/scale from refs for stability)
   const handleMouseMove = useCallback((_e: KonvaEventObject<MouseEvent>) => {
     const stage = stageRef.current;
     if (!stage) return;
     const pointer = stage.getPointerPosition();
     if (!pointer) return;
 
-    const worldX = (pointer.x - stagePos.x) / scale;
-    const worldY = (pointer.y - stagePos.y) / scale;
+    const worldX = (pointer.x - stagePosRef.current.x) / scaleRef.current;
+    const worldY = (pointer.y - stagePosRef.current.y) / scaleRef.current;
 
     // Update marquee if dragging
     if (isDraggingMarqueeRef.current && marqueeStartRef.current) {
@@ -341,7 +444,7 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
     if (now - lastCursorSend.current < CURSOR_THROTTLE_MS) return;
     lastCursorSend.current = now;
     send({ type: "cursor", x: worldX, y: worldY });
-  }, [send, stagePos, scale]);
+  }, [send]);
 
   // Stage mousedown: marquee (select mode) or frame draft (frame mode)
   const handleStageMouseDown = useCallback((e: KonvaEventObject<MouseEvent>) => {
@@ -351,8 +454,8 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
     if (!stage) return;
     const pointer = stage.getPointerPosition();
     if (!pointer) return;
-    const worldX = (pointer.x - stagePos.x) / scale;
-    const worldY = (pointer.y - stagePos.y) / scale;
+    const worldX = (pointer.x - stagePosRef.current.x) / scaleRef.current;
+    const worldY = (pointer.y - stagePosRef.current.y) / scaleRef.current;
 
     if (toolMode === "select") {
       marqueeStartRef.current = { x: worldX, y: worldY };
@@ -360,7 +463,7 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
     } else if (toolMode === "frame") {
       setFrameDraft({ startX: worldX, startY: worldY, x: worldX, y: worldY, width: 0, height: 0 });
     }
-  }, [toolMode, stagePos, scale]);
+  }, [toolMode]);
 
   // Stage mouseup: finish marquee or frame draft (uses ref to avoid per-frame callback recreation)
   const handleStageMouseUp = useCallback(() => {
@@ -397,13 +500,13 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
     }
   }, []);
 
-  // Zoom toward cursor on wheel
+  // Zoom toward cursor on wheel (reads scale/stagePos from refs for stability)
   const handleWheel = useCallback((e: KonvaEventObject<WheelEvent>) => {
     e.evt.preventDefault();
     const stage = stageRef.current;
     if (!stage) return;
 
-    const oldScale = scale;
+    const oldScale = scaleRef.current;
     const pointer = stage.getPointerPosition();
     if (!pointer) return;
 
@@ -412,8 +515,8 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
     const newScale = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, direction > 0 ? oldScale * factor : oldScale / factor));
 
     const mousePointTo = {
-      x: (pointer.x - stagePos.x) / oldScale,
-      y: (pointer.y - stagePos.y) / oldScale,
+      x: (pointer.x - stagePosRef.current.x) / oldScale,
+      y: (pointer.y - stagePosRef.current.y) / oldScale,
     };
 
     setScale(newScale);
@@ -421,7 +524,7 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
       x: pointer.x - mousePointTo.x * newScale,
       y: pointer.y - mousePointTo.y * newScale,
     });
-  }, [scale, stagePos]);
+  }, []);
 
   const handleDragEnd = useCallback((e: KonvaEventObject<DragEvent>) => {
     // Only update stage position when the Stage itself is dragged, not objects
@@ -474,16 +577,22 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
     };
   }, []);
 
+  // Stable dbl-click handler for editable objects (sticky, text, frame)
+  const handleShapeDblClick = useCallback((id: string) => {
+    setSelectedIds(new Set());
+    setEditingId(id);
+  }, []);
+
   // Combined stage mouse move: cursor sync + marquee tracking + frame draft
   const handleStageMouseMove = useCallback((e: KonvaEventObject<MouseEvent>) => {
     handleMouseMove(e); // cursor sync (throttled) + marquee tracking
-    if (!frameDraft) return;
+    if (!frameDraftRef.current) return;
     const stage = stageRef.current;
     if (!stage) return;
     const pointer = stage.getPointerPosition();
     if (!pointer) return;
-    const worldX = (pointer.x - stagePos.x) / scale;
-    const worldY = (pointer.y - stagePos.y) / scale;
+    const worldX = (pointer.x - stagePosRef.current.x) / scaleRef.current;
+    const worldY = (pointer.y - stagePosRef.current.y) / scaleRef.current;
     setFrameDraft(prev => {
       if (!prev) return null;
       return {
@@ -494,7 +603,7 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
         height: Math.abs(worldY - prev.startY),
       };
     });
-  }, [handleMouseMove, frameDraft, stagePos, scale]);
+  }, [handleMouseMove]);
 
   const commitPendingFrame = useCallback((title: string) => {
     if (!pendingFrame) return;
@@ -524,8 +633,8 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
     const pointer = stage.getPointerPosition();
     if (!pointer) return;
 
-    const worldX = (pointer.x - stagePos.x) / scale;
-    const worldY = (pointer.y - stagePos.y) / scale;
+    const worldX = (pointer.x - stagePosRef.current.x) / scaleRef.current;
+    const worldY = (pointer.y - stagePosRef.current.y) / scaleRef.current;
 
     setSelectedIds(new Set());
 
@@ -610,7 +719,7 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
       });
       setEditingId(id);
     }
-  }, [stagePos, scale, createObject, user.id, toolMode]);
+  }, [createObject, user.id, toolMode]);
 
   const handleLogout = async () => {
     await fetch("/auth/logout", { method: "POST" });
@@ -732,42 +841,17 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
 
           {/* Pass 1: frames (behind everything) */}
           {[...objects.values()].filter(o => o.type === "frame").map((obj) => (
-            <Group
+            <BoardObjectRenderer
               key={obj.id}
-              ref={setShapeRef(obj.id)}
-              x={obj.x}
-              y={obj.y}
-              rotation={obj.rotation}
-              draggable
-              onClick={(e) => handleShapeClick(e, obj.id)}
-              onDragStart={(e) => handleShapeDragStart(e, obj.id)}
-              onDragMove={(e) => handleShapeDragMove(e, obj.id)}
-              onDragEnd={(e) => handleShapeDragEnd(e, obj.id)}
-              onDblClick={(e) => {
-                e.cancelBubble = true;
-                setSelectedIds(new Set());
-                setEditingId(obj.id);
-              }}
-              onTransformEnd={(e) => handleObjectTransform(e, obj)}
-            >
-              <Rect
-                width={obj.width}
-                height={obj.height}
-                fill="rgba(99,102,241,0.06)"
-                stroke="#6366f1"
-                strokeWidth={2}
-                dash={[10, 5]}
-                cornerRadius={4}
-              />
-              <Text
-                x={8}
-                y={-20}
-                text={obj.props.text || "Frame"}
-                fontSize={13}
-                fill="#6366f1"
-                fontStyle="600"
-              />
-            </Group>
+              obj={obj}
+              setShapeRef={setShapeRef}
+              onShapeClick={handleShapeClick}
+              onDragStart={handleShapeDragStart}
+              onDragMove={handleShapeDragMove}
+              onDragEnd={handleShapeDragEnd}
+              onTransformEnd={handleObjectTransform}
+              onDblClickEdit={handleShapeDblClick}
+            />
           ))}
           {/* Frame drag preview */}
           {frameDraft && frameDraft.width > 0 && frameDraft.height > 0 && (
@@ -785,157 +869,19 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
             />
           )}
           {/* Pass 2: non-frame objects */}
-          {[...objects.values()].filter(o => o.type !== "frame").map((obj) => {
-            if (obj.type === "sticky") {
-              return (
-                <Group
-                  key={obj.id}
-                  ref={setShapeRef(obj.id)}
-                  x={obj.x}
-                  y={obj.y}
-                  rotation={obj.rotation}
-                  draggable
-                  onClick={(e) => handleShapeClick(e, obj.id)}
-                  onDragStart={(e) => handleShapeDragStart(e, obj.id)}
-                  onDragMove={(e) => handleShapeDragMove(e, obj.id)}
-                  onDragEnd={(e) => handleShapeDragEnd(e, obj.id)}
-                  onDblClick={(e) => {
-                    e.cancelBubble = true;
-                    setSelectedIds(new Set());
-                    setEditingId(obj.id);
-                  }}
-                  onTransformEnd={(e) => handleObjectTransform(e, obj)}
-                >
-                  <Rect
-                    width={obj.width} height={obj.height}
-                    fill={obj.props.color || "#fbbf24"}
-                    cornerRadius={8}
-                    shadowBlur={5} shadowColor="rgba(0,0,0,0.3)"
-                  />
-                  <Text
-                    x={10} y={10}
-                    text={obj.props.text || ""}
-                    fontSize={14} fill="#1a1a2e"
-                    width={obj.width - 20}
-                  />
-                </Group>
-              );
-            }
-            if (obj.type === "rect") {
-              return (
-                <Group
-                  key={obj.id}
-                  ref={setShapeRef(obj.id)}
-                  x={obj.x}
-                  y={obj.y}
-                  rotation={obj.rotation}
-                  draggable
-                  onClick={(e) => handleShapeClick(e, obj.id)}
-                  onDragStart={(e) => handleShapeDragStart(e, obj.id)}
-                  onDragMove={(e) => handleShapeDragMove(e, obj.id)}
-                  onDragEnd={(e) => handleShapeDragEnd(e, obj.id)}
-                  onTransformEnd={(e) => handleObjectTransform(e, obj)}
-                >
-                  <Rect
-                    width={obj.width} height={obj.height}
-                    fill={obj.props.fill || "#3b82f6"}
-                    stroke={obj.props.stroke || "#2563eb"}
-                    strokeWidth={2}
-                    cornerRadius={4}
-                  />
-                </Group>
-              );
-            }
-            if (obj.type === "circle") {
-              return (
-                <Group
-                  key={obj.id}
-                  ref={setShapeRef(obj.id)}
-                  x={obj.x}
-                  y={obj.y}
-                  rotation={obj.rotation}
-                  draggable
-                  onClick={(e) => handleShapeClick(e, obj.id)}
-                  onDragStart={(e) => handleShapeDragStart(e, obj.id)}
-                  onDragMove={(e) => handleShapeDragMove(e, obj.id)}
-                  onDragEnd={(e) => handleShapeDragEnd(e, obj.id)}
-                  onTransformEnd={(e) => handleObjectTransform(e, obj)}
-                >
-                  <Ellipse
-                    x={obj.width / 2}
-                    y={obj.height / 2}
-                    radiusX={obj.width / 2}
-                    radiusY={obj.height / 2}
-                    fill={obj.props.fill || "#8b5cf6"}
-                    stroke={obj.props.stroke || "#7c3aed"}
-                    strokeWidth={2}
-                  />
-                </Group>
-              );
-            }
-            if (obj.type === "line") {
-              const useArrow = obj.props.arrow === "end" || obj.props.arrow === "both";
-              const LineComponent = useArrow ? Arrow : KonvaLine;
-              return (
-                <Group
-                  key={obj.id}
-                  ref={setShapeRef(obj.id)}
-                  x={obj.x}
-                  y={obj.y}
-                  rotation={obj.rotation}
-                  draggable
-                  onClick={(e) => handleShapeClick(e, obj.id)}
-                  onDragStart={(e) => handleShapeDragStart(e, obj.id)}
-                  onDragMove={(e) => handleShapeDragMove(e, obj.id)}
-                  onDragEnd={(e) => handleShapeDragEnd(e, obj.id)}
-                  onTransformEnd={(e) => handleObjectTransform(e, obj)}
-                >
-                  <LineComponent
-                    points={[0, 0, obj.width, obj.height]}
-                    stroke={obj.props.stroke || "#f43f5e"}
-                    strokeWidth={3}
-                    hitStrokeWidth={12}
-                    lineCap="round"
-                    {...(useArrow ? {
-                      pointerLength: 12,
-                      pointerWidth: 10,
-                      ...(obj.props.arrow === "both" ? { pointerAtBeginning: true } : {}),
-                    } : {})}
-                  />
-                </Group>
-              );
-            }
-            if (obj.type === "text") {
-              return (
-                <Group
-                  key={obj.id}
-                  ref={setShapeRef(obj.id)}
-                  x={obj.x}
-                  y={obj.y}
-                  rotation={obj.rotation}
-                  draggable
-                  onClick={(e) => handleShapeClick(e, obj.id)}
-                  onDragStart={(e) => handleShapeDragStart(e, obj.id)}
-                  onDragMove={(e) => handleShapeDragMove(e, obj.id)}
-                  onDragEnd={(e) => handleShapeDragEnd(e, obj.id)}
-                  onDblClick={(e) => {
-                    e.cancelBubble = true;
-                    setSelectedIds(new Set());
-                    setEditingId(obj.id);
-                  }}
-                  onTransformEnd={(e) => handleObjectTransform(e, obj)}
-                >
-                  <Text
-                    text={obj.props.text || ""}
-                    fontSize={16}
-                    fill={obj.props.color || "#ffffff"}
-                    width={obj.width}
-                  />
-                </Group>
-              );
-            }
-            return null;
-          })}
+          {[...objects.values()].filter(o => o.type !== "frame").map((obj) => (
+            <BoardObjectRenderer
+              key={obj.id}
+              obj={obj}
+              setShapeRef={setShapeRef}
+              onShapeClick={handleShapeClick}
+              onDragStart={handleShapeDragStart}
+              onDragMove={handleShapeDragMove}
+              onDragEnd={handleShapeDragEnd}
+              onTransformEnd={handleObjectTransform}
+              onDblClickEdit={handleShapeDblClick}
+            />
+          ))}
 
           {/* Marquee selection visualization */}
           {marquee && (
@@ -1341,43 +1287,51 @@ function ConnectionToast({ connectionState }: { connectionState: ConnectionState
 
 function renderGrid(pos: { x: number; y: number }, scale: number, size: { width: number; height: number }) {
   const gridSize = 50;
-  const elements: React.ReactElement[] = [];
 
   // Subtle radial glow for canvas depth
   const viewCenterX = (-pos.x + size.width / 2) / scale;
   const viewCenterY = (-pos.y + size.height / 2) / scale;
   const glowRadius = Math.max(size.width, size.height) / scale * 0.7;
-  elements.push(
-    <Rect
-      key="glow"
-      x={viewCenterX - glowRadius}
-      y={viewCenterY - glowRadius}
-      width={glowRadius * 2}
-      height={glowRadius * 2}
-      fillRadialGradientStartPoint={{ x: glowRadius, y: glowRadius }}
-      fillRadialGradientEndPoint={{ x: glowRadius, y: glowRadius }}
-      fillRadialGradientStartRadius={0}
-      fillRadialGradientEndRadius={glowRadius}
-      fillRadialGradientColorStops={[0, "rgba(99,102,241,0.06)", 0.5, "rgba(99,102,241,0.02)", 1, "transparent"]}
-      listening={false}
-    />
-  );
 
-  // Grid dots
+  // Grid dot bounds
   const startX = Math.floor(-pos.x / scale / gridSize) * gridSize - gridSize;
   const startY = Math.floor(-pos.y / scale / gridSize) * gridSize - gridSize;
   const endX = startX + size.width / scale + gridSize * 2;
   const endY = startY + size.height / scale + gridSize * 2;
-  const maxDots = 2000;
-  let count = 0;
-  for (let x = startX; x < endX; x += gridSize) {
-    for (let y = startY; y < endY; y += gridSize) {
-      if (count++ >= maxDots) break;
-      elements.push(<Rect key={`${x},${y}`} x={x - 1} y={y - 1} width={2} height={2} fill="rgba(255,255,255,0.1)" listening={false} />);
-    }
-    if (count >= maxDots) break;
-  }
-  return elements;
+
+  return (
+    <>
+      <Rect
+        key="glow"
+        x={viewCenterX - glowRadius}
+        y={viewCenterY - glowRadius}
+        width={glowRadius * 2}
+        height={glowRadius * 2}
+        fillRadialGradientStartPoint={{ x: glowRadius, y: glowRadius }}
+        fillRadialGradientEndPoint={{ x: glowRadius, y: glowRadius }}
+        fillRadialGradientStartRadius={0}
+        fillRadialGradientEndRadius={glowRadius}
+        fillRadialGradientColorStops={[0, "rgba(99,102,241,0.06)", 0.5, "rgba(99,102,241,0.02)", 1, "transparent"]}
+        listening={false}
+      />
+      <Shape
+        sceneFunc={(ctx, shape) => {
+          ctx.beginPath();
+          let count = 0;
+          for (let x = startX; x < endX; x += gridSize) {
+            for (let y = startY; y < endY; y += gridSize) {
+              if (count++ >= 2000) break;
+              ctx.rect(x - 1, y - 1, 2, 2);
+            }
+            if (count >= 2000) break;
+          }
+          ctx.fillStrokeShape(shape);
+        }}
+        fill="rgba(255,255,255,0.1)"
+        listening={false}
+      />
+    </>
+  );
 }
 
 const SHORTCUTS = [
