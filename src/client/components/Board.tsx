@@ -916,13 +916,16 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
             flipEnabled={false}
             rotateEnabled={true}
             boundBoxFunc={(_oldBox, newBox) => {
-              if (Math.abs(newBox.width) < 20 || Math.abs(newBox.height) < 20) return _oldBox;
+              // Lines can have near-zero dimensions in one axis - only clamp shapes
+              const hasLineSelected = [...selectedIdsRef.current].some(id => objectsRef.current.get(id)?.type === "line");
+              if (!hasLineSelected && (Math.abs(newBox.width) < 20 || Math.abs(newBox.height) < 20)) return _oldBox;
               return newBox;
             }}
             borderStroke={colors.accent}
             anchorStroke={colors.accent}
             anchorFill="#fff"
             anchorSize={8}
+            padding={5}
             anchorCornerRadius={2}
           />
         </Layer>
