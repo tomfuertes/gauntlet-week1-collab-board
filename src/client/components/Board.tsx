@@ -1,5 +1,5 @@
 import React, { useState, useRef, useCallback, useEffect } from "react";
-import { Stage, Layer, Rect, Text, Group } from "react-konva";
+import { Stage, Layer, Rect, Text, Group, Transformer } from "react-konva";
 import type { KonvaEventObject } from "konva/lib/Node";
 import type Konva from "konva";
 import type { AuthUser } from "../App";
@@ -21,6 +21,8 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
   const lastCursorSend = useRef(0);
   const [toolMode, setToolMode] = useState<ToolMode>("sticky");
   const [chatOpen, setChatOpen] = useState(false);
+  const trRef = useRef<Konva.Transformer>(null);
+  const shapeRefs = useRef<Map<string, Konva.Group>>(new Map());
 
   const { connected, cursors, objects, presence, send, createObject, updateObject, deleteObject } = useWebSocket(boardId);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -43,6 +45,7 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
     const onKeyDown = (e: KeyboardEvent) => {
       // Don't intercept when typing in an input/textarea
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+      if (e.key === "Escape") { setSelectedId(null); return; }
       if (e.key === "s" || e.key === "S") setToolMode("sticky");
       if (e.key === "r" || e.key === "R") setToolMode("rect");
       if (e.key === "/") { e.preventDefault(); setChatOpen((o) => !o); }
@@ -55,6 +58,22 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [selectedId, editingId, deleteObject]);
+
+  // Sync Transformer with selected node
+  useEffect(() => {
+    const tr = trRef.current;
+    if (!tr) return;
+    if (selectedId && !editingId) {
+      const node = shapeRefs.current.get(selectedId);
+      if (node) {
+        tr.nodes([node]);
+        tr.getLayer()?.batchDraw();
+        return;
+      }
+    }
+    tr.nodes([]);
+    tr.getLayer()?.batchDraw();
+  }, [selectedId, editingId, objects]);
 
   // Track mouse for cursor sync
   const handleMouseMove = useCallback((_e: KonvaEventObject<MouseEvent>) => {
@@ -104,6 +123,31 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
     // Only update stage position when the Stage itself is dragged, not objects
     if (e.target !== stageRef.current) return;
     setStagePos({ x: e.target.x(), y: e.target.y() });
+  }, []);
+
+  // Handle object transform (resize + rotate) - shared by all object types
+  const handleObjectTransform = useCallback((e: KonvaEventObject<Event>, obj: { id: string; width: number; height: number }) => {
+    const node = e.target;
+    const sx = node.scaleX();
+    const sy = node.scaleY();
+    node.scaleX(1);
+    node.scaleY(1);
+    updateObject({
+      id: obj.id,
+      x: node.x(),
+      y: node.y(),
+      width: Math.max(20, Math.round(obj.width * sx)),
+      height: Math.max(20, Math.round(obj.height * sy)),
+      rotation: node.rotation(),
+    });
+  }, [updateObject]);
+
+  // Ref callback to track shape nodes for Transformer
+  const setShapeRef = useCallback((id: string) => {
+    return (node: Konva.Group | null) => {
+      if (node) shapeRefs.current.set(id, node);
+      else shapeRefs.current.delete(id);
+    };
   }, []);
 
   // Double-click on empty canvas -> create object based on active tool
@@ -216,12 +260,13 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
           {/* Render synced objects */}
           {[...objects.values()].map((obj) => {
             if (obj.type === "sticky") {
-              const isSelected = selectedId === obj.id;
               return (
                 <Group
                   key={obj.id}
+                  ref={setShapeRef(obj.id)}
                   x={obj.x}
                   y={obj.y}
+                  rotation={obj.rotation}
                   draggable
                   onClick={(e) => { e.cancelBubble = true; setSelectedId(obj.id); }}
                   onDragEnd={(e) => {
@@ -232,14 +277,13 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
                     setSelectedId(null);
                     setEditingId(obj.id);
                   }}
+                  onTransformEnd={(e) => handleObjectTransform(e, obj)}
                 >
                   <Rect
                     width={obj.width} height={obj.height}
                     fill={obj.props.color || "#fbbf24"}
                     cornerRadius={8}
                     shadowBlur={5} shadowColor="rgba(0,0,0,0.3)"
-                    stroke={isSelected ? "#0084FF" : undefined}
-                    strokeWidth={isSelected ? 2 : 0}
                   />
                   <Text
                     x={10} y={10}
@@ -251,22 +295,24 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
               );
             }
             if (obj.type === "rect") {
-              const isSelected = selectedId === obj.id;
               return (
                 <Group
                   key={obj.id}
+                  ref={setShapeRef(obj.id)}
                   x={obj.x}
                   y={obj.y}
+                  rotation={obj.rotation}
                   draggable
                   onClick={(e) => { e.cancelBubble = true; setSelectedId(obj.id); }}
                   onDragEnd={(e) => {
                     updateObject({ id: obj.id, x: e.target.x(), y: e.target.y() });
                   }}
+                  onTransformEnd={(e) => handleObjectTransform(e, obj)}
                 >
                   <Rect
                     width={obj.width} height={obj.height}
                     fill={obj.props.fill || "#3b82f6"}
-                    stroke={isSelected ? "#0084FF" : (obj.props.stroke || "#2563eb")}
+                    stroke={obj.props.stroke || "#2563eb"}
                     strokeWidth={2}
                     cornerRadius={4}
                   />
@@ -275,6 +321,21 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
             }
             return null;
           })}
+          {/* Selection transformer */}
+          <Transformer
+            ref={trRef}
+            flipEnabled={false}
+            rotateEnabled={true}
+            boundBoxFunc={(_oldBox, newBox) => {
+              if (Math.abs(newBox.width) < 20 || Math.abs(newBox.height) < 20) return _oldBox;
+              return newBox;
+            }}
+            borderStroke="#0084FF"
+            anchorStroke="#0084FF"
+            anchorFill="#fff"
+            anchorSize={8}
+            anchorCornerRadius={2}
+          />
         </Layer>
 
         {/* Cursor layer on top */}
