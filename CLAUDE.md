@@ -175,6 +175,7 @@ Each object stored as separate DO Storage key (`obj:{uuid}`, ~200 bytes). LWW vi
 | New dependency added | Add to Stack section | `CLAUDE.md` |
 | Session ending or context pressure | Full context dump: done, next, blockers, impl plan | `docs/notes.md` |
 | Session starting | Read `docs/notes.md` + `CLAUDE.md` + `docs/roadmap.md`, git log, summarize status | (read only) |
+| notes.md > ~150 lines or 5+ sessions | Prune: collapse old sessions into Key Decisions table, delete implemented plans, keep only latest "What's Next" and active reference. Architecture/constraints belong in `CLAUDE.md`, not `notes.md`. | `docs/notes.md` |
 
 Hooks enforce the bookends: `SessionStart` reminds to read context, `PreCompact` reminds to dump context. Everything in between is your responsibility.
 
