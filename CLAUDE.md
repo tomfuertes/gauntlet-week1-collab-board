@@ -105,6 +105,7 @@ npx playwright test --reporter=dot     # minimal output (default 'list' floods c
 Worktree prompts must explicitly mention:
 - `source worktree.ports && npm run dev` (never hardcode ports)
 - `scripts/localcurl.sh` instead of `curl` (agents default to raw curl which isn't in the permission allowlist)
+- **Do NOT use `playwright-cli`** in worktrees - it's an interactive tool that conflicts when multiple worktrees run simultaneously. Use `npx playwright test` (E2E suite) or `npm run typecheck && npm run build` for validation instead.
 - "Read CLAUDE.md and relevant source files before implementing" (not "Enter plan mode first")
 
 ## Architecture
