@@ -193,6 +193,56 @@ Llama 3.3 can't reliably do multi-step AI commands (SWOT, grid layout). The mult
 
 ---
 
+## Session 8 Context Dump (Feb 16-17, 2026)
+
+### What Was Done
+1. **Custom agents created** (`.claude/agents/uat.md`, `.claude/agents/worktree-setup.md`) - UAT runs on Sonnet, worktree setup on Haiku. Delegation rules in CLAUDE.md.
+2. **E2E CI fix** - `playwright.config.ts` baseURL was Vite HMR port (5175), not wrangler port (8789). Tests were hitting frontend-only server with no API. Fixed + pushed.
+3. **Full codebase audit** - 7 parallel Sonnet agents: spec compliance, git forensics, React/Konva perf, DO architecture, security, React patterns, strategic roadmap. Results in `docs/audit.md`.
+4. **spec.pdf purged from git history** - was committed in plaintext at `docs/spec.pdf`. Used `git filter-repo` to remove from all history, moved to `docs/encrypted/spec.pdf` (git-crypt encrypted). Force pushed.
+5. **Spec re-read** - freehand drawing NOT required. AI tool schema gaps identified.
+
+### What's Next (read `docs/audit.md` for full details)
+**Tier 1 - Trivial fixes (~30min):**
+- `/api/board/:boardId/clear` missing ownership check (1 line - match DELETE route pattern)
+- `JSON.parse` without try/catch in DO `webSocketMessage` (5 lines)
+- Password min length 4 -> 8 (1 line in `auth.ts:106`)
+- Remove dead `getMeta` method in `board.ts`
+- Remove redundant `ws.close()` in `webSocketClose`
+
+**Tier 2 - Performance (~5hr, biggest demo impact):**
+- Grid rendering: 2000+ `<Rect>` nodes rebuilt every frame. Use `useMemo` or custom Konva `sceneFunc`.
+- Memoize object components with `React.memo` (all 500 re-render on any change)
+- Ref-mirror `stagePos`/`scale` to stabilize `handleWheel`/`handleMouseMove` callbacks
+- Split `useWebSocket` into `useObjects` + `useCursors` (cursor updates trigger full Board re-render)
+
+**Tier 3 - Memory leaks (~1hr):**
+- Cancel SSE stream in `useAIChat` on unmount
+- Destroy Konva Tweens on unmount/removal
+- AbortController on AuthForm/BoardList fetches
+
+**Tier 4 - Spec gaps (~2hr):**
+- Add `width`/`height` to `update_object` AI tool (resizeObject is overclaimed)
+- Privacy policy page
+- Data deletion endpoint (`DELETE /api/user`)
+- Board delete should broadcast `board:deleted` + close WS connections
+
+**Tier 5 - Deliverables (~6hr):**
+- AI dev log (fill TODOs), AI cost analysis (fill actuals), demo video, social post, README polish, prod smoke test
+
+### Key Decisions This Session
+| Date | Decision | Rationale |
+|------|----------|-----------|
+| Feb 16 | Custom agents over inline execution | Opus context too expensive for playwright-cli/worktree mechanical work. Sonnet UAT agent + Haiku worktree agent. |
+| Feb 16 | No freehand drawing | Spec doesn't require it. Rect/circle/line covers shapes requirement. |
+| Feb 17 | Force-push history rewrite | spec.pdf was committed in plaintext. Purged with git filter-repo. |
+
+### Blockers
+- SWOT eval criterion needs `ANTHROPIC_API_KEY` set as Worker secret on prod (Haiku path merged in PR #16 but key not deployed)
+- E2E CI may still fail - port fix pushed but not verified passing yet
+
+---
+
 ## Key Decisions (all sessions)
 
 | Date | Decision | Rationale |
