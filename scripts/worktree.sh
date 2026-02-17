@@ -77,6 +77,9 @@ cmd_create() {
     echo "Warning: no node_modules in main repo, run npm install in worktree"
   fi
 
+  # Copy local secrets (.dev.vars) so worktrees can run wrangler dev with API keys
+  [[ -f "${REPO_ROOT}/.dev.vars" ]] && cp "${REPO_ROOT}/.dev.vars" "${wt_dir}/.dev.vars"
+
   # Seed Claude Code with baseline dev permissions so worktree sessions don't re-prompt.
   # Only includes universal dev workflow commands - session-specific WebFetch domains
   # and one-off tools are left for per-session approval.
