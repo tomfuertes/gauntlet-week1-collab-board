@@ -30,7 +30,14 @@ export function useUndoRedo(
   const replayAction = useCallback((action: UndoableAction, direction: "undo" | "redo") => {
     if (action.type === "batch") {
       const items = direction === "undo" ? [...action.actions].reverse() : action.actions;
-      for (const sub of items) replayAction(sub, direction);
+      for (const sub of items) {
+        try {
+          replayAction(sub, direction);
+        } catch (err) {
+          console.error(`[useUndoRedo] batch ${direction} failed on sub-action type=${sub.type}:`, err);
+          throw err;
+        }
+      }
       return;
     }
     switch (action.type) {
@@ -64,10 +71,15 @@ export function useUndoRedo(
 
   const startBatch = useCallback(() => {
     if (batchRef.current) {
-      console.error("[useUndoRedo] startBatch called while batch already open");
+      console.error("[useUndoRedo] startBatch called while batch already open - committing previous");
+      // Inline commit to avoid circular dependency with commitBatch
+      const leaked = batchRef.current;
+      batchRef.current = null;
+      if (leaked.length === 1) push(leaked[0]);
+      else if (leaked.length > 1) push({ type: "batch", actions: leaked });
     }
     batchRef.current = [];
-  }, []);
+  }, [push]);
 
   const commitBatch = useCallback(() => {
     const actions = batchRef.current;
@@ -106,7 +118,11 @@ export function useUndoRedo(
     (id: string) => {
       if (!replayingRef.current) {
         const obj = objectsRef.current.get(id);
-        if (obj) push({ type: "delete", obj: snapshot(obj) });
+        if (obj) {
+          push({ type: "delete", obj: snapshot(obj) });
+        } else {
+          console.warn(`[useUndoRedo] deleteObject: object ${id} not in local state - no undo entry`);
+        }
       }
       wsDelete(id);
     },
@@ -116,10 +132,10 @@ export function useUndoRedo(
   const undo = useCallback(() => {
     if (indexRef.current < 0) return;
     const action = stackRef.current[indexRef.current];
-    indexRef.current--;
     replayingRef.current = true;
     try {
       replayAction(action, "undo");
+      indexRef.current--;
     } finally {
       replayingRef.current = false;
     }
@@ -127,11 +143,11 @@ export function useUndoRedo(
 
   const redo = useCallback(() => {
     if (indexRef.current >= stackRef.current.length - 1) return;
-    indexRef.current++;
-    const action = stackRef.current[indexRef.current];
+    const action = stackRef.current[indexRef.current + 1];
     replayingRef.current = true;
     try {
       replayAction(action, "redo");
+      indexRef.current++;
     } finally {
       replayingRef.current = false;
     }

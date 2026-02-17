@@ -63,6 +63,8 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
 
   // Frame drag-to-create state
   const [frameDraft, setFrameDraft] = useState<{startX: number; startY: number; x: number; y: number; width: number; height: number} | null>(null);
+  const frameDraftRef = useRef(frameDraft);
+  frameDraftRef.current = frameDraft;
   const [pendingFrame, setPendingFrame] = useState<{x: number; y: number; width: number; height: number} | null>(null);
   const pendingFrameCancelled = useRef(false);
 
@@ -71,19 +73,24 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
 
   const { connectionState, initialized, cursors, objects, presence, send, createObject: wsCreate, updateObject: wsUpdate, deleteObject: wsDelete } = useWebSocket(boardId);
   const { createObject, updateObject, deleteObject, startBatch, commitBatch, undo, redo } = useUndoRedo(objects, wsCreate, wsUpdate, wsDelete);
+
+  // Stable refs to avoid recreating callbacks on every WS message
+  const objectsRef = useRef(objects);
+  objectsRef.current = objects;
   const [editingId, setEditingId] = useState<string | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
   // Shared helper: batch-delete all selected objects
   const deleteSelected = useCallback(() => {
     if (selectedIds.size === 0) return;
-    if (selectedIds.size > 1) startBatch();
+    const isBatch = selectedIds.size > 1;
+    if (isBatch) startBatch();
     try {
       for (const id of selectedIds) deleteObject(id);
+      setSelectedIds(new Set());
     } finally {
-      if (selectedIds.size > 1) commitBatch();
+      if (isBatch) commitBatch();
     }
-    setSelectedIds(new Set());
   }, [selectedIds, deleteObject, startBatch, commitBatch]);
 
   // Clear selection if objects were deleted (by another user or AI)
@@ -149,7 +156,7 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
     }
     tr.nodes([]);
     tr.getLayer()?.batchDraw();
-  }, [selectedIds, editingId, objects]);
+  }, [selectedIds, editingId]);
 
   // Shared click handler for all shapes (supports shift+click multi-select)
   const handleShapeClick = useCallback((e: KonvaEventObject<MouseEvent>, id: string) => {
@@ -208,10 +215,10 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
             updateObject({ id: sid, x: node.x(), y: node.y() });
           }
         }
+        dragStartPositionsRef.current = new Map();
       } finally {
         commitBatch();
       }
-      dragStartPositionsRef.current = new Map();
     } else {
       updateObject({ id, x: e.target.x(), y: e.target.y() });
     }
@@ -273,8 +280,12 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
       const m = marqueeRef.current;
       if (m && (m.w > 5 || m.h > 5)) {
         const selected = new Set<string>();
-        for (const obj of objects.values()) {
-          if (rectsIntersect(m, obj)) {
+        for (const obj of objectsRef.current.values()) {
+          // Lines/connectors store directional deltas - normalize to positive AABB
+          const bounds = obj.type === "line"
+            ? { x: Math.min(obj.x, obj.x + obj.width), y: Math.min(obj.y, obj.y + obj.height), width: Math.abs(obj.width), height: Math.abs(obj.height) }
+            : obj;
+          if (rectsIntersect(m, bounds)) {
             selected.add(obj.id);
           }
         }
@@ -286,13 +297,14 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
       return;
     }
     // Frame creation finish
-    if (frameDraft) {
-      if (frameDraft.width >= 20 && frameDraft.height >= 20) {
-        setPendingFrame({ x: frameDraft.x, y: frameDraft.y, width: frameDraft.width, height: frameDraft.height });
+    if (frameDraftRef.current) {
+      const fd = frameDraftRef.current;
+      if (fd.width >= 20 && fd.height >= 20) {
+        setPendingFrame({ x: fd.x, y: fd.y, width: fd.width, height: fd.height });
       }
       setFrameDraft(null);
     }
-  }, [objects, frameDraft]);
+  }, []);
 
   // Zoom toward cursor on wheel
   const handleWheel = useCallback((e: KonvaEventObject<WheelEvent>) => {
@@ -1010,7 +1022,8 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
                 key={color}
                 title={color}
                 onClick={() => {
-                  if (selectedIds.size > 1) startBatch();
+                  const isBatch = selectedIds.size > 1;
+                  if (isBatch) startBatch();
                   try {
                     for (const id of selectedIds) {
                       const obj = objects.get(id);
@@ -1019,7 +1032,7 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
                       updateObject({ id, props: { ...obj.props, [key]: color } });
                     }
                   } finally {
-                    if (selectedIds.size > 1) commitBatch();
+                    if (isBatch) commitBatch();
                   }
                 }}
                 style={{
