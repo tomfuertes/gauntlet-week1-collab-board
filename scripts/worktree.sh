@@ -108,7 +108,8 @@ cmd_create() {
       "Skill(playwright-cli)",
       "Bash(playwright-cli:*)",
       "WebFetch(domain:developers.cloudflare.com)",
-      "WebFetch(domain:registry.npmjs.org)"
+      "WebFetch(domain:registry.npmjs.org)",
+      "Bash(npx playwright:*)"
     ]
   }
 }
