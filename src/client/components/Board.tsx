@@ -25,8 +25,14 @@ export function Board({ user, onLogout }: { user: AuthUser; onLogout: () => void
   const [toolMode, setToolMode] = useState<ToolMode>("sticky");
   const [chatOpen, setChatOpen] = useState(false);
 
-  const { connected, cursors, objects, presence, send, createObject, updateObject } = useWebSocket(BOARD_ID);
+  const { connected, cursors, objects, presence, send, createObject, updateObject, deleteObject } = useWebSocket(BOARD_ID);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+
+  // Clear selection if object was deleted (by another user or AI)
+  useEffect(() => {
+    if (selectedId && !objects.has(selectedId)) setSelectedId(null);
+  }, [selectedId, objects]);
 
   // Resize handler
   useEffect(() => {
@@ -35,7 +41,7 @@ export function Board({ user, onLogout }: { user: AuthUser; onLogout: () => void
     return () => window.removeEventListener("resize", onResize);
   }, []);
 
-  // Keyboard shortcuts for tool switching
+  // Keyboard shortcuts for tool switching + delete
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       // Don't intercept when typing in an input/textarea
@@ -43,10 +49,15 @@ export function Board({ user, onLogout }: { user: AuthUser; onLogout: () => void
       if (e.key === "s" || e.key === "S") setToolMode("sticky");
       if (e.key === "r" || e.key === "R") setToolMode("rect");
       if (e.key === "/") { e.preventDefault(); setChatOpen((o) => !o); }
+      if ((e.key === "Delete" || e.key === "Backspace") && selectedId && !editingId) {
+        e.preventDefault();
+        deleteObject(selectedId);
+        setSelectedId(null);
+      }
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, []);
+  }, [selectedId, editingId, deleteObject]);
 
   // Track mouse for cursor sync
   const handleMouseMove = useCallback((_e: KonvaEventObject<MouseEvent>) => {
@@ -109,6 +120,8 @@ export function Board({ user, onLogout }: { user: AuthUser; onLogout: () => void
 
     const worldX = (pointer.x - stagePos.x) / scale;
     const worldY = (pointer.y - stagePos.y) / scale;
+
+    setSelectedId(null);
 
     if (toolMode === "sticky") {
       createObject({
@@ -193,6 +206,7 @@ export function Board({ user, onLogout }: { user: AuthUser; onLogout: () => void
         onWheel={handleWheel}
         onDragEnd={handleDragEnd}
         onMouseMove={handleMouseMove}
+        onClick={(e: KonvaEventObject<MouseEvent>) => { if (e.target === stageRef.current) setSelectedId(null); }}
         onDblClick={handleStageDblClick}
       >
         <Layer>
@@ -201,17 +215,20 @@ export function Board({ user, onLogout }: { user: AuthUser; onLogout: () => void
           {/* Render synced objects */}
           {[...objects.values()].map((obj) => {
             if (obj.type === "sticky") {
+              const isSelected = selectedId === obj.id;
               return (
                 <Group
                   key={obj.id}
                   x={obj.x}
                   y={obj.y}
                   draggable
+                  onClick={(e) => { e.cancelBubble = true; setSelectedId(obj.id); }}
                   onDragEnd={(e) => {
                     updateObject({ id: obj.id, x: e.target.x(), y: e.target.y() });
                   }}
                   onDblClick={(e) => {
                     e.cancelBubble = true;
+                    setSelectedId(null);
                     setEditingId(obj.id);
                   }}
                 >
@@ -220,6 +237,8 @@ export function Board({ user, onLogout }: { user: AuthUser; onLogout: () => void
                     fill={obj.props.color || "#fbbf24"}
                     cornerRadius={8}
                     shadowBlur={5} shadowColor="rgba(0,0,0,0.3)"
+                    stroke={isSelected ? "#0084FF" : undefined}
+                    strokeWidth={isSelected ? 2 : 0}
                   />
                   <Text
                     x={10} y={10}
@@ -231,12 +250,14 @@ export function Board({ user, onLogout }: { user: AuthUser; onLogout: () => void
               );
             }
             if (obj.type === "rect") {
+              const isSelected = selectedId === obj.id;
               return (
                 <Group
                   key={obj.id}
                   x={obj.x}
                   y={obj.y}
                   draggable
+                  onClick={(e) => { e.cancelBubble = true; setSelectedId(obj.id); }}
                   onDragEnd={(e) => {
                     updateObject({ id: obj.id, x: e.target.x(), y: e.target.y() });
                   }}
@@ -244,7 +265,7 @@ export function Board({ user, onLogout }: { user: AuthUser; onLogout: () => void
                   <Rect
                     width={obj.width} height={obj.height}
                     fill={obj.props.fill || "#3b82f6"}
-                    stroke={obj.props.stroke || "#2563eb"}
+                    stroke={isSelected ? "#0084FF" : (obj.props.stroke || "#2563eb")}
                     strokeWidth={2}
                     cornerRadius={4}
                   />
