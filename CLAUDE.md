@@ -44,27 +44,12 @@ npm run typecheck        # tsc --noEmit
 
 ## Git Worktrees
 
-This repo uses git-crypt for `docs/`, which breaks `git worktree add` (smudge filter fails). Bypass it:
+This repo uses git-crypt for `docs/`, which breaks raw `git worktree add`. Use the script:
 
 ```bash
-# Create worktree (bypass git-crypt smudge filter)
-GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=filter.git-crypt.smudge GIT_CONFIG_VALUE_0=cat \
-  git worktree add ../gauntlet-week1-collab-board-<branch> -b feat/<branch>
-
-# Unlock git-crypt in the worktree (3-step: bypass filters, unlock, filters auto-restore)
-# Without this, git status/diff/commit all fail on encrypted files
-WT=../gauntlet-week1-collab-board-<branch>
-git -C "$WT" config filter.git-crypt.clean cat
-git -C "$WT" config filter.git-crypt.smudge cat
-git -C "$WT" config filter.git-crypt.required false
-cd "$WT" && git-crypt unlock "$(git rev-parse --path-format=absolute --git-common-dir)/git-crypt/keys/default"
-
-# Start Claude session in the worktree
-cd ../gauntlet-week1-collab-board-<branch> && claude
-
-# Cleanup: remove worktree + branch after PR merged
-git worktree remove ../gauntlet-week1-collab-board-<branch>
-git branch -D feat/<branch>
+scripts/worktree.sh create <branch>    # create + git-crypt unlock + prints cd/claude cmd
+scripts/worktree.sh remove <branch>    # remove worktree + delete feat/<branch>
+scripts/worktree.sh list               # list active worktrees
 ```
 
 When working in a worktree, use absolute paths for file tools and `git -C <abs-path>` for git commands (since `cd` doesn't persist between Bash calls).
