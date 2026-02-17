@@ -13,3 +13,4 @@ playwright-report/
 .playwright/
 .claude-prompt
 worktree.ports
+.dev.vars
