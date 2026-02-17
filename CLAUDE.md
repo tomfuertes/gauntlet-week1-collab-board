@@ -196,6 +196,25 @@ Each object stored as separate DO Storage key (`obj:{uuid}`, ~200 bytes). LWW vi
 
 Hooks enforce the bookends: `SessionStart` reminds to read context, `PreCompact` reminds to dump context. Everything in between is your responsibility.
 
+## Custom Agents (Delegation)
+
+Main context is the orchestrator. Delegate execution to custom agents (`.claude/agents/`). Models are set in agent frontmatter - no need to specify at invocation.
+
+| Task | Agent | Model (in frontmatter) | Background? |
+|------|-------|------------------------|-------------|
+| UAT / smoke test / feature verification | `uat` | sonnet | yes |
+| Worktree creation + setup | `worktree-setup` | haiku | yes |
+| E2E test suite (`npx playwright test`) | background Bash | - | yes |
+| Codebase exploration (3+ file reads) | `Explore` (built-in) | haiku | yes |
+
+**How to invoke:**
+```
+Task(subagent_type="uat", run_in_background=true,
+     prompt="Smoke test: auth + create board + one of each object type. Dev server on localhost:5173.")
+```
+
+Never run playwright-cli sessions or full test suites in main Opus context. Always delegate.
+
 ## Conventions
 
 - TypeScript strict mode
