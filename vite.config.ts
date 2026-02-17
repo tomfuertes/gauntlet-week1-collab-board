@@ -2,6 +2,8 @@ import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import path from "path";
 
+const wranglerPort = process.env.WRANGLER_PORT || "8787";
+
 export default defineConfig({
   plugins: [react()],
   root: "src/client",
@@ -16,10 +18,10 @@ export default defineConfig({
   },
   server: {
     proxy: {
-      "/api": "http://localhost:8787",
-      "/auth": "http://localhost:8787",
+      "/api": `http://localhost:${wranglerPort}`,
+      "/auth": `http://localhost:${wranglerPort}`,
       "/ws": {
-        target: "ws://localhost:8787",
+        target: `ws://localhost:${wranglerPort}`,
         ws: true,
       },
     },
