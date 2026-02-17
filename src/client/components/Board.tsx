@@ -73,7 +73,7 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
     }
     tr.nodes([]);
     tr.getLayer()?.batchDraw();
-  }, [selectedId, editingId]);
+  }, [selectedId, editingId, objects]);
 
   // Track mouse for cursor sync
   const handleMouseMove = useCallback((_e: KonvaEventObject<MouseEvent>) => {
@@ -123,6 +123,31 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
     // Only update stage position when the Stage itself is dragged, not objects
     if (e.target !== stageRef.current) return;
     setStagePos({ x: e.target.x(), y: e.target.y() });
+  }, []);
+
+  // Handle object transform (resize + rotate) - shared by all object types
+  const handleObjectTransform = useCallback((e: KonvaEventObject<Event>, obj: { id: string; width: number; height: number }) => {
+    const node = e.target;
+    const sx = node.scaleX();
+    const sy = node.scaleY();
+    node.scaleX(1);
+    node.scaleY(1);
+    updateObject({
+      id: obj.id,
+      x: node.x(),
+      y: node.y(),
+      width: Math.max(20, Math.round(obj.width * sx)),
+      height: Math.max(20, Math.round(obj.height * sy)),
+      rotation: node.rotation(),
+    });
+  }, [updateObject]);
+
+  // Ref callback to track shape nodes for Transformer
+  const setShapeRef = useCallback((id: string) => {
+    return (node: Konva.Group | null) => {
+      if (node) shapeRefs.current.set(id, node);
+      else shapeRefs.current.delete(id);
+    };
   }, []);
 
   // Double-click on empty canvas -> create object based on active tool
@@ -238,10 +263,7 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
               return (
                 <Group
                   key={obj.id}
-                  ref={(node: Konva.Group | null) => {
-                    if (node) shapeRefs.current.set(obj.id, node);
-                    else shapeRefs.current.delete(obj.id);
-                  }}
+                  ref={setShapeRef(obj.id)}
                   x={obj.x}
                   y={obj.y}
                   rotation={obj.rotation}
@@ -255,21 +277,7 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
                     setSelectedId(null);
                     setEditingId(obj.id);
                   }}
-                  onTransformEnd={(e) => {
-                    const node = e.target;
-                    const sx = node.scaleX();
-                    const sy = node.scaleY();
-                    node.scaleX(1);
-                    node.scaleY(1);
-                    updateObject({
-                      id: obj.id,
-                      x: node.x(),
-                      y: node.y(),
-                      width: Math.max(20, Math.round(obj.width * sx)),
-                      height: Math.max(20, Math.round(obj.height * sy)),
-                      rotation: node.rotation(),
-                    });
-                  }}
+                  onTransformEnd={(e) => handleObjectTransform(e, obj)}
                 >
                   <Rect
                     width={obj.width} height={obj.height}
@@ -290,10 +298,7 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
               return (
                 <Group
                   key={obj.id}
-                  ref={(node: Konva.Group | null) => {
-                    if (node) shapeRefs.current.set(obj.id, node);
-                    else shapeRefs.current.delete(obj.id);
-                  }}
+                  ref={setShapeRef(obj.id)}
                   x={obj.x}
                   y={obj.y}
                   rotation={obj.rotation}
@@ -302,21 +307,7 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
                   onDragEnd={(e) => {
                     updateObject({ id: obj.id, x: e.target.x(), y: e.target.y() });
                   }}
-                  onTransformEnd={(e) => {
-                    const node = e.target;
-                    const sx = node.scaleX();
-                    const sy = node.scaleY();
-                    node.scaleX(1);
-                    node.scaleY(1);
-                    updateObject({
-                      id: obj.id,
-                      x: node.x(),
-                      y: node.y(),
-                      width: Math.max(20, Math.round(obj.width * sx)),
-                      height: Math.max(20, Math.round(obj.height * sy)),
-                      rotation: node.rotation(),
-                    });
-                  }}
+                  onTransformEnd={(e) => handleObjectTransform(e, obj)}
                 >
                   <Rect
                     width={obj.width} height={obj.height}
