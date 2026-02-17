@@ -24,6 +24,7 @@ export interface BoardObject {
     color?: string;
     fill?: string;
     stroke?: string;
+    arrow?: "none" | "end" | "both";
   };
   createdBy: string;
   updatedAt: number;

@@ -1,5 +1,5 @@
 import React, { useState, useRef, useCallback, useEffect } from "react";
-import { Stage, Layer, Rect, Text, Group, Transformer, Ellipse, Line as KonvaLine } from "react-konva";
+import { Stage, Layer, Rect, Text, Group, Transformer, Ellipse, Line as KonvaLine, Arrow } from "react-konva";
 import type { KonvaEventObject } from "konva/lib/Node";
 import type Konva from "konva";
 import type { AuthUser } from "../App";
@@ -19,7 +19,7 @@ const MIN_ZOOM = 0.1;
 const MAX_ZOOM = 5;
 const CURSOR_THROTTLE_MS = 33; // ~30fps
 
-type ToolMode = "select" | "sticky" | "rect" | "circle" | "line" | "text";
+type ToolMode = "select" | "sticky" | "rect" | "circle" | "line" | "arrow" | "text";
 
 const COLOR_PRESETS = [
   "#fbbf24", // amber (sticky default)
@@ -76,6 +76,7 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
       if (e.key === "r" || e.key === "R") setToolMode("rect");
       if (e.key === "c" || e.key === "C") setToolMode("circle");
       if (e.key === "l" || e.key === "L") setToolMode("line");
+      if (e.key === "a" || e.key === "A") setToolMode("arrow");
       if (e.key === "t" || e.key === "T") setToolMode("text");
       if (e.key === "/") { e.preventDefault(); setChatOpen((o) => !o); }
       if ((e.key === "Delete" || e.key === "Backspace") && selectedId && !editingId) {
@@ -155,18 +156,20 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
   }, []);
 
   // Handle object transform (resize + rotate) - shared by all object types
-  const handleObjectTransform = useCallback((e: KonvaEventObject<Event>, obj: { id: string; width: number; height: number }) => {
+  const handleObjectTransform = useCallback((e: KonvaEventObject<Event>, obj: { id: string; type: string; width: number; height: number }) => {
     const node = e.target;
     const sx = node.scaleX();
     const sy = node.scaleY();
     node.scaleX(1);
     node.scaleY(1);
+    // Lines store endpoint delta in width/height - don't clamp to min 20
+    const isLine = obj.type === "line";
     updateObject({
       id: obj.id,
       x: node.x(),
       y: node.y(),
-      width: Math.max(20, Math.round(obj.width * sx)),
-      height: Math.max(20, Math.round(obj.height * sy)),
+      width: isLine ? Math.round(obj.width * sx) : Math.max(20, Math.round(obj.width * sx)),
+      height: isLine ? Math.round(obj.height * sy) : Math.max(20, Math.round(obj.height * sy)),
       rotation: node.rotation(),
     });
   }, [updateObject]);
@@ -240,9 +243,22 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
         x: worldX - 100,
         y: worldY,
         width: 200,
-        height: 4,
+        height: 0,
         rotation: 0,
         props: { stroke: "#f43f5e" },
+        createdBy: user.id,
+        updatedAt: Date.now(),
+      });
+    } else if (toolMode === "arrow") {
+      createObject({
+        id: crypto.randomUUID(),
+        type: "line",
+        x: worldX - 90,
+        y: worldY + 40,
+        width: 180,
+        height: -80,
+        rotation: 0,
+        props: { stroke: "#f43f5e", arrow: "end" },
         createdBy: user.id,
         updatedAt: Date.now(),
       });
@@ -459,6 +475,8 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
               );
             }
             if (obj.type === "line") {
+              const useArrow = obj.props.arrow === "end" || obj.props.arrow === "both";
+              const LineComponent = useArrow ? Arrow : KonvaLine;
               return (
                 <Group
                   key={obj.id}
@@ -473,12 +491,17 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
                   }}
                   onTransformEnd={(e) => handleObjectTransform(e, obj)}
                 >
-                  <KonvaLine
-                    points={[0, 0, obj.width, 0]}
+                  <LineComponent
+                    points={[0, 0, obj.width, obj.height]}
                     stroke={obj.props.stroke || "#f43f5e"}
                     strokeWidth={3}
                     hitStrokeWidth={12}
                     lineCap="round"
+                    {...(useArrow ? {
+                      pointerLength: 12,
+                      pointerWidth: 10,
+                      ...(obj.props.arrow === "both" ? { pointerAtBeginning: true } : {}),
+                    } : {})}
                   />
                 </Group>
               );
@@ -590,6 +613,7 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
         <ToolIconBtn icon={<IconRect />} title="Rectangle (R)" active={toolMode === "rect"} onClick={() => setToolMode("rect")} />
         <ToolIconBtn icon={<IconCircle />} title="Circle (C)" active={toolMode === "circle"} onClick={() => setToolMode("circle")} />
         <ToolIconBtn icon={<IconLine />} title="Line (L)" active={toolMode === "line"} onClick={() => setToolMode("line")} />
+        <ToolIconBtn icon={<IconArrow />} title="Arrow (A)" active={toolMode === "arrow"} onClick={() => setToolMode("arrow")} />
         <ToolIconBtn icon={<IconText />} title="Text (T)" active={toolMode === "text"} onClick={() => setToolMode("text")} />
         <div style={{ width: 28, borderTop: "1px solid #334155", margin: "4px 0" }} />
         <ToolIconBtn
@@ -707,6 +731,15 @@ function IconLine() {
   return (
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
       <line x1="5" y1="19" x2="19" y2="5"/>
+    </svg>
+  );
+}
+
+function IconArrow() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <line x1="5" y1="19" x2="17" y2="7"/>
+      <polyline points="10 7 17 7 17 14"/>
     </svg>
   );
 }
