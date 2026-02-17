@@ -28,9 +28,11 @@ VITE_PORT=5174 WRANGLER_PORT=8788 npm run dev
 npm run build            # Vite build
 npm run deploy           # Vite build + wrangler deploy (manual fallback)
 
-# D1 Migrations
-npx wrangler d1 execute collabboard-db --local --file=migrations/XXXX.sql
-npx wrangler d1 execute collabboard-db --remote --file=migrations/XXXX.sql
+# D1 Migrations (tracked via d1_migrations table)
+npx wrangler d1 migrations create collabboard-db "describe_change"  # create new
+npm run migrate              # apply pending to local + remote
+npm run migrate:local        # apply pending to local only
+npm run migrate:remote       # apply pending to remote only
 
 # Lint & Format
 npm run lint             # eslint
