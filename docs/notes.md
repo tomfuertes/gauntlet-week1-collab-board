@@ -23,7 +23,7 @@
 - [ ] Prod smoke test (2-browser)
 
 ### Blockers
-- `ANTHROPIC_API_KEY` not set as Worker secret on prod (Haiku path merged in PR #16 but key not deployed). SWOT eval criterion will fail without it.
+- ~~`ANTHROPIC_API_KEY` not set as Worker secret on prod~~ - DONE, deployed.
 - E2E CI: port fix pushed, not verified passing.
 
 ---
