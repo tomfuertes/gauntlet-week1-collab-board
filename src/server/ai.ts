@@ -10,6 +10,7 @@ type Bindings = {
   BOARD: DurableObjectNamespace;
   AI: Ai;
   AUTH_SECRET: string;
+  ANTHROPIC_API_KEY?: string;
 };
 
 const SYSTEM_PROMPT = `You are a whiteboard assistant for CollabBoard. You help users by manipulating objects on a shared collaborative whiteboard.
@@ -425,19 +426,124 @@ aiRoutes.post("/chat", async (c) => {
       try {
         emit({ type: "status", label: "Thinking..." });
 
-        const response = await runWithTools(
-          c.env.AI as any,
-          MODEL as Parameters<typeof runWithTools>[1],
-          { messages, tools },
-          { maxRecursiveToolRuns: 3, verbose: true },
-        );
+        if (c.env.ANTHROPIC_API_KEY) {
+          // --- Claude Haiku 4.5 via direct Anthropic API ---
+          const anthropicTools = tools.map((t: any) => ({
+            name: t.name,
+            description: t.description,
+            input_schema: t.parameters,
+          }));
+          const toolFns: Record<string, (args: any) => Promise<string>> = {};
+          for (const t of tools) toolFns[t.name] = (t as any).function;
 
-        const text = typeof response === "string"
-          ? response
-          : (response as { response?: string }).response ?? "I performed the requested actions on the board.";
+          // Anthropic uses system as top-level param, not a message
+          const anthropicMessages: { role: string; content: any }[] = messages
+            .filter(m => m.role !== "system")
+            .map(m => ({ role: m.role, content: m.content }));
 
-        console.debug("[ai] final response:", text.slice(0, 200));
-        emit({ type: "done", response: text });
+          const MAX_TOOL_ROUNDS = 3;
+          let toolRound = 0;
+          let finalText = "";
+
+          while (true) {
+            const ac = new AbortController();
+            const timeout = setTimeout(() => ac.abort(), 25_000);
+            let apiRes: Response;
+            try {
+              apiRes = await fetch("https://api.anthropic.com/v1/messages", {
+                method: "POST",
+                signal: ac.signal,
+                headers: {
+                  "Content-Type": "application/json",
+                  "x-api-key": c.env.ANTHROPIC_API_KEY,
+                  "anthropic-version": "2023-06-01",
+                },
+                body: JSON.stringify({
+                  model: "claude-haiku-4-5-20251001",
+                  max_tokens: 4096,
+                  system: SYSTEM_PROMPT,
+                  messages: anthropicMessages,
+                  tools: anthropicTools,
+                }),
+              });
+            } finally {
+              clearTimeout(timeout);
+            }
+
+            if (!apiRes.ok) {
+              const errBody = await apiRes.text();
+              throw new Error(`Anthropic API ${apiRes.status}: ${errBody}`);
+            }
+
+            const data: any = await apiRes.json();
+            if (!data || !Array.isArray(data.content)) {
+              console.error("[ai] unexpected Anthropic response shape:", JSON.stringify(data).slice(0, 500));
+              throw new Error(`Anthropic returned unexpected response (stop_reason=${data?.stop_reason})`);
+            }
+            console.debug(`[ai] haiku round=${toolRound} stop=${data.stop_reason} blocks=${data.content.length}`);
+
+            // Collect text from this response (append across rounds)
+            const textBlocks = data.content.filter((b: any) => b.type === "text");
+            if (textBlocks.length > 0) {
+              const roundText = textBlocks.map((b: any) => b.text).join("\n");
+              finalText = finalText ? finalText + "\n" + roundText : roundText;
+            }
+
+            const toolUses = data.content.filter((b: any) => b.type === "tool_use");
+
+            // No tool use or exhausted rounds -> done
+            if (data.stop_reason !== "tool_use" || toolUses.length === 0 || toolRound >= MAX_TOOL_ROUNDS) {
+              if (toolRound >= MAX_TOOL_ROUNDS && data.stop_reason === "tool_use") {
+                console.warn(`[ai] haiku hit MAX_TOOL_ROUNDS (${MAX_TOOL_ROUNDS}) - model still requesting tools`);
+              }
+              console.debug("[ai] haiku final:", finalText.slice(0, 200));
+              emit({ type: "done", response: finalText || "I performed the requested actions on the board." });
+              break;
+            }
+
+            toolRound++;
+
+            // Append assistant message to conversation
+            anthropicMessages.push({ role: "assistant", content: data.content });
+
+            // Execute all tool calls in parallel (traced() emits SSE events)
+            const toolResults = await Promise.all(
+              toolUses.map(async (block: any) => {
+                const fn = toolFns[block.name];
+                if (!fn) {
+                  console.error(`[ai] model called unknown tool: "${block.name}"`);
+                  return { type: "tool_result", tool_use_id: block.id, content: JSON.stringify({ error: `Unknown tool: ${block.name}` }) };
+                }
+                try {
+                  const result = await fn(block.input);
+                  return { type: "tool_result" as const, tool_use_id: block.id, content: result };
+                } catch (err) {
+                  console.error(`[ai] tool ${block.name} failed:`, err);
+                  return { type: "tool_result" as const, tool_use_id: block.id, content: JSON.stringify({ error: String(err) }), is_error: true };
+                }
+              }),
+            );
+
+            // Append tool results as user message
+            anthropicMessages.push({ role: "user", content: toolResults });
+          }
+        } else {
+          // --- Llama 3.3 70B via Workers AI (free tier fallback) ---
+          console.warn("[ai] ANTHROPIC_API_KEY not set - using Llama 3.3 70B fallback");
+          const response = await runWithTools(
+            c.env.AI as any,
+            MODEL as Parameters<typeof runWithTools>[1],
+            { messages, tools },
+            { maxRecursiveToolRuns: 3, verbose: true },
+          );
+
+          const text = typeof response === "string"
+            ? response
+            : (response as { response?: string }).response ?? "I performed the requested actions on the board.";
+
+          console.debug("[ai] llama final:", text.slice(0, 200));
+          emit({ type: "done", response: text });
+        }
       } catch (err) {
         console.error("[ai] error:", err);
         emit({ type: "error", message: `AI request failed: ${String(err)}` });
