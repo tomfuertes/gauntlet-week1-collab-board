@@ -10,6 +10,29 @@ REPO_NAME="gauntlet-week1-collab-board"
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 PARENT_DIR="$(dirname "$REPO_ROOT")"
 
+# Main repo uses 5173/8787. Each worktree gets a unique port pair.
+# Scans existing .env.worktree files to find the lowest unused offset.
+next_port_offset() {
+  local used=()
+  while IFS= read -r wt_path; do
+    local env_file="${wt_path}/.env.worktree"
+    if [[ -f "$env_file" ]]; then
+      local port
+      port=$(sed -n 's/.*VITE_PORT=\([0-9]*\).*/\1/p' "$env_file" 2>/dev/null || true)
+      if [[ -n "$port" ]]; then
+        used+=( $(( port - 5173 )) )
+      fi
+    fi
+  done < <(git worktree list --porcelain | grep '^worktree ' | sed 's/^worktree //' | grep -v "^${REPO_ROOT}$")
+
+  # Find lowest unused offset starting at 1
+  local offset=1
+  while printf '%s\n' "${used[@]}" | grep -qx "$offset" 2>/dev/null; do
+    offset=$(( offset + 1 ))
+  done
+  echo "$offset"
+}
+
 usage() {
   echo "Usage: $0 {create|remove|list} [branch]"
   echo ""
@@ -46,12 +69,63 @@ cmd_create() {
   key_path="$(git -C "$REPO_ROOT" rev-parse --path-format=absolute --git-common-dir)/git-crypt/keys/default"
   (cd "$wt_dir" && git-crypt unlock "$key_path")
 
+  # Clone node_modules from main repo via APFS copy-on-write (instant, zero extra disk)
+  if [[ -d "${REPO_ROOT}/node_modules" ]]; then
+    echo "Cloning node_modules (APFS copy-on-write)..."
+    cp -ca "${REPO_ROOT}/node_modules" "${wt_dir}/node_modules"
+  else
+    echo "Warning: no node_modules in main repo, run npm install in worktree"
+  fi
+
+  # Seed Claude Code with baseline dev permissions so worktree sessions don't re-prompt.
+  # Only includes universal dev workflow commands - session-specific WebFetch domains
+  # and one-off tools are left for per-session approval.
+  mkdir -p "${wt_dir}/.claude"
+  cat > "${wt_dir}/.claude/settings.local.json" << 'SETTINGS'
+{
+  "permissions": {
+    "allow": [
+      "Bash(git commit:*)",
+      "Bash(git push:*)",
+      "Bash(git pull:*)",
+      "Bash(git reset:*)",
+      "Bash(git-crypt:*)",
+      "Bash(git-crypt status:*)",
+      "Bash(npm install:*)",
+      "Bash(npm run:*)",
+      "Bash(npx vite build:*)",
+      "Bash(npx wrangler:*)",
+      "Bash(killport:*)",
+      "Bash(scripts/localcurl.sh:*)",
+      "Skill(playwright-cli)",
+      "Bash(playwright-cli:*)",
+      "WebFetch(domain:developers.cloudflare.com)",
+      "WebFetch(domain:registry.npmjs.org)"
+    ]
+  }
+}
+SETTINGS
+  echo "Seeded .claude/settings.local.json (baseline dev permissions)"
+
+  # Assign unique ports to avoid collisions with main (5173/8787) and other worktrees
+  local offset
+  offset=$(next_port_offset)
+  local vite_port=$(( 5173 + offset ))
+  local wrangler_port=$(( 8787 + offset ))
+
+  cat > "${wt_dir}/.env.worktree" << EOF
+export VITE_PORT=${vite_port}
+export WRANGLER_PORT=${wrangler_port}
+export WRANGLER_SEND_METRICS=false
+EOF
+  echo "Assigned ports: Vite=${vite_port}, Wrangler=${wrangler_port}"
+
   echo ""
   echo "Worktree ready. To start working:"
   echo "  cd ${wt_dir} && claude"
   echo ""
-  echo "Dev server (avoid port conflicts):"
-  echo "  VITE_PORT=5174 WRANGLER_PORT=8788 npm run dev"
+  echo "Dev server (ports auto-assigned, no conflicts):"
+  echo "  source .env.worktree && npm run dev"
 }
 
 cmd_remove() {

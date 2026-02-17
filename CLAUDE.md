@@ -64,7 +64,7 @@ playwright-cli open http://localhost:5173    # open app
 playwright-cli snapshot                       # get element refs (e.g., e3, e15)
 playwright-cli fill e5 "username"             # interact by ref
 playwright-cli click e3                       # click by ref
-playwright-cli screenshot                     # visual verification
+playwright-cli screenshot --filename=.playwright-cli/verify.png  # visual verification
 playwright-cli close                          # cleanup
 
 # Two-browser sync testing (primary validation method)
@@ -79,7 +79,7 @@ playwright-cli state-save auth-user1.json     # save auth state for reuse
 playwright-cli state-load auth-user1.json     # restore auth state
 ```
 
-Artifacts go to `.playwright-cli/` (gitignored). Snapshots are YAML accessibility trees - prefer them over screenshots for understanding page structure.
+**All artifacts MUST go to `.playwright-cli/`** (gitignored). Always use `--filename=.playwright-cli/<name>.png` for screenshots. Never save screenshots to the repo root - no manual cleanup needed. Snapshots are YAML accessibility trees - prefer them over screenshots for understanding page structure.
 
 ## Architecture
 
@@ -172,3 +172,5 @@ Hooks enforce the bookends: `SessionStart` reminds to read context, `PreCompact`
 - Feature-based organization on client side
 - Vertical slices - each increment delivers user-visible behavior
 - Never break sync - every commit should pass the 2-browser test
+- Use `npx <tool>` or `npm run <script>`, never `./node_modules/.bin/<tool>` directly (matches permission allowlist, works in worktrees)
+- Use `scripts/localcurl.sh` instead of `curl` for local API testing (localhost-only wrapper, whitelisted in worktrees)
