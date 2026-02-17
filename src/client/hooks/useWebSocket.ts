@@ -1,6 +1,8 @@
 import { useEffect, useRef, useCallback, useState } from "react";
 import type { WSClientMessage, WSServerMessage, BoardObject } from "@shared/types";
 
+export type ConnectionState = "connecting" | "connected" | "reconnecting" | "disconnected";
+
 interface CursorState {
   userId: string;
   username: string;
@@ -10,6 +12,7 @@ interface CursorState {
 
 interface UseWebSocketReturn {
   connected: boolean;
+  connectionState: ConnectionState;
   cursors: Map<string, CursorState>;
   objects: Map<string, BoardObject>;
   presence: { id: string; username: string }[];
@@ -19,72 +22,101 @@ interface UseWebSocketReturn {
   deleteObject: (id: string) => void;
 }
 
+const BACKOFF_BASE_MS = 1000;
+const BACKOFF_CAP_MS = 8000;
+
 export function useWebSocket(boardId: string): UseWebSocketReturn {
   const wsRef = useRef<WebSocket | null>(null);
-  const [connected, setConnected] = useState(false);
+  const [connectionState, setConnectionState] = useState<ConnectionState>("connecting");
   const [cursors, setCursors] = useState<Map<string, CursorState>>(new Map());
   const [objects, setObjects] = useState<Map<string, BoardObject>>(new Map());
   const [presence, setPresence] = useState<{ id: string; username: string }[]>([]);
 
+  const connected = connectionState === "connected";
+
   useEffect(() => {
-    const protocol = location.protocol === "https:" ? "wss:" : "ws:";
-    const ws = new WebSocket(`${protocol}//${location.host}/ws/board/${boardId}`);
-    wsRef.current = ws;
+    let intentionalClose = false;
+    let attempt = 0;
+    let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 
-    ws.onopen = () => setConnected(true);
-    ws.onclose = () => {
-      setConnected(false);
-      // Reconnect after 2s
-      setTimeout(() => {
-        // Effect cleanup will handle re-creating
-      }, 2000);
-    };
+    function connect() {
+      if (intentionalClose) return;
 
-    ws.onmessage = (event) => {
-      const msg = JSON.parse(event.data) as WSServerMessage;
+      const protocol = location.protocol === "https:" ? "wss:" : "ws:";
+      const ws = new WebSocket(`${protocol}//${location.host}/ws/board/${boardId}`);
+      wsRef.current = ws;
 
-      switch (msg.type) {
-        case "init":
-          setObjects(new Map(msg.objects.map((o) => [o.id, o])));
-          break;
-        case "cursor":
-          setCursors((prev) => {
-            const next = new Map(prev);
-            next.set(msg.userId, { userId: msg.userId, username: msg.username, x: msg.x, y: msg.y });
-            return next;
-          });
-          break;
-        case "presence":
-          setPresence(msg.users);
-          break;
-        case "obj:create":
-          setObjects((prev) => new Map(prev).set(msg.obj.id, msg.obj));
-          break;
-        case "obj:update":
-          setObjects((prev) => {
-            const next = new Map(prev);
-            const existing = next.get(msg.obj.id);
-            if (!existing) return prev;
-            // Server sends full object - LWW: only apply if newer
-            const merged = msg.obj as BoardObject;
-            if (merged.updatedAt && merged.updatedAt >= existing.updatedAt) {
-              next.set(msg.obj.id, merged);
-            }
-            return next;
-          });
-          break;
-        case "obj:delete":
-          setObjects((prev) => {
-            const next = new Map(prev);
-            next.delete(msg.id);
-            return next;
-          });
-          break;
-      }
-    };
+      ws.onopen = () => {
+        attempt = 0;
+        setConnectionState("connected");
+      };
+
+      ws.onclose = () => {
+        wsRef.current = null;
+        if (intentionalClose) {
+          setConnectionState("disconnected");
+          return;
+        }
+        setConnectionState("reconnecting");
+        const delay = Math.min(BACKOFF_BASE_MS * Math.pow(2, attempt), BACKOFF_CAP_MS);
+        attempt++;
+        reconnectTimer = setTimeout(connect, delay);
+      };
+
+      // onerror always fires before onclose - no reconnect logic needed here
+      ws.onerror = () => {};
+
+      ws.onmessage = (event) => {
+        const msg = JSON.parse(event.data) as WSServerMessage;
+
+        switch (msg.type) {
+          case "init":
+            setObjects(new Map(msg.objects.map((o) => [o.id, o])));
+            break;
+          case "cursor":
+            setCursors((prev) => {
+              const next = new Map(prev);
+              next.set(msg.userId, { userId: msg.userId, username: msg.username, x: msg.x, y: msg.y });
+              return next;
+            });
+            break;
+          case "presence":
+            setPresence(msg.users);
+            break;
+          case "obj:create":
+            setObjects((prev) => new Map(prev).set(msg.obj.id, msg.obj));
+            break;
+          case "obj:update":
+            setObjects((prev) => {
+              const next = new Map(prev);
+              const existing = next.get(msg.obj.id);
+              if (!existing) return prev;
+              // Server sends full object - LWW: only apply if newer
+              const merged = msg.obj as BoardObject;
+              if (merged.updatedAt && merged.updatedAt >= existing.updatedAt) {
+                next.set(msg.obj.id, merged);
+              }
+              return next;
+            });
+            break;
+          case "obj:delete":
+            setObjects((prev) => {
+              const next = new Map(prev);
+              next.delete(msg.id);
+              return next;
+            });
+            break;
+        }
+      };
+    }
+
+    setConnectionState("connecting");
+    connect();
 
     return () => {
-      ws.close();
+      intentionalClose = true;
+      if (reconnectTimer) clearTimeout(reconnectTimer);
+      wsRef.current?.close();
       wsRef.current = null;
     };
   }, [boardId]);
@@ -120,5 +152,5 @@ export function useWebSocket(boardId: string): UseWebSocketReturn {
     send({ type: "obj:delete", id });
   }, [send]);
 
-  return { connected, cursors, objects, presence, send, createObject, updateObject, deleteObject };
+  return { connected, connectionState, cursors, objects, presence, send, createObject, updateObject, deleteObject };
 }

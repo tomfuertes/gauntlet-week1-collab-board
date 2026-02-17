@@ -35,7 +35,7 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
   const trRef = useRef<Konva.Transformer>(null);
   const shapeRefs = useRef<Map<string, Konva.Group>>(new Map());
 
-  const { connected, cursors, objects, presence, send, createObject, updateObject, deleteObject } = useWebSocket(boardId);
+  const { connectionState, cursors, objects, presence, send, createObject, updateObject, deleteObject } = useWebSocket(boardId);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
@@ -224,8 +224,14 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
             fontSize: "0.875rem", padding: 0,
           }}>&larr; Boards</button>
           <span style={{ fontWeight: 600 }}>CollabBoard</span>
-          <span style={{ color: connected ? "#4ade80" : "#f87171", fontSize: "0.75rem" }}>
-            {connected ? "connected" : "disconnected"}
+          <span style={{
+            color: connectionState === "connected" ? "#4ade80"
+              : connectionState === "reconnecting" ? "#facc15"
+              : connectionState === "connecting" ? "#94a3b8"
+              : "#f87171",
+            fontSize: "0.75rem",
+          }}>
+            {connectionState === "reconnecting" ? "reconnecting\u2026" : connectionState}
           </span>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: "1rem" }}>
@@ -248,6 +254,18 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
           </button>
         </div>
       </div>
+
+      {/* Reconnecting banner */}
+      {connectionState === "reconnecting" && (
+        <div style={{
+          position: "absolute", top: 48, left: 0, right: 0, zIndex: 10,
+          background: "rgba(250, 204, 21, 0.15)", borderBottom: "1px solid rgba(250, 204, 21, 0.3)",
+          padding: "6px 1rem", textAlign: "center",
+          color: "#facc15", fontSize: "0.8rem", fontWeight: 500,
+        }}>
+          Connection lost - reconnecting{"\u2026"}
+        </div>
+      )}
 
       {/* Canvas */}
       <Stage
