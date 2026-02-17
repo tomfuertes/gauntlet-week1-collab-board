@@ -29,7 +29,7 @@
 - [x] Multi-board support (CRUD, hash routing, board list page)
 - [x] Circles, lines, connectors/arrows
 - [ ] Standalone text
-- [ ] Multi-select, copy/paste, duplicate
+- [x] Multi-select, copy/paste, duplicate
 - [x] Undo/redo (local)
 - [ ] Frames/groups
 
