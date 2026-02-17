@@ -161,6 +161,7 @@ Each object stored as separate DO Storage key (`obj:{uuid}`, ~200 bytes). LWW vi
 | Session ending or context pressure | Full context dump: done, next, blockers, impl plan | `docs/notes.md` |
 | Session starting | Read `docs/notes.md` + `CLAUDE.md` + `docs/roadmap.md`, git log, summarize status | (read only) |
 | notes.md > ~150 lines or 5+ sessions | Prune: collapse old sessions into Key Decisions table, delete implemented plans, keep only latest "What's Next" and active reference. Architecture/constraints belong in `CLAUDE.md`, not `notes.md`. | `docs/notes.md` |
+| PR review identifies tech debt | Append to Known Tech Debt section so it's visible at merge time | `docs/notes.md` |
 
 Hooks enforce the bookends: `SessionStart` reminds to read context, `PreCompact` reminds to dump context. Everything in between is your responsibility.
 
@@ -173,4 +174,5 @@ Hooks enforce the bookends: `SessionStart` reminds to read context, `PreCompact`
 - Vertical slices - each increment delivers user-visible behavior
 - Never break sync - every commit should pass the 2-browser test
 - Use `npx <tool>` or `npm run <script>`, never `./node_modules/.bin/<tool>` directly (matches permission allowlist, works in worktrees)
+- In worktrees, run git commands directly (e.g., `git commit`), not via `git -C <path>`. `git -C` bypasses the permission allowlist and every invocation requires manual approval. The worktree IS the working directory.
 - Use `scripts/localcurl.sh` instead of `curl` for local API testing (localhost-only wrapper, whitelisted in worktrees)
