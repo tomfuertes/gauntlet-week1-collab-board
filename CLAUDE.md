@@ -13,7 +13,7 @@ CollabBoard - real-time collaborative whiteboard with AI agent integration. Gaun
 - **Real-time:** Durable Objects + WebSockets (one DO per board, LWW conflict resolution)
 - **Auth:** Custom (username/password, PBKDF2 hash, D1 sessions, cookie-based)
 - **Database:** DO Storage (board objects as KV) + D1 (users/sessions/board metadata)
-- **AI:** Workers AI binding (`env.AI.run()` + `runWithTools()`) with AI Gateway upgrade path
+- **AI:** Workers AI binding (`env.AI.run()` + `runWithTools()`) - Llama 3.3 70B (free tier, weak tool-use). Haiku via AI Gateway is the upgrade path ($0.001/req, much better tool discipline).
 - **Deploy:** CF git integration auto-deploys on push to main
 
 ## Commands
@@ -156,6 +156,8 @@ Each object stored as separate DO Storage key (`obj:{uuid}`, ~200 bytes). LWW vi
 - Auth is custom (no Better Auth) - PBKDF2 hashing (Web Crypto, zero deps), D1 sessions, cookie-based. No email, no OAuth, no password reset.
 - Deploy via `git push` to main (CF git integration). Do NOT run `wrangler deploy` manually.
 - All AI calls are server-side in Worker - never expose API keys to client bundle
+- AI uses `@cloudflare/ai-utils` `runWithTools()` with `maxRecursiveToolRuns: 3` (counts LLM round-trips, not tool calls). Llama 3.3 needs explicit system prompt guardrails for tool discipline.
+- D1 migrations tracked via `d1_migrations` table. Use `npm run migrate` (not raw `wrangler d1 execute`). Create new: `wrangler d1 migrations create collabboard-db "name"`
 - Performance targets: 60fps canvas, <100ms object sync, <50ms cursor sync, 500+ objects, 5+ users
 - Two-browser test is the primary validation method throughout development
 - Hash-based routing (`#board/{id}`) - no React Router, no server-side routing needed
