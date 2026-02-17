@@ -24,6 +24,15 @@ export class Board {
       });
     }
 
+    if (path.endsWith("/clear") && request.method === "POST") {
+      const keys = await this.state.storage.list({ prefix: "obj:" });
+      await this.state.storage.delete([...keys.keys()]);
+      this.broadcast({ type: "init", objects: [] });
+      return new Response(JSON.stringify({ deleted: keys.size }), {
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
     if (path.endsWith("/mutate") && request.method === "POST") {
       const msg = (await request.json()) as WSClientMessage;
       await this.handleMutation(msg, "ai-agent");
