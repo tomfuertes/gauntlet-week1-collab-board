@@ -27,7 +27,7 @@ next_port_offset() {
 
   # Find lowest unused offset starting at 1
   local offset=1
-  while printf '%s\n' "${used[@]}" | grep -qx "$offset" 2>/dev/null; do
+  while [[ ${#used[@]} -gt 0 ]] && printf '%s\n' "${used[@]}" | grep -qx "$offset" 2>/dev/null; do
     offset=$(( offset + 1 ))
   done
   echo "$offset"
