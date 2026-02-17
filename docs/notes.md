@@ -31,6 +31,9 @@
 
 **Shipped:** Pre-search, scaffold, auth, infinite canvas, cursor sync, presence, sticky notes, rectangles, circles, lines, connectors/arrows, standalone text, frames, move/resize/rotate, multi-select, copy/paste/duplicate, undo/redo, delete, AI agent (10 tools), chat panel, multi-board CRUD, hash routing, color picker, toolbar, connection toasts, loading skeleton, empty state hint, cursor smoothing, entrance animations, confetti, gradient background, cursor trails, keyboard shortcuts, privacy policy, data deletion endpoint.
 
+**Polish backlog:**
+- Confetti/celebration effects: current burst is too small and only fires on first object. Expand to more interactions (e.g., AI completing a command, board cleared, multi-select actions). Make the burst bigger and more satisfying.
+
 **Skipped (scope cut):**
 - Fit-to-content / zoom-to-all button
 - Ambient grid parallax
