@@ -187,11 +187,11 @@ Each object stored as separate DO Storage key (`obj:{uuid}`, ~200 bytes). LWW vi
 | Trigger | Action | File |
 |---------|--------|------|
 | Any `src/` change | Update if layout, data flow, or constraints changed | `CLAUDE.md` |
-| Feature completed | Check the box | `docs/roadmap.md` |
+| Feature completed | Update Roadmap Status in notes | `docs/notes.md` |
 | Decision made (chose X over Y) | Append with date + rationale | `docs/notes.md` |
 | New dependency added | Add to Stack section | `CLAUDE.md` |
 | Session ending or context pressure | Full context dump: done, next, blockers, impl plan | `docs/notes.md` |
-| Session starting | Read `docs/notes.md` + `CLAUDE.md` + `docs/roadmap.md`, git log, summarize status | (read only) |
+| Session starting | Read `docs/notes.md` + `CLAUDE.md`, git log, summarize status | (read only) |
 | notes.md > ~150 lines or 5+ sessions | Prune: collapse old sessions into Key Decisions table, delete implemented plans, keep only latest "What's Next" and active reference. Architecture/constraints belong in `CLAUDE.md`, not `notes.md`. | `docs/notes.md` |
 | PR review identifies tech debt | Append to Known Tech Debt section so it's visible at merge time | `docs/notes.md` |
 
