@@ -11,11 +11,11 @@ REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 PARENT_DIR="$(dirname "$REPO_ROOT")"
 
 # Main repo uses 5173/8787. Each worktree gets a unique port pair.
-# Scans existing .env.worktree files to find the lowest unused offset.
+# Scans existing worktree.ports files to find the lowest unused offset.
 next_port_offset() {
   local used=()
   while IFS= read -r wt_path; do
-    local env_file="${wt_path}/.env.worktree"
+    local env_file="${wt_path}/worktree.ports"
     if [[ -f "$env_file" ]]; then
       local port
       port=$(sed -n 's/.*VITE_PORT=\([0-9]*\).*/\1/p' "$env_file" 2>/dev/null || true)
@@ -121,7 +121,7 @@ SETTINGS
   local vite_port=$(( 5173 + offset ))
   local wrangler_port=$(( 8787 + offset ))
 
-  cat > "${wt_dir}/.env.worktree" << EOF
+  cat > "${wt_dir}/worktree.ports" << EOF
 export VITE_PORT=${vite_port}
 export WRANGLER_PORT=${wrangler_port}
 export WRANGLER_SEND_METRICS=false
@@ -133,7 +133,7 @@ EOF
   echo "  cd ${wt_dir} && claude"
   echo ""
   echo "Dev server (ports auto-assigned, no conflicts):"
-  echo "  source .env.worktree && npm run dev"
+  echo "  source worktree.ports && npm run dev"
 }
 
 cmd_remove() {

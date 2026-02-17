@@ -52,7 +52,11 @@ scripts/worktree.sh remove <branch>    # remove worktree + delete feat/<branch>
 scripts/worktree.sh list               # list active worktrees
 ```
 
-When working in a worktree, use absolute paths for file tools and `git -C <abs-path>` for git commands (since `cd` doesn't persist between Bash calls).
+When printing worktree startup commands for the user, pass the task prompt directly to claude:
+```bash
+cd /path/to/worktree && claude "your task prompt here"
+```
+This launches Claude with the prompt pre-loaded so the user just hits enter. Always include a specific, actionable prompt describing the feature to build. **Always start worktree prompts with "Enter plan mode first."** to force planning before implementation.
 
 ## Browser Testing (playwright-cli)
 

@@ -8,3 +8,4 @@ dist/
 # Local overrides (e.g., settings.local.json for machine-specific config)
 *.local.*
 .playwright-cli/
+.claude-prompt
