@@ -14,7 +14,9 @@
     "format": "prettier --write \"src/**/*.{ts,tsx}\"",
     "migrate:local": "wrangler d1 migrations apply collabboard-db --local",
     "migrate:remote": "wrangler d1 migrations apply collabboard-db --remote",
-    "migrate": "npm run migrate:local && npm run migrate:remote"
+    "migrate": "npm run migrate:local && npm run migrate:remote",
+    "test:e2e": "npx playwright test",
+    "test:e2e:ui": "npx playwright test --ui"
   },
   "dependencies": {
     "@cloudflare/ai-utils": "^1.0.1",
@@ -26,6 +28,7 @@
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20250214.0",
+    "@playwright/test": "^1.58.2",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "@typescript-eslint/eslint-plugin": "^8.56.0",
