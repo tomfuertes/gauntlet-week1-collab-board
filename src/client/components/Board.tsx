@@ -349,7 +349,7 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
     }
     tr.nodes([]);
     tr.getLayer()?.batchDraw();
-  }, [selectedIds, editingId]);
+  }, [selectedIds, editingId, objects]);
 
   // Shared click handler for all shapes (supports shift+click multi-select)
   const handleShapeClick = useCallback((e: KonvaEventObject<MouseEvent>, id: string) => {
@@ -500,30 +500,39 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
     }
   }, []);
 
-  // Zoom toward cursor on wheel (reads scale/stagePos from refs for stability)
+  // Wheel: ctrl/meta+scroll (or pinch) = zoom toward cursor, plain scroll = pan
   const handleWheel = useCallback((e: KonvaEventObject<WheelEvent>) => {
     e.evt.preventDefault();
     const stage = stageRef.current;
     if (!stage) return;
 
-    const oldScale = scaleRef.current;
-    const pointer = stage.getPointerPosition();
-    if (!pointer) return;
+    if (e.evt.ctrlKey || e.evt.metaKey) {
+      // Zoom toward cursor (pinch gestures fire as ctrl+wheel in browsers)
+      const oldScale = scaleRef.current;
+      const pointer = stage.getPointerPosition();
+      if (!pointer) return;
 
-    const direction = e.evt.deltaY > 0 ? -1 : 1;
-    const factor = 1.08;
-    const newScale = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, direction > 0 ? oldScale * factor : oldScale / factor));
+      const direction = e.evt.deltaY > 0 ? -1 : 1;
+      const factor = 1.08;
+      const newScale = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, direction > 0 ? oldScale * factor : oldScale / factor));
 
-    const mousePointTo = {
-      x: (pointer.x - stagePosRef.current.x) / oldScale,
-      y: (pointer.y - stagePosRef.current.y) / oldScale,
-    };
+      const mousePointTo = {
+        x: (pointer.x - stagePosRef.current.x) / oldScale,
+        y: (pointer.y - stagePosRef.current.y) / oldScale,
+      };
 
-    setScale(newScale);
-    setStagePos({
-      x: pointer.x - mousePointTo.x * newScale,
-      y: pointer.y - mousePointTo.y * newScale,
-    });
+      setScale(newScale);
+      setStagePos({
+        x: pointer.x - mousePointTo.x * newScale,
+        y: pointer.y - mousePointTo.y * newScale,
+      });
+    } else {
+      // Pan - works in all modes including select
+      setStagePos({
+        x: stagePosRef.current.x - e.evt.deltaX,
+        y: stagePosRef.current.y - e.evt.deltaY,
+      });
+    }
   }, []);
 
   const handleDragEnd = useCallback((e: KonvaEventObject<DragEvent>) => {
@@ -548,6 +557,11 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
       width: isLine ? Math.round(obj.width * sx) : Math.max(20, Math.round(obj.width * sx)),
       height: isLine ? Math.round(obj.height * sy) : Math.max(20, Math.round(obj.height * sy)),
       rotation: node.rotation(),
+    });
+    // Re-sync Transformer bounding box after scale reset
+    requestAnimationFrame(() => {
+      trRef.current?.forceUpdate();
+      trRef.current?.getLayer()?.batchDraw();
     });
   }, [updateObject]);
 
@@ -943,6 +957,8 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
                 outline: "none",
                 zIndex: 20,
                 boxSizing: "border-box" as const,
+                transform: `rotate(${obj.rotation || 0}deg)`,
+                transformOrigin: "0 0",
               }}
               onBlur={(e) => {
                 updateObject({ id: editingId, props: { ...obj.props, text: e.target.value } });
@@ -979,6 +995,8 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
               zIndex: 20,
               boxSizing: "border-box" as const,
               fontFamily: "inherit",
+              transform: `rotate(${obj.rotation || 0}deg)`,
+              transformOrigin: "0 0",
             }}
             onBlur={(e) => {
               updateObject({ id: editingId, props: { ...obj.props, text: e.target.value } });
