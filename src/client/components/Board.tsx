@@ -19,7 +19,7 @@ const MIN_ZOOM = 0.1;
 const MAX_ZOOM = 5;
 const CURSOR_THROTTLE_MS = 33; // ~30fps
 
-type ToolMode = "select" | "sticky" | "rect" | "circle" | "line";
+type ToolMode = "select" | "sticky" | "rect" | "circle" | "line" | "text";
 
 const COLOR_PRESETS = [
   "#fbbf24", // amber (sticky default)
@@ -76,6 +76,7 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
       if (e.key === "r" || e.key === "R") setToolMode("rect");
       if (e.key === "c" || e.key === "C") setToolMode("circle");
       if (e.key === "l" || e.key === "L") setToolMode("line");
+      if (e.key === "t" || e.key === "T") setToolMode("text");
       if (e.key === "/") { e.preventDefault(); setChatOpen((o) => !o); }
       if ((e.key === "Delete" || e.key === "Backspace") && selectedId && !editingId) {
         e.preventDefault();
@@ -245,6 +246,21 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
         createdBy: user.id,
         updatedAt: Date.now(),
       });
+    } else if (toolMode === "text") {
+      const id = crypto.randomUUID();
+      createObject({
+        id,
+        type: "text",
+        x: worldX,
+        y: worldY,
+        width: 200,
+        height: 40,
+        rotation: 0,
+        props: { text: "", color: "#ffffff" },
+        createdBy: user.id,
+        updatedAt: Date.now(),
+      });
+      setEditingId(id);
     }
   }, [stagePos, scale, createObject, user.id, toolMode]);
 
@@ -467,6 +483,35 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
                 </Group>
               );
             }
+            if (obj.type === "text") {
+              return (
+                <Group
+                  key={obj.id}
+                  ref={setShapeRef(obj.id)}
+                  x={obj.x}
+                  y={obj.y}
+                  rotation={obj.rotation}
+                  draggable
+                  onClick={(e) => { e.cancelBubble = true; setSelectedId(obj.id); }}
+                  onDragEnd={(e) => {
+                    updateObject({ id: obj.id, x: e.target.x(), y: e.target.y() });
+                  }}
+                  onDblClick={(e) => {
+                    e.cancelBubble = true;
+                    setSelectedId(null);
+                    setEditingId(obj.id);
+                  }}
+                  onTransformEnd={(e) => handleObjectTransform(e, obj)}
+                >
+                  <Text
+                    text={obj.props.text || ""}
+                    fontSize={16}
+                    fill={obj.props.color || "#ffffff"}
+                    width={obj.width}
+                  />
+                </Group>
+              );
+            }
             return null;
           })}
           {/* Selection transformer */}
@@ -496,6 +541,7 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
       {editingId && (() => {
         const obj = objects.get(editingId);
         if (!obj) return null;
+        const isText = obj.type === "text";
         return (
           <textarea
             autoFocus
@@ -506,12 +552,12 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
               top: obj.y * scale + stagePos.y,
               width: obj.width * scale,
               height: obj.height * scale,
-              background: obj.props.color || "#fbbf24",
-              border: "2px solid #f59e0b",
-              borderRadius: 8 * scale,
-              padding: 10 * scale,
-              fontSize: 14 * scale,
-              color: "#1a1a2e",
+              background: isText ? "transparent" : (obj.props.color || "#fbbf24"),
+              border: isText ? "2px solid #60a5fa" : "2px solid #f59e0b",
+              borderRadius: isText ? 4 * scale : 8 * scale,
+              padding: isText ? 4 * scale : 10 * scale,
+              fontSize: isText ? 16 * scale : 14 * scale,
+              color: isText ? (obj.props.color || "#ffffff") : "#1a1a2e",
               resize: "none",
               outline: "none",
               zIndex: 20,
@@ -544,6 +590,7 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
         <ToolIconBtn icon={<IconRect />} title="Rectangle (R)" active={toolMode === "rect"} onClick={() => setToolMode("rect")} />
         <ToolIconBtn icon={<IconCircle />} title="Circle (C)" active={toolMode === "circle"} onClick={() => setToolMode("circle")} />
         <ToolIconBtn icon={<IconLine />} title="Line (L)" active={toolMode === "line"} onClick={() => setToolMode("line")} />
+        <ToolIconBtn icon={<IconText />} title="Text (T)" active={toolMode === "text"} onClick={() => setToolMode("text")} />
         <div style={{ width: 28, borderTop: "1px solid #334155", margin: "4px 0" }} />
         <ToolIconBtn
           icon={<IconDelete />}
@@ -564,7 +611,7 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
       {selectedId && (() => {
         const selectedObj = objects.get(selectedId);
         if (!selectedObj) return null;
-        const propKey = selectedObj.type === "sticky" ? "color" : selectedObj.type === "line" ? "stroke" : "fill";
+        const propKey = selectedObj.type === "sticky" || selectedObj.type === "text" ? "color" : selectedObj.type === "line" ? "stroke" : "fill";
         const currentColor = selectedObj.props[propKey];
         return (
           <div style={{
@@ -580,7 +627,7 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
                 onClick={() => {
                   const freshObj = objects.get(selectedId);
                   if (!freshObj) return;
-                  const key = freshObj.type === "sticky" ? "color" : "fill";
+                  const key = freshObj.type === "sticky" || freshObj.type === "text" ? "color" : freshObj.type === "line" ? "stroke" : "fill";
                   updateObject({ id: selectedId, props: { ...freshObj.props, [key]: color } });
                 }}
                 style={{
@@ -660,6 +707,16 @@ function IconLine() {
   return (
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
       <line x1="5" y1="19" x2="19" y2="5"/>
+    </svg>
+  );
+}
+
+function IconText() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <polyline points="4 7 4 4 20 4 20 7"/>
+      <line x1="9" y1="20" x2="15" y2="20"/>
+      <line x1="12" y1="4" x2="12" y2="20"/>
     </svg>
   );
 }

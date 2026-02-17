@@ -21,8 +21,9 @@ IMPORTANT RULES:
 
 When creating multiple objects, spread them out so they don't overlap. Use a grid layout with ~220px spacing.
 
-Available shapes: sticky notes (text), rectangles (fill+stroke), circles (fill+stroke), and lines (stroke only).
+Available shapes: sticky notes (text), standalone text, rectangles (fill+stroke), circles (fill+stroke), and lines (stroke only).
 Available colors for stickies: #fbbf24 (yellow, default), #f87171 (red), #4ade80 (green), #60a5fa (blue), #c084fc (purple), #fb923c (orange).
+Available colors for text: any hex color (default: #ffffff white).
 Available colors for rectangles and circles: fill any hex color, stroke should be a slightly darker variant.
 Available colors for lines: stroke any hex color (no fill). Default: #94a3b8.
 
@@ -110,6 +111,41 @@ aiRoutes.post("/chat", async (c) => {
               headers: { "Content-Type": "application/json" },
             }));
             return JSON.stringify({ created: id, type: "sticky", text: args.text });
+          }),
+        },
+        {
+          name: "create_text",
+          description: "Create standalone text on the whiteboard (no background, just text)",
+          parameters: {
+            type: "object" as const,
+            properties: {
+              text: { type: "string" as const, description: "The text content" },
+              x: { type: "number" as const, description: "X position on the canvas (default: random 100-800)" },
+              y: { type: "number" as const, description: "Y position on the canvas (default: random 100-600)" },
+              color: { type: "string" as const, description: "Text color hex (default: #ffffff white)" },
+            },
+            required: ["text"] as const,
+          },
+          function: traced("create_text", "Creating text", async (args: { text: string; x?: number; y?: number; color?: string }) => {
+            const id = crypto.randomUUID();
+            const obj = {
+              id,
+              type: "text" as const,
+              x: args.x ?? 100 + Math.random() * 700,
+              y: Math.max(60, args.y ?? 100 + Math.random() * 500),
+              width: 200,
+              height: 40,
+              rotation: 0,
+              props: { text: args.text, color: args.color || "#ffffff" },
+              createdBy: "ai-agent",
+              updatedAt: Date.now(),
+            };
+            await stub.fetch(new Request("http://do/mutate", {
+              method: "POST",
+              body: JSON.stringify({ type: "obj:create", obj }),
+              headers: { "Content-Type": "application/json" },
+            }));
+            return JSON.stringify({ created: id, type: "text", text: args.text });
           }),
         },
         {
