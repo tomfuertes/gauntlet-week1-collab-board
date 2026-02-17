@@ -4,6 +4,7 @@ import type { KonvaEventObject } from "konva/lib/Node";
 import type Konva from "konva";
 import type { AuthUser } from "../App";
 import { useWebSocket, type ConnectionState } from "../hooks/useWebSocket";
+import { useUndoRedo } from "../hooks/useUndoRedo";
 
 const CONNECTION_COLORS: Record<ConnectionState, string> = {
   connected: "#4ade80",
@@ -42,7 +43,8 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
   const trRef = useRef<Konva.Transformer>(null);
   const shapeRefs = useRef<Map<string, Konva.Group>>(new Map());
 
-  const { connectionState, cursors, objects, presence, send, createObject, updateObject, deleteObject } = useWebSocket(boardId);
+  const { connectionState, cursors, objects, presence, send, createObject: wsCreate, updateObject: wsUpdate, deleteObject: wsDelete } = useWebSocket(boardId);
+  const { createObject, updateObject, deleteObject, undo, redo } = useUndoRedo(objects, wsCreate, wsUpdate, wsDelete);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
@@ -64,6 +66,9 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
       // Don't intercept when typing in an input/textarea
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
       if (e.key === "Escape") { setSelectedId(null); return; }
+      if ((e.metaKey || e.ctrlKey) && e.key === "z" && !e.shiftKey) { e.preventDefault(); undo(); return; }
+      if ((e.metaKey || e.ctrlKey) && e.key === "z" && e.shiftKey) { e.preventDefault(); redo(); return; }
+      if ((e.metaKey || e.ctrlKey) && e.key === "y") { e.preventDefault(); redo(); return; }
       if (e.key === "s" || e.key === "S") setToolMode("sticky");
       if (e.key === "r" || e.key === "R") setToolMode("rect");
       if (e.key === "/") { e.preventDefault(); setChatOpen((o) => !o); }
@@ -75,7 +80,7 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [selectedId, editingId, deleteObject]);
+  }, [selectedId, editingId, deleteObject, undo, redo]);
 
   // Sync Transformer with selected node
   useEffect(() => {
