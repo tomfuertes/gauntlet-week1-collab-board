@@ -112,7 +112,10 @@ cmd_create() {
       "Bash(playwright-cli:*)",
       "WebFetch(domain:developers.cloudflare.com)",
       "WebFetch(domain:registry.npmjs.org)",
-      "Bash(npx playwright:*)"
+      "Bash(npx playwright:*)",
+      "WebFetch(domain:api.cloudflare.com)",
+      "WebFetch(domain:collabboard.thomas-fuertes.workers.dev)",
+      "WebFetch(domain:*.thomas-fuertes.workers.dev)"
     ]
   }
 }
