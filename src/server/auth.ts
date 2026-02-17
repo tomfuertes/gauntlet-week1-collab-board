@@ -103,8 +103,8 @@ auth.post("/auth/signup", async (c) => {
     return c.json({ error: "Username must be 2-30 characters" }, 400);
   }
 
-  if (body.password.length < 4) {
-    return c.json({ error: "Password must be at least 4 characters" }, 400);
+  if (body.password.length < 8) {
+    return c.json({ error: "Password must be at least 8 characters" }, 400);
   }
 
   // Check if username taken

@@ -77,13 +77,20 @@ app.delete("/api/boards/:boardId", async (c) => {
   return c.json({ deleted: true });
 });
 
-// Clear board (auth-protected)
+// Clear board (auth-protected, ownership check)
 app.post("/api/board/:boardId/clear", async (c) => {
   const sessionId = getCookie(c, "session");
   const user = await getSessionUser(c.env.DB, sessionId);
   if (!user) return c.text("Unauthorized", 401);
 
-  const doId = c.env.BOARD.idFromName(c.req.param("boardId"));
+  const boardId = c.req.param("boardId");
+
+  // Ownership check - match DELETE route pattern
+  const board = await c.env.DB.prepare("SELECT created_by FROM boards WHERE id = ?").bind(boardId).first();
+  if (!board) return c.text("Not found", 404);
+  if (board.created_by !== user.id) return c.text("Forbidden", 403);
+
+  const doId = c.env.BOARD.idFromName(boardId);
   const stub = c.env.BOARD.get(doId);
   const res = await stub.fetch(new Request("http://do/clear", { method: "POST" }));
   return new Response(res.body, { headers: { "Content-Type": "application/json" } });

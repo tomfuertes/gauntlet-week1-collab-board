@@ -75,7 +75,12 @@ export class Board {
     const meta = ws.deserializeAttachment() as ConnectionMeta | null;
     if (!meta) return;
 
-    const msg = JSON.parse(raw as string) as WSClientMessage;
+    let msg: WSClientMessage;
+    try {
+      msg = JSON.parse(raw as string) as WSClientMessage;
+    } catch {
+      return; // Ignore malformed messages
+    }
 
     if (msg.type === "cursor") {
       this.broadcast(
@@ -113,8 +118,8 @@ export class Board {
     }
   }
 
-  async webSocketClose(ws: WebSocket) {
-    ws.close();
+  async webSocketClose(_ws: WebSocket) {
+    // ws is already closed when this handler fires - no need to call ws.close()
     const users = this.getPresenceList();
     this.broadcast({ type: "presence", users });
   }
@@ -129,10 +134,6 @@ export class Board {
 
   private getWebSockets(): WebSocket[] {
     return this.state.getWebSockets();
-  }
-
-  private getMeta(ws: WebSocket): ConnectionMeta | null {
-    return ws.deserializeAttachment() as ConnectionMeta | null;
   }
 
   private broadcast(msg: WSServerMessage, exclude?: WebSocket) {
@@ -157,7 +158,7 @@ export class Board {
     const seen = new Set<string>();
     const users: { id: string; username: string }[] = [];
     for (const ws of this.getWebSockets()) {
-      const meta = this.getMeta(ws);
+      const meta = ws.deserializeAttachment() as ConnectionMeta | null;
       if (meta && !seen.has(meta.userId)) {
         seen.add(meta.userId);
         users.push({ id: meta.userId, username: meta.username });

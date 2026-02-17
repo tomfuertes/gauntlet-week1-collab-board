@@ -12,12 +12,12 @@
 5. **Spec re-read** - freehand drawing NOT required. AI tool schema gaps identified.
 
 ### What's Next (read `docs/audit.md` for full tier plan)
-**Tier 1 - Trivial fixes (~30min):**
-- `/api/board/:boardId/clear` missing ownership check (1 line - match DELETE route pattern)
-- `JSON.parse` without try/catch in DO `webSocketMessage` (5 lines)
-- Password min length 4 -> 8 (1 line in `auth.ts:106`)
-- Remove dead `getMeta` method in `board.ts`
-- Remove redundant `ws.close()` in `webSocketClose`
+**Tier 1 - Trivial fixes (DONE):**
+- [x] `/api/board/:boardId/clear` ownership check added (matches DELETE route pattern)
+- [x] `JSON.parse` try/catch in DO `webSocketMessage`
+- [x] Password min length 4 -> 8
+- [x] `getMeta` inlined into `getPresenceList` (was used, not dead - audit was wrong)
+- [x] Redundant `ws.close()` removed in `webSocketClose`
 
 **Tier 2 - Performance (~5hr, biggest demo impact):**
 - Grid rendering: 2000+ `<Rect>` nodes rebuilt every frame. Use `useMemo` or custom Konva `sceneFunc`.
@@ -80,10 +80,10 @@
 ## Known Tech Debt
 
 **From audit (see `docs/audit.md` for full details):**
-- `/clear` endpoint missing ownership check (CRITICAL, 1-line fix)
+- ~~`/clear` endpoint missing ownership check~~ (FIXED)
 - Board delete doesn't close live WS connections
 - No rate limiting on auth + AI endpoints
-- No WS message validation (JSON.parse, size limit, field validation)
+- ~~No WS message validation (JSON.parse)~~ (FIXED - try/catch added). Size limit + field validation still open.
 - AI `update_object` missing `width`/`height` params (resizeObject broken)
 
 **Pre-existing:**
