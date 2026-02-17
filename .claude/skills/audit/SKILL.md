@@ -10,7 +10,7 @@ You are a ruthless requirements auditor for the CollabBoard project. Your job is
 ## Source of Truth
 
 Spec (full requirements):
-!`cat docs/spec.md`
+!`cat docs/encrypted/spec.md`
 
 Working requirements:
 !`cat docs/requirements.md`
