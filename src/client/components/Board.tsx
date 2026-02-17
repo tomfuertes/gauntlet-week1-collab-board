@@ -3,7 +3,14 @@ import { Stage, Layer, Rect, Text, Group, Transformer } from "react-konva";
 import type { KonvaEventObject } from "konva/lib/Node";
 import type Konva from "konva";
 import type { AuthUser } from "../App";
-import { useWebSocket } from "../hooks/useWebSocket";
+import { useWebSocket, type ConnectionState } from "../hooks/useWebSocket";
+
+const CONNECTION_COLORS: Record<ConnectionState, string> = {
+  connected: "#4ade80",
+  reconnecting: "#facc15",
+  connecting: "#94a3b8",
+  disconnected: "#f87171",
+};
 import { Cursors } from "./Cursors";
 import { ChatPanel } from "./ChatPanel";
 
@@ -224,13 +231,7 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
             fontSize: "0.875rem", padding: 0,
           }}>&larr; Boards</button>
           <span style={{ fontWeight: 600 }}>CollabBoard</span>
-          <span style={{
-            color: connectionState === "connected" ? "#4ade80"
-              : connectionState === "reconnecting" ? "#facc15"
-              : connectionState === "connecting" ? "#94a3b8"
-              : "#f87171",
-            fontSize: "0.75rem",
-          }}>
+          <span style={{ color: CONNECTION_COLORS[connectionState], fontSize: "0.75rem" }}>
             {connectionState === "reconnecting" ? "reconnecting\u2026" : connectionState}
           </span>
         </div>

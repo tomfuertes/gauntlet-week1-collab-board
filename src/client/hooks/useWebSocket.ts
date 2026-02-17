@@ -11,7 +11,6 @@ interface CursorState {
 }
 
 interface UseWebSocketReturn {
-  connected: boolean;
   connectionState: ConnectionState;
   cursors: Map<string, CursorState>;
   objects: Map<string, BoardObject>;
@@ -32,8 +31,6 @@ export function useWebSocket(boardId: string): UseWebSocketReturn {
   const [objects, setObjects] = useState<Map<string, BoardObject>>(new Map());
   const [presence, setPresence] = useState<{ id: string; username: string }[]>([]);
 
-  const connected = connectionState === "connected";
-
   useEffect(() => {
     let intentionalClose = false;
     let attempt = 0;
@@ -51,27 +48,38 @@ export function useWebSocket(boardId: string): UseWebSocketReturn {
         setConnectionState("connected");
       };
 
-      ws.onclose = () => {
+      ws.onclose = (event: CloseEvent) => {
         wsRef.current = null;
         if (intentionalClose) {
           setConnectionState("disconnected");
           return;
         }
+        console.warn(`[WS] closed: code=${event.code} reason="${event.reason}" clean=${event.wasClean}`);
         setConnectionState("reconnecting");
-        const delay = Math.min(BACKOFF_BASE_MS * Math.pow(2, attempt), BACKOFF_CAP_MS);
+        const base = Math.min(BACKOFF_BASE_MS * 2 ** attempt, BACKOFF_CAP_MS);
+        const delay = base * (0.5 + Math.random() * 0.5); // jitter to avoid thundering herd
         attempt++;
         reconnectTimer = setTimeout(connect, delay);
       };
 
-      // onerror always fires before onclose - no reconnect logic needed here
-      ws.onerror = () => {};
+      // When onerror fires, onclose always follows - reconnect logic lives in onclose
+      ws.onerror = () => {
+        console.error(`[WS] error on board ${boardId} (attempt ${attempt})`);
+      };
 
       ws.onmessage = (event) => {
-        const msg = JSON.parse(event.data) as WSServerMessage;
+        let msg: WSServerMessage;
+        try {
+          msg = JSON.parse(event.data) as WSServerMessage;
+        } catch {
+          console.error("[WS] failed to parse message:", event.data);
+          return;
+        }
 
         switch (msg.type) {
           case "init":
             setObjects(new Map(msg.objects.map((o) => [o.id, o])));
+            setCursors(new Map());
             break;
           case "cursor":
             setCursors((prev) => {
@@ -91,7 +99,7 @@ export function useWebSocket(boardId: string): UseWebSocketReturn {
               const next = new Map(prev);
               const existing = next.get(msg.obj.id);
               if (!existing) return prev;
-              // Server sends full object - LWW: only apply if newer
+              // Server sends full object - LWW: apply if same age or newer
               const merged = msg.obj as BoardObject;
               if (merged.updatedAt && merged.updatedAt >= existing.updatedAt) {
                 next.set(msg.obj.id, merged);
@@ -152,5 +160,5 @@ export function useWebSocket(boardId: string): UseWebSocketReturn {
     send({ type: "obj:delete", id });
   }, [send]);
 
-  return { connected, connectionState, cursors, objects, presence, send, createObject, updateObject, deleteObject };
+  return { connectionState, cursors, objects, presence, send, createObject, updateObject, deleteObject };
 }
