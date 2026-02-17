@@ -26,3 +26,6 @@ new_sqlite_classes = ["Board"]
 binding = "AI"
 
 # AUTH_SECRET set via: wrangler secret put AUTH_SECRET
+# ANTHROPIC_API_KEY set via: wrangler secret put ANTHROPIC_API_KEY
+#   Enables Claude Haiku 4.5 for AI chat (falls back to Llama 3.3 if unset)
+#   For local dev: add to .dev.vars file
