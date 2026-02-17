@@ -4,15 +4,18 @@
 
 ## Development Costs
 
-<!-- TODO: Pull actuals from Claude Code dashboard + Cursor usage -->
+8 sessions over 12 hours (Feb 16-17, 2026). Claude Code handled architecture, implementation, testing, and docs. Cursor used for spot edits.
 
 | Category | Cost | Notes |
 |----------|------|-------|
-| Claude Code (Anthropic API) | $TODO | ~5 sessions, Feb 16 |
-| Cursor (API usage) | $TODO | |
+| Claude Code (Max plan) | ~$200/mo | Flat subscription, heavy Opus usage across 8 sessions |
+| Cursor (Pro plan) | ~$20/mo | Secondary tool, light usage for focused edits |
 | Workers AI (Llama 3.3 70B) | $0 | Free tier: 10k neurons/day |
-| Cloudflare (Workers, D1, DOs) | $0 | Free plan |
-| **Total dev cost** | **$TODO** | |
+| Cloudflare (Workers, D1, DOs) | $0 | Free plan covers dev + prod at current scale |
+| Claude Haiku 4.5 (AI Gateway) | <$1 | ~200 test requests during development |
+| **Total dev cost** | **~$221** | **Amortized to this project's share of monthly subscriptions** |
+
+> **Note:** Claude Code Max is a monthly subscription, not per-project. Actual marginal cost for this project is near $0 if the subscription is used for other work too. The $221 represents full subscription cost during the build week.
 
 ## Production Cost Model
 
@@ -29,7 +32,7 @@
 
 ### AI Model Costs If Upgrading
 
-See `docs/notes.md` for full model comparison table. Summary per AI chat request (~500 input + 200 output tokens):
+Per AI chat request (~500 input + 200 output tokens):
 
 | Model | Per request | Monthly @ 1K users (50 req/user/mo) |
 |-------|-----------|-------------------------------------|
@@ -38,8 +41,6 @@ See `docs/notes.md` for full model comparison table. Summary per AI chat request
 | Claude Haiku 4.5 | $0.0015 | $75.00 |
 
 ### Monthly Cost at Scale
-
-<!-- TODO: Fill with actual projections based on usage patterns -->
 
 Assumptions: 50 AI requests/user/month, 20 board objects/user, 5 sessions/user/month
 
@@ -55,9 +56,19 @@ Assumptions: 50 AI requests/user/month, 20 board objects/user, 5 sessions/user/m
 
 ## Unit Economics
 
-<!-- TODO: Fill if pursuing SaaS framing -->
-
 At GPT-5 Mini pricing ($0.00053/AI request):
 - **Cost per user per month**: ~$0.027 (50 AI requests)
 - **Break-even at $5/mo plan**: 185x margin on AI costs
 - **Primary cost driver at scale**: AI model, not infrastructure
+
+### Development ROI
+
+| Metric | Value |
+|--------|-------|
+| Total dev time | ~12 hours (1 person + AI) |
+| Equivalent manual effort (estimate) | ~60-80 hours |
+| AI acceleration factor | ~5-7x |
+| Features shipped | 25+ (auth, canvas, real-time sync, AI agent, 7 shape types, multi-board, etc.) |
+| Cost per feature | ~$9 (amortized subscription) |
+
+The AI-first approach traded subscription dollars for engineer-hours. At a conservative 5x acceleration, the $221 in tooling replaced ~$3,000-5,000 in equivalent contractor time.
