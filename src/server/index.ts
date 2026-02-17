@@ -28,6 +28,18 @@ app.route("/", auth);
 // Mount AI routes
 app.route("/api/ai", aiRoutes);
 
+// Clear board (auth-protected)
+app.post("/api/board/:boardId/clear", async (c) => {
+  const sessionId = getCookie(c, "session");
+  const user = await getSessionUser(c.env.DB, sessionId);
+  if (!user) return c.text("Unauthorized", 401);
+
+  const doId = c.env.BOARD.idFromName(c.req.param("boardId"));
+  const stub = c.env.BOARD.get(doId);
+  const res = await stub.fetch(new Request("http://do/clear", { method: "POST" }));
+  return new Response(res.body, { headers: { "Content-Type": "application/json" } });
+});
+
 // WebSocket upgrade - authenticate then forward to Board DO
 app.get("/ws/board/:boardId", async (c) => {
   const upgradeHeader = c.req.header("Upgrade");
