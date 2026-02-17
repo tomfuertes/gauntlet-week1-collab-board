@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { Board } from "./components/Board";
+import { BoardList } from "./components/BoardList";
 import { AuthForm } from "./components/AuthForm";
 
 export interface AuthUser {
@@ -8,9 +9,22 @@ export interface AuthUser {
   displayName: string;
 }
 
+function parseBoardId(): string | null {
+  const match = location.hash.match(/^#board\/(.+)$/);
+  return match ? match[1] : null;
+}
+
 export function App() {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [loading, setLoading] = useState(true);
+  const [boardId, setBoardId] = useState<string | null>(parseBoardId);
+
+  // Sync boardId with hash changes (back/forward navigation)
+  useEffect(() => {
+    const onHashChange = () => setBoardId(parseBoardId());
+    window.addEventListener("hashchange", onHashChange);
+    return () => window.removeEventListener("hashchange", onHashChange);
+  }, []);
 
   useEffect(() => {
     fetch("/auth/me")
@@ -32,5 +46,23 @@ export function App() {
     return <AuthForm onAuth={setUser} />;
   }
 
-  return <Board user={user} onLogout={() => setUser(null)} />;
+  if (boardId) {
+    return (
+      <Board
+        key={boardId}
+        user={user}
+        boardId={boardId}
+        onLogout={() => setUser(null)}
+        onBack={() => { location.hash = ""; setBoardId(null); }}
+      />
+    );
+  }
+
+  return (
+    <BoardList
+      user={user}
+      onSelectBoard={(id) => { location.hash = `board/${id}`; setBoardId(id); }}
+      onLogout={() => setUser(null)}
+    />
+  );
 }
