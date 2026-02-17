@@ -1,1 +1,2 @@
-docs/** filter=git-crypt diff=git-crypt
+docs/spec.md filter=git-crypt diff=git-crypt
+docs/pre-search.md filter=git-crypt diff=git-crypt
