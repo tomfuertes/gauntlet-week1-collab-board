@@ -1,5 +1,5 @@
 import React, { useState, useRef, useCallback, useEffect } from "react";
-import { Stage, Layer, Rect, Text, Group, Transformer } from "react-konva";
+import { Stage, Layer, Rect, Text, Group, Transformer, Ellipse, Line as KonvaLine } from "react-konva";
 import type { KonvaEventObject } from "konva/lib/Node";
 import type Konva from "konva";
 import type { AuthUser } from "../App";
@@ -19,7 +19,7 @@ const MIN_ZOOM = 0.1;
 const MAX_ZOOM = 5;
 const CURSOR_THROTTLE_MS = 33; // ~30fps
 
-type ToolMode = "sticky" | "rect";
+type ToolMode = "select" | "sticky" | "rect" | "circle" | "line";
 
 const COLOR_PRESETS = [
   "#fbbf24", // amber (sticky default)
@@ -32,13 +32,15 @@ const COLOR_PRESETS = [
   "#94a3b8", // slate
 ];
 
+const SIDEBAR_W = 48;
+
 export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boardId: string; onLogout: () => void; onBack: () => void }) {
   const stageRef = useRef<Konva.Stage>(null);
   const [stagePos, setStagePos] = useState({ x: 0, y: 0 });
   const [scale, setScale] = useState(1);
   const [size, setSize] = useState({ width: window.innerWidth, height: window.innerHeight });
   const lastCursorSend = useRef(0);
-  const [toolMode, setToolMode] = useState<ToolMode>("sticky");
+  const [toolMode, setToolMode] = useState<ToolMode>("select");
   const [chatOpen, setChatOpen] = useState(false);
   const trRef = useRef<Konva.Transformer>(null);
   const shapeRefs = useRef<Map<string, Konva.Group>>(new Map());
@@ -69,8 +71,11 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
       if ((e.metaKey || e.ctrlKey) && e.key === "z" && !e.shiftKey) { e.preventDefault(); undo(); return; }
       if ((e.metaKey || e.ctrlKey) && e.key === "z" && e.shiftKey) { e.preventDefault(); redo(); return; }
       if ((e.metaKey || e.ctrlKey) && e.key === "y") { e.preventDefault(); redo(); return; }
+      if (e.key === "v" || e.key === "V") setToolMode("select");
       if (e.key === "s" || e.key === "S") setToolMode("sticky");
       if (e.key === "r" || e.key === "R") setToolMode("rect");
+      if (e.key === "c" || e.key === "C") setToolMode("circle");
+      if (e.key === "l" || e.key === "L") setToolMode("line");
       if (e.key === "/") { e.preventDefault(); setChatOpen((o) => !o); }
       if ((e.key === "Delete" || e.key === "Backspace") && selectedId && !editingId) {
         e.preventDefault();
@@ -176,6 +181,7 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
   // Double-click on empty canvas -> create object based on active tool
   const handleStageDblClick = useCallback((e: KonvaEventObject<MouseEvent>) => {
     if (e.target !== stageRef.current) return;
+    if (toolMode === "select") return;
 
     const stage = stageRef.current;
     if (!stage) return;
@@ -210,6 +216,32 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
         height: 100,
         rotation: 0,
         props: { fill: "#3b82f6", stroke: "#2563eb" },
+        createdBy: user.id,
+        updatedAt: Date.now(),
+      });
+    } else if (toolMode === "circle") {
+      createObject({
+        id: crypto.randomUUID(),
+        type: "circle",
+        x: worldX - 50,
+        y: worldY - 50,
+        width: 100,
+        height: 100,
+        rotation: 0,
+        props: { fill: "#8b5cf6", stroke: "#7c3aed" },
+        createdBy: user.id,
+        updatedAt: Date.now(),
+      });
+    } else if (toolMode === "line") {
+      createObject({
+        id: crypto.randomUUID(),
+        type: "line",
+        x: worldX - 100,
+        y: worldY,
+        width: 200,
+        height: 4,
+        rotation: 0,
+        props: { stroke: "#f43f5e" },
         createdBy: user.id,
         updatedAt: Date.now(),
       });
@@ -383,6 +415,58 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
                 </Group>
               );
             }
+            if (obj.type === "circle") {
+              return (
+                <Group
+                  key={obj.id}
+                  ref={setShapeRef(obj.id)}
+                  x={obj.x}
+                  y={obj.y}
+                  rotation={obj.rotation}
+                  draggable
+                  onClick={(e) => { e.cancelBubble = true; setSelectedId(obj.id); }}
+                  onDragEnd={(e) => {
+                    updateObject({ id: obj.id, x: e.target.x(), y: e.target.y() });
+                  }}
+                  onTransformEnd={(e) => handleObjectTransform(e, obj)}
+                >
+                  <Ellipse
+                    x={obj.width / 2}
+                    y={obj.height / 2}
+                    radiusX={obj.width / 2}
+                    radiusY={obj.height / 2}
+                    fill={obj.props.fill || "#8b5cf6"}
+                    stroke={obj.props.stroke || "#7c3aed"}
+                    strokeWidth={2}
+                  />
+                </Group>
+              );
+            }
+            if (obj.type === "line") {
+              return (
+                <Group
+                  key={obj.id}
+                  ref={setShapeRef(obj.id)}
+                  x={obj.x}
+                  y={obj.y}
+                  rotation={obj.rotation}
+                  draggable
+                  onClick={(e) => { e.cancelBubble = true; setSelectedId(obj.id); }}
+                  onDragEnd={(e) => {
+                    updateObject({ id: obj.id, x: e.target.x(), y: e.target.y() });
+                  }}
+                  onTransformEnd={(e) => handleObjectTransform(e, obj)}
+                >
+                  <KonvaLine
+                    points={[0, 0, obj.width, 0]}
+                    stroke={obj.props.stroke || "#f43f5e"}
+                    strokeWidth={3}
+                    hitStrokeWidth={12}
+                    lineCap="round"
+                  />
+                </Group>
+              );
+            }
             return null;
           })}
           {/* Selection transformer */}
@@ -448,11 +532,29 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
         );
       })()}
 
-      {/* Tool selector */}
-      <div style={{ position: "absolute", bottom: 16, left: 16, display: "flex", gap: 4, zIndex: 10 }}>
-        <ToolBtn label="S" title="Sticky note (S)" active={toolMode === "sticky"} onClick={() => setToolMode("sticky")} />
-        <ToolBtn label="R" title="Rectangle (R)" active={toolMode === "rect"} onClick={() => setToolMode("rect")} />
-        <ToolBtn label="AI" title="AI Assistant (/)" active={chatOpen} onClick={() => setChatOpen((o) => !o)} />
+      {/* Vertical Toolbar - Left Sidebar */}
+      <div style={{
+        position: "absolute", left: 0, top: 48, bottom: 0, width: SIDEBAR_W, zIndex: 10,
+        background: "rgba(22, 33, 62, 0.95)", borderRight: "1px solid #334155",
+        display: "flex", flexDirection: "column", alignItems: "center",
+        paddingTop: 8, gap: 2,
+      }}>
+        <ToolIconBtn icon={<IconSelect />} title="Select (V)" active={toolMode === "select"} onClick={() => setToolMode("select")} />
+        <ToolIconBtn icon={<IconSticky />} title="Sticky note (S)" active={toolMode === "sticky"} onClick={() => setToolMode("sticky")} />
+        <ToolIconBtn icon={<IconRect />} title="Rectangle (R)" active={toolMode === "rect"} onClick={() => setToolMode("rect")} />
+        <ToolIconBtn icon={<IconCircle />} title="Circle (C)" active={toolMode === "circle"} onClick={() => setToolMode("circle")} />
+        <ToolIconBtn icon={<IconLine />} title="Line (L)" active={toolMode === "line"} onClick={() => setToolMode("line")} />
+        <div style={{ width: 28, borderTop: "1px solid #334155", margin: "4px 0" }} />
+        <ToolIconBtn
+          icon={<IconDelete />}
+          title="Delete selected (Del)"
+          active={false}
+          onClick={() => { if (selectedId) { deleteObject(selectedId); setSelectedId(null); } }}
+          disabled={!selectedId}
+        />
+        <div style={{ flex: 1 }} />
+        <ToolIconBtn icon={<IconChat />} title="AI Assistant (/)" active={chatOpen} onClick={() => setChatOpen((o) => !o)} />
+        <div style={{ height: 8 }} />
       </div>
 
       {/* AI Chat Panel */}
@@ -462,7 +564,7 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
       {selectedId && (() => {
         const selectedObj = objects.get(selectedId);
         if (!selectedObj) return null;
-        const propKey = selectedObj.type === "sticky" ? "color" : "fill";
+        const propKey = selectedObj.type === "sticky" ? "color" : selectedObj.type === "line" ? "stroke" : "fill";
         const currentColor = selectedObj.props[propKey];
         return (
           <div style={{
@@ -504,17 +606,78 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
   );
 }
 
-function ToolBtn({ label, title, active, onClick }: { label: string; title: string; active: boolean; onClick: () => void }) {
+function ToolIconBtn({ icon, title, active, onClick, disabled }: {
+  icon: React.ReactNode; title: string; active: boolean; onClick: () => void; disabled?: boolean;
+}) {
   return (
-    <button onClick={onClick} title={title} style={{
-      minWidth: 32, height: 32, padding: "0 6px",
-      background: active ? "#3b82f6" : "rgba(22, 33, 62, 0.9)",
-      border: active ? "1px solid #60a5fa" : "1px solid #334155",
-      borderRadius: 4, color: "#eee", cursor: "pointer", fontSize: "0.875rem",
-      fontWeight: active ? 700 : 400,
+    <button onClick={onClick} title={title} disabled={disabled} style={{
+      width: 36, height: 36, display: "flex", alignItems: "center", justifyContent: "center",
+      background: active ? "#3b82f6" : "transparent",
+      border: active ? "1px solid #60a5fa" : "1px solid transparent",
+      borderRadius: 6, color: disabled ? "#475569" : active ? "#fff" : "#94a3b8",
+      cursor: disabled ? "default" : "pointer", padding: 0,
     }}>
-      {label}
+      {icon}
     </button>
+  );
+}
+
+function IconSelect() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+      <path d="M4 4l7.07 16.97 2.51-7.39 7.39-2.51L4 4z"/>
+      <path d="M13.5 13.5l5 5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" fill="none"/>
+    </svg>
+  );
+}
+
+function IconSticky() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M15.5 3H5a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2V8.5L15.5 3z"/>
+      <polyline points="14 3 14 9 21 9"/>
+    </svg>
+  );
+}
+
+function IconRect() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <rect x="3" y="5" width="18" height="14" rx="2"/>
+    </svg>
+  );
+}
+
+function IconCircle() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <circle cx="12" cy="12" r="9"/>
+    </svg>
+  );
+}
+
+function IconLine() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+      <line x1="5" y1="19" x2="19" y2="5"/>
+    </svg>
+  );
+}
+
+function IconDelete() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <polyline points="3 6 5 6 21 6"/>
+      <path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/>
+    </svg>
+  );
+}
+
+function IconChat() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/>
+    </svg>
   );
 }
 
