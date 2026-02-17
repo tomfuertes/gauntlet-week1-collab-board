@@ -2,7 +2,9 @@ import { test, expect } from "@playwright/test";
 import { signUp, createBoard, navigateToBoard } from "./helpers";
 
 test.describe("AI Agent", () => {
-  // AI tests need extra time - Llama 3.3 is slow and unreliable
+  // AI binding (Workers AI) requires live Cloudflare infrastructure - skip in CI
+  test.skip(!!process.env.CI, "AI binding requires live Cloudflare infrastructure");
+  // Llama 3.3 is slow and unreliable - extra time needed
   test.setTimeout(60_000);
 
   test("send SWOT analysis command -> AI responds and creates objects", async ({
