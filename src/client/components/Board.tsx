@@ -51,6 +51,7 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [frameDraft, setFrameDraft] = useState<{startX: number; startY: number; x: number; y: number; width: number; height: number} | null>(null);
   const [pendingFrame, setPendingFrame] = useState<{x: number; y: number; width: number; height: number} | null>(null);
+  const pendingFrameCancelled = useRef(false);
 
   // Clear selection if object was deleted (by another user or AI)
   useEffect(() => {
@@ -777,12 +778,17 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
           }}
           onKeyDown={(e) => {
             if (e.key === "Enter") {
-              commitPendingFrame((e.target as HTMLInputElement).value);
+              (e.target as HTMLInputElement).blur(); // commit via onBlur
             } else if (e.key === "Escape") {
-              commitPendingFrame("Frame");
+              pendingFrameCancelled.current = true;
+              setPendingFrame(null);
+              setToolMode("select");
             }
           }}
-          onBlur={(e) => commitPendingFrame(e.target.value)}
+          onBlur={(e) => {
+            if (pendingFrameCancelled.current) { pendingFrameCancelled.current = false; return; }
+            commitPendingFrame(e.target.value);
+          }}
         />
       )}
 

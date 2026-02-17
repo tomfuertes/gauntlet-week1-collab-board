@@ -366,7 +366,7 @@ aiRoutes.post("/chat", async (c) => {
             type: "object" as const,
             properties: {
               id: { type: "string" as const, description: "The ID of the object to update" },
-              text: { type: "string" as const, description: "New text content (for stickies)" },
+              text: { type: "string" as const, description: "New text content (for stickies and frame titles)" },
               x: { type: "number" as const, description: "New X position" },
               y: { type: "number" as const, description: "New Y position" },
               color: { type: "string" as const, description: "New color (for stickies)" },
