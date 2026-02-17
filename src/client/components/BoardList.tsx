@@ -18,16 +18,16 @@ export function BoardList({ user, onSelectBoard, onLogout }: {
   const [boards, setBoards] = useState<BoardMeta[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const fetchBoards = () => {
+  useEffect(() => {
+    const controller = new AbortController();
     setLoading(true);
-    fetch("/api/boards")
+    fetch("/api/boards", { signal: controller.signal })
       .then((r) => r.json() as Promise<BoardMeta[]>)
       .then(setBoards)
-      .catch(() => setBoards([]))
-      .finally(() => setLoading(false));
-  };
-
-  useEffect(fetchBoards, []);
+      .catch(() => { if (!controller.signal.aborted) setBoards([]); })
+      .finally(() => { if (!controller.signal.aborted) setLoading(false); });
+    return () => controller.abort();
+  }, []);
 
   const handleCreate = async () => {
     const res = await fetch("/api/boards", {

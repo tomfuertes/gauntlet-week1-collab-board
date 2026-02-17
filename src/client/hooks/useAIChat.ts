@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 
 interface ToolCall {
   name: string;
@@ -16,6 +16,12 @@ export function useAIChat(boardId: string) {
   const [messages, setMessages] = useState<AIChatMessage[]>([]);
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState("");
+  const controllerRef = useRef<AbortController | null>(null);
+
+  // Abort any in-flight SSE stream on unmount
+  useEffect(() => {
+    return () => { controllerRef.current?.abort(); };
+  }, []);
 
   const sendMessage = useCallback(
     async (text: string) => {
@@ -30,7 +36,9 @@ export function useAIChat(boardId: string) {
 
       try {
         console.debug("[ai-chat] sending:", text, "history:", messages.length);
+        controllerRef.current?.abort(); // Cancel any previous in-flight request
         const controller = new AbortController();
+        controllerRef.current = controller;
         const timeout = setTimeout(() => {
           console.warn("[ai-chat] request timed out after 60s");
           controller.abort();
@@ -113,6 +121,7 @@ export function useAIChat(boardId: string) {
           { id: crypto.randomUUID(), role: "assistant", content: msg },
         ]);
       } finally {
+        controllerRef.current = null;
         setLoading(false);
         setStatus("");
       }

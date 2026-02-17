@@ -562,14 +562,16 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
           node.opacity(0);
           node.scaleX(0.8);
           node.scaleY(0.8);
-          new Konva.Tween({
+          const tween = new Konva.Tween({
             node,
             duration: 0.2,
             opacity: 1,
             scaleX: 1,
             scaleY: 1,
             easing: Konva.Easings.EaseOut,
-          }).play();
+            onFinish: () => tween.destroy(),
+          });
+          tween.play();
         }
       } else {
         shapeRefs.current.delete(id);

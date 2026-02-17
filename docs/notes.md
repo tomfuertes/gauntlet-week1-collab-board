@@ -25,10 +25,10 @@
 - [x] Ref-mirror `stagePos`/`scale`/`selectedIds` to stabilize all callbacks
 - [ ] ~~Split `useWebSocket`~~ - skipped, memoization mitigates cursor re-render cost
 
-**Tier 3 - Memory leaks (~1hr):**
-- Cancel SSE stream in `useAIChat` on unmount
-- Destroy Konva Tweens on unmount/removal
-- AbortController on AuthForm/BoardList fetches
+**Tier 3 - Memory leaks (DONE):**
+- [x] Cancel SSE stream in `useAIChat` on unmount (AbortController ref + useEffect cleanup)
+- [x] Destroy Konva Tweens on completion (`onFinish: () => tween.destroy()`)
+- [x] AbortController on BoardList fetch (abort on unmount, guard state updates)
 
 **Tier 4 - Spec gaps (~2hr):**
 - Add `width`/`height` to `update_object` AI tool (resizeObject is overclaimed)
@@ -99,5 +99,5 @@
 - ~~Grid renders 2000+ `<Rect>` nodes per frame~~ (FIXED - single `<Shape>` sceneFunc)
 - ~~All 500 objects re-render on any single change~~ (FIXED - `React.memo` BoardObjectRenderer)
 - ~~Cursor updates trigger full Board re-render~~ (MITIGATED - memo prevents child re-renders)
-- Konva Tweens never destroyed (memory leak)
-- SSE stream reader not cancelled on unmount (memory leak)
+- ~~Konva Tweens never destroyed~~ (FIXED - onFinish destroy)
+- ~~SSE stream reader not cancelled on unmount~~ (FIXED - AbortController ref)
