@@ -13,6 +13,17 @@ const CURSOR_THROTTLE_MS = 33; // ~30fps
 
 type ToolMode = "sticky" | "rect";
 
+const COLOR_PRESETS = [
+  "#fbbf24", // amber (sticky default)
+  "#f87171", // red
+  "#fb923c", // orange
+  "#4ade80", // green
+  "#3b82f6", // blue (rect default)
+  "#a78bfa", // purple
+  "#f472b6", // pink
+  "#94a3b8", // slate
+];
+
 export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boardId: string; onLogout: () => void; onBack: () => void }) {
   const stageRef = useRef<Konva.Stage>(null);
   const [stagePos, setStagePos] = useState({ x: 0, y: 0 });
@@ -393,6 +404,42 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
 
       {/* AI Chat Panel */}
       {chatOpen && <ChatPanel boardId={boardId} onClose={() => setChatOpen(false)} />}
+
+      {/* Color picker - shown when an object is selected */}
+      {selectedId && (() => {
+        const selectedObj = objects.get(selectedId);
+        if (!selectedObj) return null;
+        const propKey = selectedObj.type === "sticky" ? "color" : "fill";
+        const currentColor = selectedObj.props[propKey];
+        return (
+          <div style={{
+            position: "absolute", bottom: 16, left: "50%", transform: "translateX(-50%)",
+            display: "flex", gap: 6, zIndex: 10, padding: "6px 10px",
+            background: "rgba(22, 33, 62, 0.95)", border: "1px solid #334155",
+            borderRadius: 8,
+          }}>
+            {COLOR_PRESETS.map((color) => (
+              <button
+                key={color}
+                title={color}
+                onClick={() => {
+                  const freshObj = objects.get(selectedId);
+                  if (!freshObj) return;
+                  const key = freshObj.type === "sticky" ? "color" : "fill";
+                  updateObject({ id: selectedId, props: { ...freshObj.props, [key]: color } });
+                }}
+                style={{
+                  width: 28, height: 28, borderRadius: "50%", border: "2px solid",
+                  borderColor: currentColor === color ? "#fff" : "transparent",
+                  background: color, cursor: "pointer", padding: 0,
+                  outline: currentColor === color ? "2px solid #3b82f6" : "none",
+                  outlineOffset: 1,
+                }}
+              />
+            ))}
+          </div>
+        );
+      })()}
 
       {/* Zoom controls */}
       <div style={{ position: "absolute", bottom: 16, right: 16, display: "flex", gap: 4, zIndex: 10 }}>
