@@ -26,7 +26,7 @@ export function useUndoRedo(
   const objectsRef = useRef(objects);
   objectsRef.current = objects;
 
-  /** Replay a single (non-batch) action for undo or redo */
+  /** Replay an action (or batch of actions) for undo or redo */
   const replayAction = useCallback((action: UndoableAction, direction: "undo" | "redo") => {
     if (action.type === "batch") {
       const items = direction === "undo" ? [...action.actions].reverse() : action.actions;
@@ -35,13 +35,15 @@ export function useUndoRedo(
     }
     switch (action.type) {
       case "create":
-        direction === "undo" ? wsDelete(action.obj.id) : wsCreate(action.obj);
+        if (direction === "undo") wsDelete(action.obj.id);
+        else wsCreate(action.obj);
         break;
       case "update":
         wsUpdate(direction === "undo" ? action.before : action.after);
         break;
       case "delete":
-        direction === "undo" ? wsCreate(action.obj) : wsDelete(action.obj.id);
+        if (direction === "undo") wsCreate(action.obj);
+        else wsDelete(action.obj.id);
         break;
     }
   }, [wsCreate, wsUpdate, wsDelete]);
@@ -61,6 +63,9 @@ export function useUndoRedo(
   }, []);
 
   const startBatch = useCallback(() => {
+    if (batchRef.current) {
+      console.error("[useUndoRedo] startBatch called while batch already open");
+    }
     batchRef.current = [];
   }, []);
 

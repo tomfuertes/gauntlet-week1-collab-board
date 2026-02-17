@@ -74,6 +74,18 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
   const [editingId, setEditingId] = useState<string | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
+  // Shared helper: batch-delete all selected objects
+  const deleteSelected = useCallback(() => {
+    if (selectedIds.size === 0) return;
+    if (selectedIds.size > 1) startBatch();
+    try {
+      for (const id of selectedIds) deleteObject(id);
+    } finally {
+      if (selectedIds.size > 1) commitBatch();
+    }
+    setSelectedIds(new Set());
+  }, [selectedIds, deleteObject, startBatch, commitBatch]);
+
   // Clear selection if objects were deleted (by another user or AI)
   useEffect(() => {
     setSelectedIds(prev => {
@@ -114,15 +126,12 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
       if (e.key === "/") { e.preventDefault(); setChatOpen((o) => !o); }
       if ((e.key === "Delete" || e.key === "Backspace") && selectedIds.size > 0 && !editingId) {
         e.preventDefault();
-        if (selectedIds.size > 1) startBatch();
-        for (const id of selectedIds) deleteObject(id);
-        if (selectedIds.size > 1) commitBatch();
-        setSelectedIds(new Set());
+        deleteSelected();
       }
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [selectedIds, editingId, deleteObject, startBatch, commitBatch, undo, redo]);
+  }, [selectedIds, editingId, deleteSelected, undo, redo]);
 
   // Sync Transformer with selected nodes
   useEffect(() => {
@@ -192,13 +201,16 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
     const positions = dragStartPositionsRef.current;
     if (positions.size > 0) {
       startBatch();
-      for (const sid of positions.keys()) {
-        const node = shapeRefs.current.get(sid);
-        if (node) {
-          updateObject({ id: sid, x: node.x(), y: node.y() });
+      try {
+        for (const sid of positions.keys()) {
+          const node = shapeRefs.current.get(sid);
+          if (node) {
+            updateObject({ id: sid, x: node.x(), y: node.y() });
+          }
         }
+      } finally {
+        commitBatch();
       }
-      commitBatch();
       dragStartPositionsRef.current = new Map();
     } else {
       updateObject({ id, x: e.target.x(), y: e.target.y() });
@@ -252,15 +264,17 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
     }
   }, [toolMode, stagePos, scale]);
 
-  // Stage mouseup: finish marquee or frame draft
+  // Stage mouseup: finish marquee or frame draft (uses ref to avoid per-frame callback recreation)
   const handleStageMouseUp = useCallback(() => {
     // Marquee selection finish
     if (isDraggingMarqueeRef.current) {
       isDraggingMarqueeRef.current = false;
-      if (marquee && (marquee.w > 5 || marquee.h > 5)) {
+
+      const m = marqueeRef.current;
+      if (m && (m.w > 5 || m.h > 5)) {
         const selected = new Set<string>();
         for (const obj of objects.values()) {
-          if (rectsIntersect(marquee, obj)) {
+          if (rectsIntersect(m, obj)) {
             selected.add(obj.id);
           }
         }
@@ -278,7 +292,7 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
       }
       setFrameDraft(null);
     }
-  }, [marquee, objects, frameDraft]);
+  }, [objects, frameDraft]);
 
   // Zoom toward cursor on wheel
   const handleWheel = useCallback((e: KonvaEventObject<WheelEvent>) => {
@@ -965,14 +979,7 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
           icon={<IconDelete />}
           title="Delete selected (Del)"
           active={false}
-          onClick={() => {
-            if (selectedIds.size > 0) {
-              if (selectedIds.size > 1) startBatch();
-              for (const id of selectedIds) deleteObject(id);
-              if (selectedIds.size > 1) commitBatch();
-              setSelectedIds(new Set());
-            }
-          }}
+          onClick={deleteSelected}
           disabled={selectedIds.size === 0}
         />
         <div style={{ flex: 1 }} />
@@ -1004,13 +1011,16 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
                 title={color}
                 onClick={() => {
                   if (selectedIds.size > 1) startBatch();
-                  for (const id of selectedIds) {
-                    const obj = objects.get(id);
-                    if (!obj) continue;
-                    const key = obj.type === "sticky" || obj.type === "text" ? "color" : obj.type === "line" ? "stroke" : "fill";
-                    updateObject({ id, props: { ...obj.props, [key]: color } });
+                  try {
+                    for (const id of selectedIds) {
+                      const obj = objects.get(id);
+                      if (!obj) continue;
+                      const key = obj.type === "sticky" || obj.type === "text" ? "color" : obj.type === "line" ? "stroke" : "fill";
+                      updateObject({ id, props: { ...obj.props, [key]: color } });
+                    }
+                  } finally {
+                    if (selectedIds.size > 1) commitBatch();
                   }
-                  if (selectedIds.size > 1) commitBatch();
                 }}
                 style={{
                   width: 28, height: 28, borderRadius: "50%", border: "2px solid",
