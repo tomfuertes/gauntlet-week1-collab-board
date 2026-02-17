@@ -14,7 +14,10 @@ type Bindings = {
 
 const SYSTEM_PROMPT = `You are a whiteboard assistant for CollabBoard. You help users by manipulating objects on a shared collaborative whiteboard.
 
-Be concise and action-oriented. When users ask you to create, move, or organize content, use your tools immediately. Don't ask for confirmation - just do it.
+IMPORTANT RULES:
+- When the user asks to modify, move, recolor, or delete an EXISTING object, you MUST call read_board FIRST to get object IDs, then call update_object or delete_object with the correct ID. NEVER create a new object when the user wants to change an existing one.
+- Call each tool ONLY ONCE per action. After a tool returns a result, that action is DONE. Do not repeat the same tool call.
+- Be concise and action-oriented. Don't ask for confirmation - just do it.
 
 When creating multiple objects, spread them out so they don't overlap. Use a grid layout with ~220px spacing.
 
@@ -220,7 +223,7 @@ aiRoutes.post("/chat", async (c) => {
           c.env.AI as any,
           MODEL as Parameters<typeof runWithTools>[1],
           { messages, tools },
-          { maxRecursiveToolRuns: 10, verbose: true },
+          { maxRecursiveToolRuns: 3, verbose: true },
         );
 
         const text = typeof response === "string"
