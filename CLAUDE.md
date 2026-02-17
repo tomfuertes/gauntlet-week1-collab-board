@@ -13,7 +13,7 @@ CollabBoard - real-time collaborative whiteboard with AI agent integration. Gaun
 - **Real-time:** Durable Objects + WebSockets (one DO per board, LWW conflict resolution)
 - **Auth:** Custom (username/password, PBKDF2 hash, D1 sessions, cookie-based)
 - **Database:** DO Storage (board objects as KV) + D1 (users/sessions/board metadata)
-- **AI:** Workers AI binding (`env.AI.run()` + `runWithTools()`) - Llama 3.3 70B (free tier, weak tool-use). 8 tools: `create_sticky`, `create_rect`, `create_circle`, `create_line`, `create_text`, `read_board`, `update_object`, `delete_object`. Haiku via AI Gateway is the upgrade path ($0.001/req, much better tool discipline).
+- **AI:** Workers AI binding (`env.AI.run()` + `runWithTools()`) - Llama 3.3 70B (free tier, weak tool-use). 9 tools: `create_sticky`, `create_text`, `create_rect`, `create_circle`, `create_line`, `create_connector`, `read_board`, `update_object`, `delete_object`. Haiku via AI Gateway is the upgrade path ($0.001/req, much better tool discipline).
 - **Deploy:** CF git integration auto-deploys on push to main
 
 ## Commands
@@ -138,7 +138,7 @@ DO echoes mutations to OTHER clients only (sender already applied optimistically
 ### Board Object Shape
 
 ```typescript
-{ id, type, x, y, width, height, rotation, props: { text?, color?, fill?, stroke? }, createdBy, updatedAt }
+{ id, type, x, y, width, height, rotation, props: { text?, color?, fill?, stroke?, arrow? }, createdBy, updatedAt }
 ```
 
 Each object stored as separate DO Storage key (`obj:{uuid}`, ~200 bytes). LWW via `updatedAt`.

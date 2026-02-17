@@ -21,11 +21,12 @@ IMPORTANT RULES:
 
 When creating multiple objects, spread them out so they don't overlap. Use a grid layout with ~220px spacing.
 
-Available shapes: sticky notes (text), standalone text, rectangles (fill+stroke), circles (fill+stroke), and lines (stroke only).
+Available shapes: sticky notes (text), standalone text, rectangles (fill+stroke), circles (fill+stroke), lines (stroke only), and connectors/arrows (stroke + arrowheads).
 Available colors for stickies: #fbbf24 (yellow, default), #f87171 (red), #4ade80 (green), #60a5fa (blue), #c084fc (purple), #fb923c (orange).
 Available colors for text: any hex color (default: #ffffff white).
 Available colors for rectangles and circles: fill any hex color, stroke should be a slightly darker variant.
-Available colors for lines: stroke any hex color (no fill). Default: #94a3b8.
+Available colors for lines and connectors: stroke any hex color (no fill). Default: #94a3b8.
+Available arrow styles for connectors: 'end' (default, arrow at endpoint), 'both' (arrows at both ends), 'none' (plain line).
 
 When describing the board, be brief. List objects by type and key content.`;
 
@@ -258,6 +259,53 @@ aiRoutes.post("/chat", async (c) => {
               headers: { "Content-Type": "application/json" },
             }));
             return JSON.stringify({ created: id, type: "line" });
+          }),
+        },
+        {
+          name: "create_connector",
+          description: "Create a connector/arrow on the whiteboard from point A to point B with arrowhead(s)",
+          parameters: {
+            type: "object" as const,
+            properties: {
+              x1: { type: "number" as const, description: "Start X position" },
+              y1: { type: "number" as const, description: "Start Y position" },
+              x2: { type: "number" as const, description: "End X position (arrow points here)" },
+              y2: { type: "number" as const, description: "End Y position (arrow points here)" },
+              stroke: { type: "string" as const, description: "Stroke color hex (default: #94a3b8)" },
+              arrow: { type: "string" as const, description: "Arrow style: 'end' (default, arrow at endpoint), 'both' (arrows at both ends), 'none' (plain line)" },
+            },
+            required: ["x1", "y1", "x2", "y2"] as const,
+          },
+          function: traced("create_connector", "Creating connector", async (args: { x1: number; y1: number; x2: number; y2: number; stroke?: string; arrow?: string }) => {
+            const id = crypto.randomUUID();
+            const width = args.x2 - args.x1;
+            const height = args.y2 - args.y1;
+            if (width === 0 && height === 0) {
+              return JSON.stringify({ error: "Cannot create zero-length connector (start and end are the same point)" });
+            }
+            if (args.arrow !== undefined && args.arrow !== "end" && args.arrow !== "both" && args.arrow !== "none") {
+              console.warn(`[ai] create_connector: unrecognized arrow style "${args.arrow}", defaulting to "end"`);
+            }
+            const arrowStyle = args.arrow === "both" ? "both" : args.arrow === "none" ? "none" : "end";
+            const obj = {
+              id,
+              type: "line" as const,
+              x: args.x1,
+              y: args.y1,
+              width,
+              height,
+              rotation: 0,
+              props: { stroke: args.stroke || "#94a3b8", arrow: arrowStyle as "end" | "both" | "none" },
+              createdBy: "ai-agent",
+              updatedAt: Date.now(),
+            };
+            const res = await stub.fetch(new Request("http://do/mutate", {
+              method: "POST",
+              body: JSON.stringify({ type: "obj:create", obj }),
+              headers: { "Content-Type": "application/json" },
+            }));
+            if (!res.ok) throw new Error(`DO mutate failed: ${res.status}`);
+            return JSON.stringify({ created: id, type: "connector", arrow: arrowStyle });
           }),
         },
         {
