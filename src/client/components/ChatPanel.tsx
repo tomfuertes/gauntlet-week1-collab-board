@@ -6,6 +6,8 @@ import { colors } from "../theme";
 interface ChatPanelProps {
   boardId: string;
   onClose: () => void;
+  initialPrompt?: string;
+  selectedIds?: Set<string>;
 }
 
 const TOOL_ICONS: Record<string, string> = {
@@ -64,10 +66,11 @@ function ToolHistory({ tools }: { tools: NonNullable<AIChatMessage["tools"]> }) 
   );
 }
 
-export function ChatPanel({ boardId, onClose }: ChatPanelProps) {
-  const { messages, loading, status, sendMessage } = useAIChat(boardId);
+export function ChatPanel({ boardId, onClose, initialPrompt, selectedIds }: ChatPanelProps) {
+  const { messages, loading, status, sendMessage } = useAIChat(boardId, selectedIds);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const initialPromptHandled = useRef(false);
 
   // Auto-scroll to bottom on new messages
   useEffect(() => {
@@ -76,10 +79,15 @@ export function ChatPanel({ boardId, onClose }: ChatPanelProps) {
     }
   }, [messages, loading, status]);
 
-  // Focus input on mount
+  // Focus input on mount; auto-send initialPrompt if provided
   useEffect(() => {
-    inputRef.current?.focus();
-  }, []);
+    if (initialPrompt && !initialPromptHandled.current) {
+      initialPromptHandled.current = true;
+      sendMessage(initialPrompt);
+    } else {
+      inputRef.current?.focus();
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleSubmit = () => {
     const text = inputRef.current?.value.trim();

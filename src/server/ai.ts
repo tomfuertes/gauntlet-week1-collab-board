@@ -34,21 +34,33 @@ aiRoutes.post("/chat", async (c) => {
   const user = await getSessionUser(c.env.DB, sessionId);
   if (!user) return c.json({ error: "Unauthorized" }, 401);
 
-  const { message, boardId, history } = await c.req.json<{
+  const { message, boardId, history, selectedIds } = await c.req.json<{
     message: string;
     boardId: string;
     history: ChatMessage[];
+    selectedIds?: string[];
   }>();
 
-  console.debug(`[ai] chat request from=${user.displayName} board=${boardId} msg="${message.slice(0, 80)}" history=${history.length}`);
+  console.debug(`[ai] chat request from=${user.displayName} board=${boardId} msg="${message.slice(0, 80)}" history=${history.length} selected=${selectedIds?.length ?? 0}`);
 
   // Get Board DO stub for tool callbacks
   const doId = c.env.BOARD.idFromName(boardId);
   const stub = c.env.BOARD.get(doId);
 
+  // Build system prompt with optional selection context
+  let systemPrompt = SYSTEM_PROMPT;
+  if (selectedIds && selectedIds.length > 0) {
+    const objects = await stub.readObjects();
+    const selected = (objects as BoardObject[]).filter((o: BoardObject) => selectedIds.includes(o.id));
+    if (selected.length > 0) {
+      const desc = selected.map((o: BoardObject) => `- ${o.type} (id: ${o.id}${o.props.text ? `, text: "${o.props.text}"` : ""})`).join("\n");
+      systemPrompt += `\n\nThe user has selected ${selected.length} object(s) on the board:\n${desc}\nWhen the user refers to "selected", "these", or "this", they mean the above objects. Use their IDs directly.`;
+    }
+  }
+
   // Build messages array from history
   const messages: { role: "system" | "user" | "assistant"; content: string }[] = [
-    { role: "system", content: SYSTEM_PROMPT },
+    { role: "system", content: systemPrompt },
   ];
   for (const msg of history) {
     messages.push({ role: msg.role, content: msg.content });

@@ -50,6 +50,7 @@ interface BoardObjectRendererProps {
   hasAiGlow: boolean;
   setShapeRef: (id: string) => (node: Konva.Group | null) => void;
   onShapeClick: (e: KonvaEventObject<MouseEvent>, id: string) => void;
+  onContextMenu: (e: KonvaEventObject<PointerEvent>, id: string) => void;
   onDragStart: (e: KonvaEventObject<DragEvent>, id: string) => void;
   onDragMove: (e: KonvaEventObject<DragEvent>, id: string) => void;
   onDragEnd: (e: KonvaEventObject<DragEvent>, id: string) => void;
@@ -58,7 +59,7 @@ interface BoardObjectRendererProps {
 }
 
 const BoardObjectRenderer = React.memo(function BoardObjectRenderer({
-  obj, hasAiGlow, setShapeRef, onShapeClick, onDragStart, onDragMove, onDragEnd, onTransformEnd, onDblClickEdit,
+  obj, hasAiGlow, setShapeRef, onShapeClick, onContextMenu, onDragStart, onDragMove, onDragEnd, onTransformEnd, onDblClickEdit,
 }: BoardObjectRendererProps) {
   const aiGlowProps = hasAiGlow ? { shadowBlur: 12, shadowColor: "rgba(99,102,241,0.5)" } : {};
   const aiGlowLineProps = hasAiGlow ? { shadowBlur: 8, shadowColor: "rgba(99,102,241,0.4)" } : {};
@@ -71,6 +72,7 @@ const BoardObjectRenderer = React.memo(function BoardObjectRenderer({
     rotation: obj.rotation,
     draggable: true as const,
     onClick: (e: KonvaEventObject<MouseEvent>) => onShapeClick(e, obj.id),
+    onContextMenu: (e: KonvaEventObject<PointerEvent>) => onContextMenu(e, obj.id),
     onDragStart: (e: KonvaEventObject<DragEvent>) => onDragStart(e, obj.id),
     onDragMove: (e: KonvaEventObject<DragEvent>) => onDragMove(e, obj.id),
     onDragEnd: (e: KonvaEventObject<DragEvent>) => onDragEnd(e, obj.id),
@@ -152,7 +154,9 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
   const lastCursorSend = useRef(0);
   const [toolMode, setToolMode] = useState<ToolMode>("select");
   const [chatOpen, setChatOpen] = useState(false);
+  const [chatInitialPrompt, setChatInitialPrompt] = useState<string | undefined>();
   const [showShortcuts, setShowShortcuts] = useState(false);
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; objId: string } | null>(null);
   const trRef = useRef<Konva.Transformer>(null);
   const shapeRefs = useRef<Map<string, Konva.Group>>(new Map());
 
@@ -418,6 +422,20 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
     tr.nodes([]);
     tr.getLayer()?.batchDraw();
   }, [selectedIds, editingId, objects]);
+
+  // Right-click context menu handler
+  const handleShapeContextMenu = useCallback((e: KonvaEventObject<PointerEvent>, id: string) => {
+    e.evt.preventDefault();
+    e.cancelBubble = true;
+    setContextMenu({ x: e.evt.clientX, y: e.evt.clientY, objId: id });
+  }, []);
+
+  // Open chat with a prefilled prompt (from context menu)
+  const openChatWithPrompt = useCallback((prompt: string) => {
+    setContextMenu(null);
+    setChatInitialPrompt(prompt);
+    setChatOpen(true);
+  }, []);
 
   // Shared click handler for all shapes (supports shift+click multi-select)
   const handleShapeClick = useCallback((e: KonvaEventObject<MouseEvent>, id: string) => {
@@ -910,6 +928,7 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
         onMouseDown={handleStageMouseDown}
         onMouseUp={handleStageMouseUp}
         onClick={(e: KonvaEventObject<MouseEvent>) => {
+          setContextMenu(null);
           if (e.target === stageRef.current) {
             if (justFinishedMarqueeRef.current) {
               justFinishedMarqueeRef.current = false;
@@ -931,6 +950,7 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
               hasAiGlow={aiGlowIds.has(obj.id)}
               setShapeRef={setShapeRef}
               onShapeClick={handleShapeClick}
+              onContextMenu={handleShapeContextMenu}
               onDragStart={handleShapeDragStart}
               onDragMove={handleShapeDragMove}
               onDragEnd={handleShapeDragEnd}
@@ -961,6 +981,7 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
               hasAiGlow={aiGlowIds.has(obj.id)}
               setShapeRef={setShapeRef}
               onShapeClick={handleShapeClick}
+              onContextMenu={handleShapeContextMenu}
               onDragStart={handleShapeDragStart}
               onDragMove={handleShapeDragMove}
               onDragEnd={handleShapeDragEnd}
@@ -1151,7 +1172,59 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
       </div>
 
       {/* AI Chat Panel */}
-      {chatOpen && <ChatPanel boardId={boardId} onClose={() => setChatOpen(false)} />}
+      {chatOpen && (
+        <ChatPanel
+          boardId={boardId}
+          onClose={() => { setChatOpen(false); setChatInitialPrompt(undefined); }}
+          initialPrompt={chatInitialPrompt}
+          selectedIds={selectedIds}
+        />
+      )}
+
+      {/* Right-click context menu */}
+      {contextMenu && (() => {
+        const obj = objects.get(contextMenu.objId);
+        if (!obj) return null;
+        const items: { label: string; prompt: string }[] = [
+          { label: "Ask AI about this", prompt: `What is this ${obj.type}${obj.props.text ? ` that says "${obj.props.text}"` : ""} about?` },
+          { label: "Recolor with AI", prompt: `Change the color of this ${obj.type} (id: ${obj.id}) to a random vibrant color.` },
+        ];
+        if (obj.type === "sticky" || obj.type === "text") {
+          items.push({ label: "Expand on this", prompt: `Create more sticky notes related to: "${obj.props.text || ""}"` });
+        }
+        return (
+          <div
+            onClick={() => setContextMenu(null)}
+            style={{ position: "absolute", inset: 0, zIndex: 40 }}
+          >
+            <div
+              onClick={(e) => e.stopPropagation()}
+              style={{
+                position: "absolute", left: contextMenu.x, top: contextMenu.y,
+                background: colors.surface, border: `1px solid ${colors.border}`,
+                borderRadius: 8, padding: 4, minWidth: 180, zIndex: 41,
+              }}
+            >
+              {items.map((item) => (
+                <button
+                  key={item.label}
+                  onClick={() => { setSelectedIds(new Set([contextMenu.objId])); openChatWithPrompt(item.prompt); }}
+                  style={{
+                    display: "block", width: "100%", textAlign: "left",
+                    background: "none", border: "none", color: colors.text,
+                    padding: "8px 12px", cursor: "pointer", fontSize: "0.8125rem",
+                    borderRadius: 4,
+                  }}
+                  onMouseEnter={(e) => { e.currentTarget.style.background = colors.accentSubtle; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.background = "none"; }}
+                >
+                  {item.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Color picker - shown when objects are selected */}
       {selectedIds.size > 0 && (() => {
