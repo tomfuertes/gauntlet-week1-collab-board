@@ -35,6 +35,14 @@ export class Board extends DurableObject<Bindings> {
 
   // --- RPC methods (called by Worker via stub) ---
 
+  async getStats(): Promise<{ objectCount: number; eventCount: number }> {
+    const [objs, evts] = await Promise.all([
+      this.ctx.storage.list({ prefix: "obj:", limit: 501 }),
+      this.ctx.storage.list({ prefix: "evt:", limit: 2001 }),
+    ]);
+    return { objectCount: objs.size, eventCount: evts.size };
+  }
+
   async readObjects(): Promise<BoardObject[]> {
     return this.getAllObjects();
   }
