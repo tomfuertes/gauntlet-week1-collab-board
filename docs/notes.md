@@ -2,36 +2,27 @@
 
 *Internal project management scratch. Not a deliverable.*
 
-## Session 16 Context (Feb 18, 2026)
+## Session 17 Context (Feb 18, 2026)
 
 ### What Was Done
-- **DRY refactor (merged):** `updateAndMutate` helper + type-linked `ToolName` export. Also added try/catch to `deleteObject`. Net: +46/-45 lines across 2 files.
-- **PM Skills evaluation (merged):** Tested 3 of 42 skills against CollabBoard. 2 survived: company-research (WebSearch), discovery-process (KILL gate). Full results in `docs/pm-eval/`. Pipeline (ccpm + bridge) rejected.
-- **Sprint reprioritization via PM eval:** All 3 skills converged on AI Board Generation as Sprint 1. KILL'd Sprints 2+4 (contextual AI actions, intent preview). PIVOTed Sprint 1 to 2hr lite version. Cut 26hrs planned to 10hrs.
-- **AI Board Generation (PR #26, merged):** Empty state sparkle overlay, suggestion chips, board-templates.ts with layout presets, enhanced system prompt. Gateway feature - first thing evaluators see.
-- **AI Batch Undo (PR #25, merged):** batchId on AI-created objects, Undo AI button, Cmd+Z batch support. One click to undo a 12-object SWOT.
-- **AI Presence Lite (merged):** AI cursor dot (pulsing, sky-400), AI in presence bar during tool execution. Fire-and-forget cursorToCenter() on all tools. Idempotent cleanup (onFinish + abort + try/catch).
-- **UAT on prod (3 parallel agents):** Chat persistence PASS, SWOT overlap 0/3 runs PASS, prod smoke test PASS (auth, CRUD, AI, 2-browser sync all verified).
-- **Inside the Box analysis:** Applied SIT framework (Subtraction, Division, Multiplication, Task Unification, Attribute Dependency) to find differentiated niches. Explored business niches (solo strategist, facilitator, adversarial strategy, system design interviews, incident war room) and joy/play niches (worldbuilder, conspiracy board, ELI5, collaborative story, digital garden, improv canvas).
-- **North star exploration:** Multiplayer improv canvas. Shared chat (already works via AIChatAgent DO), shared canvas (already works via Board DO), AI as scene partner. ~3hrs of new code on existing architecture. Written to `docs/new-north-star.md`.
+- **Multiplayer chat attribution (merged):** `[username]` prefix in persisted messages, AI sees "Alice said: ...". Color-coded sender names in ChatPanel via `getUserColor()`. Two-worktree parallel build.
+- **Improv mode (PR #27, merged):** "Yes, and" system prompt (escalate by one notch, callbacks, spatial canvas, short punchlines). 7 scene starter templates replacing business templates. Overlay text updated to improv theme.
+- **UI consistency cleanup (merged):** Deduplicated `getUserColor()` + `CURSOR_COLORS` to theme.ts (was in 3 files). Killed hardcoded hex in BoardList/App (now use `colors.*`). Extracted ChatPanel `<style>` keyframes to animations.css. Updated suggestion chips to improv ("Add a plot twist", etc).
+- **Worktree DX (5 commits):** `scripts/dev.sh` auto-loads `worktree.ports` (no more `source` command). `worktree.sh create` now runs `npm install`, `npm run build`, `npm run migrate:local`. `worktree.sh remove` uses `--force` for gitignored files, errors on dirty tracked files.
+- **Dep bumps:** ai 6.0.90->6.0.91, hono 4.7.0->4.11.10, wrangler 4.65.0->4.66.0.
 
 ### What's Next
-- [ ] Improv canvas: username attribution in chat messages (attach sender in useAgentChat body)
-- [ ] Improv canvas: ChatPanel multiplayer UI (color-coded names per sender)
-- [ ] Improv canvas: "Yes, and" system prompt mode in chat-agent.ts
-- [ ] Improv canvas: scene starter templates (replace business templates in board gen overlay)
-- [ ] devlog entry for Session 16
-- [ ] Deliverables check: demo video, AI cost analysis, social post (Final gate Feb 22)
+- [ ] UAT on prod (full improv flow: auth -> board -> scene gen -> multiplayer chat with attribution)
+- [ ] AI cost analysis
+- [ ] Final gate Feb 22
 
 ---
 
 ## Roadmap Status
 
-**Shipped:** Pre-search, scaffold, auth, infinite canvas, cursor sync, presence, sticky notes, rectangles, circles, lines, connectors/arrows, standalone text, frames, move/resize/rotate, multi-select, copy/paste/duplicate, undo/redo, delete, AI agent (10 tools, DRY helpers, overlap scoring, updateAndMutate, type-linked ToolName), chat panel (chips, templates, typing indicator, server-side history persistence), multi-board CRUD, hash routing, color picker, toolbar, connection toasts, loading skeleton, empty state hint, cursor smoothing, entrance animations, confetti, gradient background, cursor trails, keyboard shortcuts, privacy policy, data deletion endpoint, context menu, selection-aware AI, AI object glow, live text sync, remote carets, stale cursor TTL, AI batch undo (batchId, Undo AI button, Cmd+Z batch), AI presence lite (cursor dot, presence bar), AI board generation (empty state overlay, suggestion chips, board-templates.ts).
+**Shipped:** Pre-search, scaffold, auth, infinite canvas, cursor sync, presence, sticky notes, rectangles, circles, lines, connectors/arrows, standalone text, frames, move/resize/rotate, multi-select, copy/paste/duplicate, undo/redo, delete, AI agent (10 tools, DRY helpers, overlap scoring, updateAndMutate, type-linked ToolName), chat panel (chips, templates, typing indicator, server-side history persistence), multi-board CRUD, hash routing, color picker, toolbar, connection toasts, loading skeleton, empty state hint, cursor smoothing, entrance animations, confetti, gradient background, cursor trails, keyboard shortcuts, privacy policy, data deletion endpoint, context menu, selection-aware AI, AI object glow, live text sync, remote carets, stale cursor TTL, AI batch undo (batchId, Undo AI button, Cmd+Z batch), AI presence lite (cursor dot, presence bar), AI board generation (empty state overlay, suggestion chips, board-templates.ts), multiplayer chat attribution ([username] prefix, color-coded sender names), improv mode ("yes, and" prompt, 7 scene templates), UI consistency (theme dedup, animations.css extraction).
 
 **Killed (PM eval):** Contextual AI Actions (clustering unreliable on free-tier LLM), Intent Preview (problem overlap with batch undo at 3x cost).
-
-**Exploring:** Multiplayer improv canvas (see `docs/new-north-star.md`).
 
 ---
 
@@ -76,12 +67,10 @@
 | Feb 17 | Template coord injection over LLM geometry | LLM as content generator, not geometry solver |
 | Feb 17 | Overlap score metric over visual QA | Single number for AI layout quality |
 | Feb 18 | Hash-based cursor colors over index-based | Deterministic per userId regardless of array order |
-| Feb 18 | TTL sweep for ephemeral WS state | Can't rely on explicit cleanup messages (text:blur drops on disconnect) |
-| Feb 18 | DRY updateAndMutate + type-linked ToolName | Mirrors createAndMutate pattern; compiler enforces tool metadata sync |
-| Feb 18 | AI Board Gen = Sprint 1 (was Sprint 5) | 3 independent PM evals converged: table stakes per Figma Make + Miro Flows |
-| Feb 18 | KILL Sprints 2+4 | Sprint 2: clustering unreliable on free-tier LLM. Sprint 4: problem overlap with batch undo |
-| Feb 18 | 2 of 42 PM skills worth installing | company-research (WebSearch), discovery-process (KILL gate). Rest is theater. |
-| Feb 18 | Multiplayer improv canvas as north star | Existing shared chat + canvas arch needs only ~3hrs new code. Differentiated niche: nobody has multiplayer + AI + canvas + improv. |
+| Feb 18 | TTL sweep for ephemeral WS state | Can't rely on explicit cleanup messages |
+| Feb 18 | Multiplayer improv canvas as north star | Existing shared chat + canvas needs ~3hrs new code. Nobody has multiplayer + AI + canvas + improv. |
+| Feb 18 | No Tailwind (yet) | 118 inline styles across 5 components. Fix consistency (theme dedup, kill hardcoded hex) not framework. Revisit post-deadline if >15 components. |
+| Feb 18 | Worktree DX: auto-load ports in dev.sh | Eliminates un-whitelistable `source worktree.ports` command |
 
 ---
 
