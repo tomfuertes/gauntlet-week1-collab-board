@@ -102,11 +102,14 @@ npx playwright test --reporter=dot     # minimal output (default 'list' floods c
 
 ### Worktree Agent Conventions
 
+Worktree agent lifecycle: **implement -> PR review -> fix review issues -> UAT -> done**. PR review gates UAT - never run UAT before review, because review fixes could introduce regressions that UAT would miss.
+
 Worktree prompts must explicitly mention:
 - `npm run dev` (auto-loads worktree.ports if present, never hardcode ports)
 - `scripts/localcurl.sh` instead of `curl` (agents default to raw curl which isn't in the permission allowlist)
 - **Namespace `playwright-cli` sessions in worktrees** - use `-s=<branch-name>` (e.g., `playwright-cli -s=feat-frames open ...`) to avoid conflicts with other worktrees running simultaneously. Without `-s`, all worktrees share the default session.
 - "Read CLAUDE.md and relevant source files before implementing" (not "Enter plan mode first")
+- "After implementation, run `/pr-review-toolkit:review-pr` and fix all issues before starting UAT"
 
 ## Architecture
 

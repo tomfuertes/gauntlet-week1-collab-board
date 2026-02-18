@@ -345,9 +345,6 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
 
   const { connectionState, initialized, cursors, textCursors, objects, presence, send, createObject: wsCreate, updateObject: wsUpdate, deleteObject: wsDelete, batchUndo, lastServerMessageAt } = useWebSocket(boardId);
 
-  // WS latency: delta between cursor send and next server message
-  const wsLatencyRef = useRef(0);
-  const lastCursorSendTime = useRef(0);
   const { createObject, updateObject, deleteObject, startBatch, commitBatch, undo, redo, pushExternalBatch, topTag } = useUndoRedo(objects, wsCreate, wsUpdate, wsDelete);
   const { aiGlowIds, confettiPos, confettiKey, clearConfetti } = useAiObjectEffects(objects, initialized, scale, stagePos, size);
 
@@ -511,20 +508,6 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
     if (toolMode !== "select") setSelectedIds(new Set());
   }, [toolMode]);
 
-  // WS latency: poll delta between cursor send and next server message
-  useEffect(() => {
-    let prevServerTs = 0;
-    const id = setInterval(() => {
-      const serverTs = lastServerMessageAt.current;
-      const sendTs = lastCursorSendTime.current;
-      if (serverTs > 0 && sendTs > 0 && serverTs > sendTs && serverTs !== prevServerTs) {
-        wsLatencyRef.current = serverTs - sendTs;
-        prevServerTs = serverTs;
-      }
-    }, 200);
-    return () => clearInterval(id);
-  }, [lastServerMessageAt, wsLatencyRef]);
-
   // Resize handler
   useEffect(() => {
     const onResize = () => setSize({ width: window.innerWidth, height: window.innerHeight });
@@ -687,7 +670,6 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
     const now = Date.now();
     if (now - lastCursorSend.current < CURSOR_THROTTLE_MS) return;
     lastCursorSend.current = now;
-    lastCursorSendTime.current = performance.now();
     send({ type: "cursor", x: worldX, y: worldY });
   }, [send]);
 
@@ -1572,7 +1554,7 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
         cursorCount={cursors.size}
         connectionState={connectionState}
         stageRef={stageRef}
-        wsLatencyRef={wsLatencyRef}
+        lastServerMessageAt={lastServerMessageAt}
       />
     </div>
   );
