@@ -8,7 +8,7 @@ import {
 import type { UIMessage } from "ai";
 import { createWorkersAI } from "workers-ai-provider";
 import { createAnthropic } from "@ai-sdk/anthropic";
-import { createSDKTools } from "./ai-tools-sdk";
+import { createSDKTools, isPlainObject } from "./ai-tools-sdk";
 import {
   SYSTEM_PROMPT,
   DIRECTOR_PROMPTS,
@@ -18,6 +18,74 @@ import {
 import type { Bindings } from "./env";
 import { recordBoardActivity } from "./env";
 import type { BoardObject } from "../shared/types";
+
+/**
+ * Sanitize UIMessages to ensure all tool invocation inputs are valid objects.
+ * Free-tier LLMs (e.g., GLM-4.7-Flash) sometimes emit tool calls with string,
+ * null, or array inputs instead of JSON objects. This causes API validation
+ * errors ("Input should be a valid dictionary") when the conversation history
+ * is sent back to the model on subsequent turns.
+ */
+function sanitizeMessages(messages: UIMessage[]): UIMessage[] {
+  return messages.map((msg) => {
+    if (msg.role !== "assistant" || !msg.parts) return msg;
+
+    let needsRepair = false;
+    const cleanedParts = msg.parts.map((part) => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const p = part as any;
+
+      // Static tool parts (from streamText): type is "tool-<toolName>"
+      // AI SDK v6 names these "tool-createStickyNote", "tool-getBoardState", etc.
+      if (
+        typeof p.type === "string" &&
+        p.type.startsWith("tool-") &&
+        p.type !== "dynamic-tool" &&
+        !isPlainObject(p.input)
+      ) {
+        needsRepair = true;
+        console.warn(
+          JSON.stringify({
+            event: "ai:sanitize:input",
+            tool: p.type.slice(5),
+            inputType:
+              p.input === null
+                ? "null"
+                : Array.isArray(p.input)
+                  ? "array"
+                  : typeof p.input,
+            toolCallId: p.toolCallId,
+          }),
+        );
+        return { ...p, input: {} };
+      }
+
+      // dynamic-tool parts (from director generateText)
+      if (p.type === "dynamic-tool" && !isPlainObject(p.input)) {
+        needsRepair = true;
+        console.warn(
+          JSON.stringify({
+            event: "ai:sanitize:input",
+            tool: p.toolName,
+            inputType:
+              p.input === null
+                ? "null"
+                : Array.isArray(p.input)
+                  ? "array"
+                  : typeof p.input,
+            toolCallId: p.toolCallId,
+          }),
+        );
+        return { ...p, input: {} };
+      }
+
+      return part;
+    });
+
+    if (needsRepair) return { ...msg, parts: cleanedParts };
+    return msg;
+  });
+}
 
 export class ChatAgent extends AIChatAgent<Bindings> {
   /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -151,7 +219,7 @@ export class ChatAgent extends AIChatAgent<Bindings> {
       const result = streamText({
         model,
         system: systemPrompt,
-        messages: await convertToModelMessages(this.messages),
+        messages: await convertToModelMessages(sanitizeMessages(this.messages)),
         tools,
         onFinish: wrappedOnFinish,
         stopWhen: stepCountIs(5),
@@ -265,7 +333,7 @@ export class ChatAgent extends AIChatAgent<Bindings> {
       const result = await generateText({
         model,
         system: directorSystem,
-        messages: await convertToModelMessages(this.messages),
+        messages: await convertToModelMessages(sanitizeMessages(this.messages)),
         tools,
         stopWhen: stepCountIs(3),
       });
@@ -279,13 +347,14 @@ export class ChatAgent extends AIChatAgent<Bindings> {
           const tr = step.toolResults.find(
             (r: { toolCallId: string }) => r.toolCallId === tc.toolCallId
           );
+          const safeInput = isPlainObject(tc.input) ? tc.input : {};
           if (tr) {
             parts.push({
               type: "dynamic-tool" as const,
               toolName: tc.toolName,
               toolCallId: tc.toolCallId,
               state: "output-available" as const,
-              input: tc.input,
+              input: safeInput,
               output: tr.output,
             });
           } else {
@@ -294,7 +363,7 @@ export class ChatAgent extends AIChatAgent<Bindings> {
               toolName: tc.toolName,
               toolCallId: tc.toolCallId,
               state: "output-error" as const,
-              input: tc.input,
+              input: safeInput,
               errorText: "Tool execution did not return a result",
             });
           }

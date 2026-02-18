@@ -146,12 +146,35 @@ function computeOverlapScore(objects: BoardObject[]): number {
 // Instrumentation
 // ---------------------------------------------------------------------------
 
+/** Type guard: is value a non-null, non-array object (i.e. a valid JSON dict)? */
+export function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
 /** Wrap a tool execute function with timing and structured logging */
 function instrumentExecute<TArgs, TResult>(
   toolName: string,
   fn: (args: TArgs) => Promise<TResult>,
 ): (args: TArgs) => Promise<TResult> {
   return async (args: TArgs) => {
+    // Guard: reject non-object inputs from malformed LLM tool calls.
+    // Free-tier models (GLM-4.7-Flash) sometimes emit strings or nulls.
+    if (!isPlainObject(args)) {
+      const inputType =
+        args === null ? "null" : Array.isArray(args) ? "array" : typeof args;
+      console.error(
+        JSON.stringify({
+          event: "ai:tool:invalid-input",
+          tool: toolName,
+          inputType,
+          input: String(args).slice(0, 200),
+        }),
+      );
+      return {
+        error: `Invalid input for ${toolName}: expected object, got ${inputType}`,
+      } as unknown as TResult;
+    }
+
     const start = Date.now();
     try {
       const result = await fn(args);
