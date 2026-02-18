@@ -2,16 +2,22 @@
 
 *Internal project management scratch. Not a deliverable.*
 
-## Session 12 Context (Feb 17, 2026)
+## Session 13 Context (Feb 17, 2026)
 
 ### What Was Done
-- DRY tool registry: extracted 10 tool definitions from inline ai.ts (583 -> 190 lines) into `src/server/ai-tools.ts`
-- Shared tool display metadata: `src/shared/ai-tool-meta.ts` (icons, labels, summaries) consumed by both ChatPanel and ai.ts
-- GLM-4.7-Flash model swap: replaced Llama 3.3 70B as free-tier fallback (131K context, native multi-turn tool calling)
-- CLAUDE.md updated with new architecture (ai-tools.ts, ai-tool-meta.ts, GLM model)
+- **Cloudflare Agents SDK migration:** Replaced manual Hono SSE route + custom useAIChat with AIChatAgent DO + useAgentChat
+  - New: `src/server/chat-agent.ts` (ChatAgent DO, ~70 lines), `src/server/ai-tools-sdk.ts` (10 tools, Zod + AI SDK tool(), ~330 lines)
+  - Deleted: `src/server/ai.ts`, `src/server/ai-tools.ts`, `@cloudflare/ai-utils` dependency
+  - Rewrote: `src/client/hooks/useAIChat.ts` as adapter over useAgentChat (preserves ChatPanel interface)
+  - Config: wrangler.toml (CHAT_AGENT DO + v2 migration + nodejs_compat), env.ts, index.ts (/agents/* auth route), vite.config.ts (WS proxy)
+  - New deps: agents, @cloudflare/ai-chat, ai (v6), @ai-sdk/anthropic, workers-ai-provider, zod (v4)
+- Gains: server-side chat persistence (DO SQLite), WebSocket streaming, automatic tool loop, provider abstraction
+- UAT passed: auth, board creation, single-tool (sticky), multi-tool (SWOT analysis)
 
 ### What's Next
-- [ ] Evaluate Cloudflare Agents SDK migration (post-submission)
+- [ ] Verify chat history persistence across page refreshes (new capability)
+- [ ] Test 2-browser sync for AI actions (UAT covered single browser)
+- [ ] Production deploy verification (CF git integration)
 
 ---
 
@@ -45,7 +51,7 @@
 **React/Konva:**
 - `ToolIconBtn` not memoized (8 instances re-render on cursor updates)
 - StrictMode violations: confetti ref + Cursors.tsx position refs mutated during render
-- `useAIChat.sendMessage` stale closure on `messages` state
+- `useAIChat.sendMessage` stale closure on `messages` state (mitigated: SDK manages state server-side now)
 
 **Architecture:**
 - KV storage on SQLite-backed DO (functional, not leveraging SQL)
@@ -63,9 +69,7 @@
 **AI Agent:**
 - SWOT/arrange-in-grid: Haiku deployed, needs prod verification
 - Board mutation via WS has no board-level auth (intentional)
-- `useAIChat.ts` SSE JSON parse catch silently discards all errors (not just partial chunks)
-- `createShape` in `ai-tools.ts` has 3-branch duplication (~30 lines recoverable with config object)
-- Workers AI fallback silently returns hardcoded success string on empty/null model response
+- `createShape` in `ai-tools-sdk.ts` has 3-branch duplication (~30 lines recoverable with config object)
 
 **Won't Fix (Week 1):**
 - Board.tsx ~1200 lines god component
@@ -91,6 +95,8 @@
 | Feb 17 | AI tools: orthogonal over monolithic | One tool = one responsibility for LLM accuracy |
 | Feb 17 | DRY tool registry over inline defs | Single source of truth, ai.ts 583->190 lines |
 | Feb 17 | GLM-4.7-Flash over Llama 3.3 | 131K context, native multi-turn tool calling, still free |
+| Feb 17 | Agents SDK over manual SSE | Server-side persistence, WS streaming, provider abstraction, automatic tool loop |
+| Feb 17 | useAIChat adapter over ChatPanel rewrite | Zero UI changes, preserves AIChatMessage interface |
 
 ---
 
@@ -102,4 +108,4 @@
 | Llama 3.3 70B (Workers AI) | $0.29 | $2.25 | Poor | Previous fallback. Skipped read-before-update. |
 | Claude Haiku 4.5 (Anthropic) | $1.00 | $5.00 | Excellent | Deployed to prod. |
 
-`runWithTools`: `maxRecursiveToolRuns` counts LLM round-trips, not tool calls. We use 3 (was 10, caused triple-creation).
+`streamText` with `stopWhen: stepCountIs(5)` limits to 5 LLM round-trips. Replaced `runWithTools` (max 3) in Agents SDK migration.

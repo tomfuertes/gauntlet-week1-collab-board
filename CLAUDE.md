@@ -13,7 +13,7 @@ CollabBoard - real-time collaborative whiteboard with AI agent integration. Gaun
 - **Real-time:** Durable Objects + WebSockets (one DO per board, LWW conflict resolution)
 - **Auth:** Custom (username/password, PBKDF2 hash, D1 sessions, cookie-based)
 - **Database:** DO Storage (board objects as KV) + D1 (users/sessions/board metadata)
-- **AI:** Workers AI binding (`env.AI.run()` + `runWithTools()`) - GLM-4.7-Flash (free tier, 131K context, multi-turn tool calling). 10 tools defined in `src/server/ai-tools.ts` (shared registry), display metadata in `src/shared/ai-tool-meta.ts`. Haiku via AI Gateway is the upgrade path ($0.001/req, much better tool discipline).
+- **AI:** Cloudflare Agents SDK (`AIChatAgent` DO) + Vercel AI SDK v6 (`streamText`, `tool()`). `ChatAgent` DO per board (instance name = boardId), WebSocket streaming, server-side chat persistence (DO SQLite). 10 tools in `src/server/ai-tools-sdk.ts` (Zod schemas), display metadata in `src/shared/ai-tool-meta.ts`. Models: GLM-4.7-Flash (free tier) or Claude Haiku 4.5 (if `ANTHROPIC_API_KEY` set) via `@ai-sdk/anthropic`.
 - **Deploy:** CF git integration auto-deploys on push to main
 
 ## Commands
@@ -124,14 +124,14 @@ src/
       BoardList.tsx     # Board grid (CRUD) - landing page after login
       ChatPanel.tsx     # AI chat sidebar
     hooks/
-      useWebSocket.ts   # WebSocket state management
-      useAIChat.ts      # AI chat state + API calls
+      useWebSocket.ts   # WebSocket state management (Board DO)
+      useAIChat.ts      # Adapter: useAgentChat -> AIChatMessage (ChatPanel compat)
       useUndoRedo.ts    # Local undo/redo stack (max 50, Cmd+Z/Cmd+Shift+Z)
   server/               # CF Worker
-    index.ts            # Hono app - routes, board CRUD, DO export, WebSocket upgrade
+    index.ts            # Hono app - routes, board CRUD, DO exports, agent routing, WS upgrade
     auth.ts             # Auth routes + PBKDF2 hashing + session helpers
-    ai.ts               # AI route - SSE stream, Haiku/GLM dispatch
-    ai-tools.ts         # Tool registry - 10 tool definitions (single source of truth)
+    chat-agent.ts       # AIChatAgent DO - WebSocket AI chat, model selection, system prompt
+    ai-tools-sdk.ts     # 10 tools as AI SDK tool() with Zod schemas
   shared/               # Types shared between client and server
     types.ts            # BoardObject, WSMessage, ChatMessage, User, etc.
     ai-tool-meta.ts     # Tool display metadata (icons, labels, summaries) for ChatPanel
@@ -146,7 +146,7 @@ migrations/             # D1 SQL migrations (tracked via d1_migrations table, np
 4. Worker routes WebSocket to Board Durable Object
 5. DO manages all board state: objects in DO Storage (`obj:{uuid}`), cursors in memory
 6. Mutations flow: client applies optimistically -> sends to DO -> DO persists + broadcasts to other clients
-7. AI commands: client POSTs to `/api/ai/chat` -> Worker runs `runWithTools()` with GLM-4.7-Flash -> tool callbacks via Board DO RPC (`readObject`/`mutate`) -> DO persists + broadcasts to all WebSocket clients
+7. AI commands: client connects to ChatAgent DO via WebSocket (`/agents/ChatAgent/<boardId>`) -> `useAgentChat` sends messages -> ChatAgent runs `streamText()` with tools -> tool callbacks via Board DO RPC (`readObject`/`mutate`) -> Board DO persists + broadcasts to all board WebSocket clients
 
 ### WebSocket Protocol
 
@@ -174,7 +174,7 @@ Each object stored as separate DO Storage key (`obj:{uuid}`, ~200 bytes). LWW vi
 - Auth is custom (no Better Auth) - PBKDF2 hashing (Web Crypto, zero deps), D1 sessions, cookie-based. No email, no OAuth, no password reset.
 - Deploy via `git push` to main (CF git integration). Do NOT run `wrangler deploy` manually.
 - All AI calls are server-side in Worker - never expose API keys to client bundle
-- AI uses `@cloudflare/ai-utils` `runWithTools()` with `maxRecursiveToolRuns: 3` (counts LLM round-trips, not tool calls). Tool definitions in `src/server/ai-tools.ts` (single source of truth), display metadata in `src/shared/ai-tool-meta.ts`.
+- AI uses Cloudflare Agents SDK (`AIChatAgent` DO) + Vercel AI SDK v6 (`streamText` with `stopWhen: stepCountIs(5)`). Tool definitions in `src/server/ai-tools-sdk.ts` (Zod schemas, AI SDK `tool()`), display metadata in `src/shared/ai-tool-meta.ts`. Chat history persisted server-side in DO SQLite.
 - D1 migrations tracked via `d1_migrations` table. Use `npm run migrate` (not raw `wrangler d1 execute`). Create new: `wrangler d1 migrations create collabboard-db "name"`
 - WebSocket reconnect with exponential backoff (1s-10s cap), `disconnected` after 5 initial failures
 - Performance targets: 60fps canvas, <100ms object sync, <50ms cursor sync, 500+ objects, 5+ users

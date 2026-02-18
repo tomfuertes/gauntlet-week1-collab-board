@@ -24,6 +24,10 @@ export default defineConfig({
         target: `ws://localhost:${wranglerPort}`,
         ws: true,
       },
+      "/agents": {
+        target: `ws://localhost:${wranglerPort}`,
+        ws: true,
+      },
     },
   },
 });

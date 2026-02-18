@@ -3,7 +3,7 @@ account_id = "fb531f0c4c22637ae5d5e812ca3e56b1"
 name = "collabboard"
 main = "src/server/index.ts"
 compatibility_date = "2025-02-01"
-compatibility_flags = ["nodejs_als"]
+compatibility_flags = ["nodejs_compat"]
 
 [assets]
 directory = "dist"
@@ -15,12 +15,17 @@ database_id = "746bc930-1ec4-4424-9209-29ca4f185f43"
 
 [durable_objects]
 bindings = [
-  { name = "BOARD", class_name = "Board" }
+  { name = "BOARD", class_name = "Board" },
+  { name = "CHAT_AGENT", class_name = "ChatAgent" }
 ]
 
 [[migrations]]
 tag = "v1"
 new_sqlite_classes = ["Board"]
+
+[[migrations]]
+tag = "v2"
+new_sqlite_classes = ["ChatAgent"]
 
 [ai]
 binding = "AI"

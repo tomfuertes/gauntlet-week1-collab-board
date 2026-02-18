@@ -1,11 +1,12 @@
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { getCookie } from "hono/cookie";
+import { routeAgentRequest } from "agents";
 import { auth, getSessionUser } from "./auth";
-import { aiRoutes } from "./ai";
 
 import type { Bindings } from "./env";
 export { Board } from "./board";
+export { ChatAgent } from "./chat-agent";
 
 const app = new Hono<{ Bindings: Bindings }>();
 
@@ -18,9 +19,6 @@ app.get("/api/health", (c) => {
 
 // Mount auth routes
 app.route("/", auth);
-
-// Mount AI routes
-app.route("/api/ai", aiRoutes);
 
 // Board CRUD (auth-protected)
 app.get("/api/boards", async (c) => {
@@ -112,6 +110,14 @@ app.delete("/api/user", async (c) => {
   await c.env.DB.prepare("DELETE FROM users WHERE id = ?").bind(user.id).run();
 
   return c.json({ deleted: true });
+});
+
+// Agent SDK route (auth-protected)
+app.all("/agents/*", async (c) => {
+  const sessionId = getCookie(c, "session");
+  const user = await getSessionUser(c.env.DB, sessionId);
+  if (!user) return c.text("Unauthorized", 401);
+  return (await routeAgentRequest(c.req.raw, c.env)) || c.text("Not found", 404);
 });
 
 // WebSocket upgrade - authenticate then forward to Board DO
