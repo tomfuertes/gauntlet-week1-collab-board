@@ -1,14 +1,20 @@
 /* eslint-disable @typescript-eslint/no-explicit-any -- tool args are loosely typed by design */
-import type { BoardObject, WSClientMessage } from "../shared/types";
+import type { BoardObject } from "../shared/types";
 import type { MutateResult } from "./env";
 import type { ToolName } from "../shared/ai-tool-meta";
 import { TOOL_LABELS } from "../shared/ai-tool-meta";
+
+/** Mutation messages the tool registry can send (excludes cursor) */
+type BoardMutation =
+  | { type: "obj:create"; obj: BoardObject }
+  | { type: "obj:update"; obj: Partial<BoardObject> & { id: string } }
+  | { type: "obj:delete"; id: string };
 
 /** Minimal interface for the Board DO stub methods used by tools */
 export interface BoardStub {
   readObjects(): Promise<BoardObject[]>;
   readObject(id: string): Promise<BoardObject | null>;
-  mutate(msg: WSClientMessage): Promise<MutateResult>;
+  mutate(msg: BoardMutation): Promise<MutateResult>;
 }
 
 export interface ToolDef {

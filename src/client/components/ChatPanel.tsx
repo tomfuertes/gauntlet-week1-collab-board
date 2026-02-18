@@ -2,7 +2,7 @@ import React, { useRef, useEffect, useState } from "react";
 import { useAIChat } from "../hooks/useAIChat";
 import type { AIChatMessage } from "../hooks/useAIChat";
 import { colors } from "../theme";
-import { TOOL_ICONS, toolSummary } from "../../shared/ai-tool-meta";
+import { getToolIcon, toolSummary } from "../../shared/ai-tool-meta";
 
 interface ChatPanelProps {
   boardId: string;
@@ -45,7 +45,7 @@ function ToolHistory({ tools }: { tools: NonNullable<AIChatMessage["tools"]> }) 
         <div style={{ marginTop: 4, paddingLeft: 10, display: "flex", flexDirection: "column", gap: 3 }}>
           {tools.map((t, i) => (
             <span key={i} style={{ fontSize: "0.6875rem", color: "#94a3b8" }}>
-              {TOOL_ICONS[t.name] || "\u{1F527}"} {toolSummary(t)}
+              {getToolIcon(t.name)} {toolSummary(t)}
             </span>
           ))}
         </div>

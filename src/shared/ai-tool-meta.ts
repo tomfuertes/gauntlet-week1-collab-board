@@ -15,8 +15,7 @@ export const TOOL_NAMES = [
 
 export type ToolName = (typeof TOOL_NAMES)[number];
 
-/** Emoji icons for tool display in ChatPanel. Typed as string-indexed for dynamic SSE lookups. */
-export const TOOL_ICONS: Record<string, string> = {
+export const TOOL_ICONS: Record<ToolName, string> = {
   createStickyNote: "\u{1F4CC}",
   createShape: "\u{1F7E6}",
   createFrame: "\u{1F5BC}",
@@ -41,6 +40,11 @@ export const TOOL_LABELS: Record<ToolName, string> = {
   getBoardState: "Reading board",
   deleteObject: "Deleting object",
 };
+
+/** Lookup icon by dynamic string key (SSE events have untyped name) */
+export function getToolIcon(name: string): string {
+  return TOOL_ICONS[name as ToolName] || "\u{1F527}";
+}
 
 /** Human-readable summary of a tool invocation for ChatPanel display */
 export function toolSummary(t: { name: string; label: string; args?: Record<string, unknown> }): string {
