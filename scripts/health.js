@@ -2,6 +2,7 @@
 // Usage: node scripts/health.js [--port=5173] [--timeout=30] [--path=/api/health]
 // Polls until the server responds or timeout. Exits 0 on success, 1 on timeout.
 import http from "http";
+import fs from "fs";
 
 const args = Object.fromEntries(
   process.argv.slice(2).map((a) => {
@@ -10,7 +11,13 @@ const args = Object.fromEntries(
   })
 );
 
-const port = Number(args.port ?? 5173);
+// Auto-detect port from worktree.ports if no --port specified
+let detectedPort = 5173;
+if (!args.port && fs.existsSync("worktree.ports")) {
+  const match = fs.readFileSync("worktree.ports", "utf8").match(/VITE_PORT=(\d+)/);
+  if (match) detectedPort = Number(match[1]);
+}
+const port = Number(args.port ?? detectedPort);
 const timeout = Number(args.timeout ?? 30) * 1000;
 const path = args.path ?? "/";
 const interval = 500;

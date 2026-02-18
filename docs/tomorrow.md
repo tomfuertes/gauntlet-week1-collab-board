@@ -94,7 +94,7 @@ Key approach:
 4. Cursors.tsx: detect userId==="ai-agent", render a distinct cursor (robot/sparkle icon, purple #a78bfa, particle trail).
 5. Board.tsx: show AI in presence avatars with sparkle icon while active.
 
-Source worktree.ports && VITE_PORT=$VITE_PORT WRANGLER_PORT=$WRANGLER_PORT npm run dev to start. Use playwright-cli -s=ai-cursor for testing. Verify with SWOT template - cursor should zip between all 12 creation points.
+npm run dev to start. Use playwright-cli -s=ai-cursor for testing. Verify with SWOT template - cursor should zip between all 12 creation points.
 ```
 
 ---
@@ -168,7 +168,7 @@ Key approach:
 2. chat-agent.ts: add CLUSTERING instructions to SYSTEM_PROMPT explaining the multi-step flow (getBoardState -> create frames -> moveObject into frames).
 3. Prompt templates: "Organize these N selected objects by theme..." etc.
 
-Source worktree.ports && VITE_PORT=$VITE_PORT WRANGLER_PORT=$WRANGLER_PORT npm run dev to start. Use playwright-cli -s=ai-context for testing. Create 8+ stickies with mixed topics, select all, right-click -> Cluster. Verify frames created with stickies moved inside.
+npm run dev to start. Use playwright-cli -s=ai-context for testing. Create 8+ stickies with mixed topics, select all, right-click -> Cluster. Verify frames created with stickies moved inside.
 ```
 
 ---
@@ -240,7 +240,7 @@ Key approach:
 4. board.ts: add undoBatch(batchId) RPC that deletes all objects with that batchId + broadcasts obj:delete. Add "ai:undo-batch" WS message handler.
 5. ChatPanel.tsx: show "Undo AI" button after AI responses that created objects. Board.tsx: toolbar "Undo AI" button.
 
-Source worktree.ports && VITE_PORT=$VITE_PORT WRANGLER_PORT=$WRANGLER_PORT npm run dev to start. Use playwright-cli -s=ai-undo for testing. Create SWOT -> Undo AI -> verify all 12 objects gone.
+npm run dev to start. Use playwright-cli -s=ai-undo for testing. Create SWOT -> Undo AI -> verify all 12 objects gone.
 ```
 
 ---

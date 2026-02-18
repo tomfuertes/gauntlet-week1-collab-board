@@ -20,11 +20,8 @@ CollabBoard - real-time collaborative whiteboard with AI agent integration. Gaun
 
 ```bash
 # Dev
-npm run dev              # wrangler dev (backend + frontend)
-npm run health           # wait for dev server to be ready (polls :5173, no curl needed)
-node scripts/health.js --port=5174  # wait for worktree dev server
-# In worktrees (avoid port conflicts with main repo):
-VITE_PORT=5174 WRANGLER_PORT=8788 npm run dev
+npm run dev              # wrangler dev (backend + frontend, auto-loads worktree.ports)
+npm run health           # wait for dev server (auto-detects port from worktree.ports)
 
 # Build & Deploy (CF git integration auto-deploys on push to main)
 npm run build            # Vite build
@@ -106,7 +103,7 @@ npx playwright test --reporter=dot     # minimal output (default 'list' floods c
 ### Worktree Agent Conventions
 
 Worktree prompts must explicitly mention:
-- `source worktree.ports && npm run dev` (never hardcode ports)
+- `npm run dev` (auto-loads worktree.ports if present, never hardcode ports)
 - `scripts/localcurl.sh` instead of `curl` (agents default to raw curl which isn't in the permission allowlist)
 - **Namespace `playwright-cli` sessions in worktrees** - use `-s=<branch-name>` (e.g., `playwright-cli -s=feat-frames open ...`) to avoid conflicts with other worktrees running simultaneously. Without `-s`, all worktrees share the default session.
 - "Read CLAUDE.md and relevant source files before implementing" (not "Enter plan mode first")

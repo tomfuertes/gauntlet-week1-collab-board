@@ -37,7 +37,7 @@ cd /path/to/worktree && claude "<task prompt>"
 
 - The task prompt in the `claude` command should be **specific and actionable** - describe what to build, not "enter plan mode"
 - Include "Read CLAUDE.md and relevant source files before implementing" in the prompt
-- Include "source worktree.ports && npm run dev" for dev server instructions
+- Include "npm run dev" for dev server instructions (auto-loads worktree.ports)
 - Include "Use scripts/localcurl.sh instead of curl" for API testing
 - Include "Use -s=<branch-name> with playwright-cli" for session namespacing
 - Never use `git -C` - commands run directly in the worktree

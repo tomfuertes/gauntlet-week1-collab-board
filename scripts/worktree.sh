@@ -139,8 +139,8 @@ EOF
   echo "Worktree ready. To start working:"
   echo "  cd ${wt_dir} && claude"
   echo ""
-  echo "Dev server (ports auto-assigned, no conflicts):"
-  echo "  source worktree.ports && npm run dev"
+  echo "Dev server (ports auto-loaded from worktree.ports):"
+  echo "  npm run dev"
 }
 
 cmd_remove() {
