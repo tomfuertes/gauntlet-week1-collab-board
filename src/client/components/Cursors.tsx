@@ -8,6 +8,12 @@ const CURSOR_COLORS = [
   "#f472b6", "#34d399", "#fb923c", "#818cf8", "#22d3ee",
 ];
 
+/** Stable color per userId via hash (matches Board.tsx getUserColor) */
+function getUserColor(userId: string): string {
+  const hash = userId.split("").reduce((h, c) => (h * 31 + c.charCodeAt(0)) | 0, 0);
+  return CURSOR_COLORS[Math.abs(hash) % CURSOR_COLORS.length];
+}
+
 // Each frame the cursor moves 25% of the remaining distance.
 // At 60fps with 30fps cursor updates, a 100px jump reaches 95% in ~200ms.
 const LERP_FACTOR = 0.25;
@@ -103,8 +109,8 @@ export function Cursors({ cursors }: { cursors: Map<string, CursorState> }) {
   return (
     <>
       {/* Trail lines (rendered behind cursor shapes) */}
-      {[...cursors.values()].map((cursor, i) => {
-        const color = CURSOR_COLORS[i % CURSOR_COLORS.length];
+      {[...cursors.values()].map((cursor) => {
+        const color = getUserColor(cursor.userId);
         return (
           <Line
             key={`trail-${cursor.userId}`}
@@ -124,8 +130,8 @@ export function Cursors({ cursors }: { cursors: Map<string, CursorState> }) {
         );
       })}
       {/* Cursor shapes */}
-      {[...cursors.values()].map((cursor, i) => {
-        const color = CURSOR_COLORS[i % CURSOR_COLORS.length];
+      {[...cursors.values()].map((cursor) => {
+        const color = getUserColor(cursor.userId);
         return (
           <Group
             key={cursor.userId}

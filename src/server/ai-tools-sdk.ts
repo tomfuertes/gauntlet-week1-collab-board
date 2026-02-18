@@ -16,150 +16,276 @@ interface BoardStub {
   mutate(msg: BoardMutation): Promise<MutateResult>;
 }
 
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+/** Default random position within usable canvas area */
+function randomPos(x?: number, y?: number) {
+  return {
+    x: x ?? 100 + Math.random() * 700,
+    y: Math.max(60, y ?? 100 + Math.random() * 500),
+  };
+}
+
+/** Create a BoardObject with standard defaults */
+function makeObject(
+  type: BoardObject["type"],
+  pos: { x: number; y: number },
+  width: number,
+  height: number,
+  props: BoardObject["props"],
+): BoardObject {
+  return {
+    id: crypto.randomUUID(),
+    type,
+    ...pos,
+    width,
+    height,
+    rotation: 0,
+    props,
+    createdBy: "ai-agent",
+    updatedAt: Date.now(),
+  };
+}
+
+/** Mutate (create) an object, log it, and return position info for LLM chaining */
+async function createAndMutate(stub: BoardStub, obj: BoardObject) {
+  let result: MutateResult;
+  try {
+    result = await stub.mutate({ type: "obj:create", obj });
+  } catch (err) {
+    console.error(
+      JSON.stringify({ event: "ai:create:error", type: obj.type, id: obj.id, error: String(err) }),
+    );
+    return { error: `Failed to create ${obj.type}: ${err instanceof Error ? err.message : String(err)}` };
+  }
+  if (!result.ok) {
+    console.error(
+      JSON.stringify({ event: "ai:create:rejected", type: obj.type, id: obj.id, error: result.error }),
+    );
+    return { error: result.error };
+  }
+  console.debug(
+    JSON.stringify({
+      event: "ai:create",
+      type: obj.type,
+      id: obj.id,
+      x: obj.x,
+      y: obj.y,
+      w: obj.width,
+      h: obj.height,
+    }),
+  );
+  return {
+    created: obj.id,
+    type: obj.type,
+    x: obj.x,
+    y: obj.y,
+    width: obj.width,
+    height: obj.height,
+  };
+}
+
+/** Check if two board objects overlap (axis-aligned bounding boxes) */
+function rectsOverlap(a: BoardObject, b: BoardObject): boolean {
+  return (
+    a.x < b.x + b.width &&
+    a.x + a.width > b.x &&
+    a.y < b.y + b.height &&
+    a.y + a.height > b.y
+  );
+}
+
+/** Count pairwise overlaps among objects (0 = perfect layout) */
+function computeOverlapScore(objects: BoardObject[]): number {
+  let overlaps = 0;
+  for (let i = 0; i < objects.length; i++)
+    for (let j = i + 1; j < objects.length; j++)
+      if (rectsOverlap(objects[i], objects[j])) overlaps++;
+  return overlaps;
+}
+
+// ---------------------------------------------------------------------------
+// Tool registry
+// ---------------------------------------------------------------------------
+
 /** Create the full AI SDK tool registry bound to a specific Board DO stub */
 export function createSDKTools(stub: BoardStub) {
   return {
     // 1. createStickyNote
     createStickyNote: tool({
-      description: "Create a sticky note on the whiteboard with text content",
+      description:
+        "Create a sticky note on the whiteboard with text content",
       inputSchema: z.object({
         text: z.string().describe("The text content of the sticky note"),
-        x: z.number().optional().describe("X position on the canvas (default: random 100-800)"),
-        y: z.number().optional().describe("Y position on the canvas (default: random 100-600)"),
-        color: z.string().optional().describe("Hex color (default: #fbbf24 yellow). Options: #fbbf24, #f87171, #4ade80, #60a5fa, #c084fc, #fb923c"),
+        x: z
+          .number()
+          .optional()
+          .describe("X position on the canvas (default: random 100-800)"),
+        y: z
+          .number()
+          .optional()
+          .describe("Y position on the canvas (default: random 100-600)"),
+        color: z
+          .string()
+          .optional()
+          .describe(
+            "Hex color (default: #fbbf24 yellow). Options: #fbbf24, #f87171, #4ade80, #60a5fa, #c084fc, #fb923c",
+          ),
       }),
       execute: async ({ text, x, y, color }) => {
-        const id = crypto.randomUUID();
-        const obj = {
-          id,
-          type: "sticky" as const,
-          x: x ?? 100 + Math.random() * 700,
-          y: Math.max(60, y ?? 100 + Math.random() * 500),
-          width: 200,
-          height: 200,
-          rotation: 0,
-          props: { text: text || "New note", color: color || "#fbbf24" },
-          createdBy: "ai-agent",
-          updatedAt: Date.now(),
-        };
-        const result = await stub.mutate({ type: "obj:create", obj });
-        if (!result.ok) return { error: result.error };
-        return { created: id, type: "sticky", text };
+        const obj = makeObject("sticky", randomPos(x, y), 200, 200, {
+          text: text || "New note",
+          color: color || "#fbbf24",
+        });
+        return createAndMutate(stub, obj);
       },
     }),
 
     // 2. createShape (rect, circle, line)
     createShape: tool({
-      description: "Create a shape on the whiteboard. Use shape='rect' for rectangle, 'circle' for circle, 'line' for line.",
+      description:
+        "Create a shape on the whiteboard. Use shape='rect' for rectangle, 'circle' for circle, 'line' for line.",
       inputSchema: z.object({
-        shape: z.string().describe("Shape type: 'rect', 'circle', or 'line'"),
-        x: z.number().optional().describe("X position (default: random). For circle: center X. For line: start X."),
-        y: z.number().optional().describe("Y position (default: random). For circle: center Y. For line: start Y."),
-        width: z.number().optional().describe("Width (default: 150). For circle: diameter. For line: X delta to endpoint."),
-        height: z.number().optional().describe("Height (default: 100). For circle: same as width. For line: Y delta to endpoint."),
-        fill: z.string().optional().describe("Fill color hex (default: #3b82f6)"),
-        stroke: z.string().optional().describe("Stroke color hex (default: #2563eb)"),
+        shape: z
+          .string()
+          .describe("Shape type: 'rect', 'circle', or 'line'"),
+        x: z
+          .number()
+          .optional()
+          .describe(
+            "X position (default: random). For circle: center X. For line: start X.",
+          ),
+        y: z
+          .number()
+          .optional()
+          .describe(
+            "Y position (default: random). For circle: center Y. For line: start Y.",
+          ),
+        width: z
+          .number()
+          .optional()
+          .describe(
+            "Width (default: 150). For circle: diameter. For line: X delta to endpoint.",
+          ),
+        height: z
+          .number()
+          .optional()
+          .describe(
+            "Height (default: 100). For circle: same as width. For line: Y delta to endpoint.",
+          ),
+        fill: z
+          .string()
+          .optional()
+          .describe("Fill color hex (default: #3b82f6)"),
+        stroke: z
+          .string()
+          .optional()
+          .describe("Stroke color hex (default: #2563eb)"),
       }),
-      execute: async ({ shape: shapeArg, x, y, width, height, fill, stroke }) => {
+      execute: async ({
+        shape: shapeArg,
+        x,
+        y,
+        width,
+        height,
+        fill,
+        stroke,
+      }) => {
         const shape = shapeArg || "rect";
-        const id = crypto.randomUUID();
 
         if (shape === "circle") {
           const diameter = width ?? 100;
-          const cx = x ?? 100 + Math.random() * 700;
-          const cy = Math.max(60, y ?? 100 + Math.random() * 500);
-          const obj = {
-            id,
-            type: "circle" as const,
-            x: cx - diameter / 2,
-            y: cy - diameter / 2,
-            width: diameter,
-            height: diameter,
-            rotation: 0,
-            props: { fill: fill || "#3b82f6", stroke: stroke || "#2563eb" },
-            createdBy: "ai-agent",
-            updatedAt: Date.now(),
-          };
-          const result = await stub.mutate({ type: "obj:create", obj });
-          if (!result.ok) return { error: result.error };
-          return { created: id, type: "circle", diameter };
+          const center = randomPos(x, y);
+          const obj = makeObject(
+            "circle",
+            { x: center.x - diameter / 2, y: center.y - diameter / 2 },
+            diameter,
+            diameter,
+            { fill: fill || "#3b82f6", stroke: stroke || "#2563eb" },
+          );
+          return createAndMutate(stub, obj);
         }
 
         if (shape === "line") {
-          const obj = {
-            id,
-            type: "line" as const,
-            x: x ?? 100 + Math.random() * 700,
-            y: Math.max(60, y ?? 100 + Math.random() * 500),
-            width: width ?? 200,
-            height: height ?? 0,
-            rotation: 0,
-            props: { stroke: stroke || "#94a3b8" },
-            createdBy: "ai-agent",
-            updatedAt: Date.now(),
-          };
-          const result = await stub.mutate({ type: "obj:create", obj });
-          if (!result.ok) return { error: result.error };
-          return { created: id, type: "line" };
+          const obj = makeObject(
+            "line",
+            randomPos(x, y),
+            width ?? 200,
+            height ?? 0,
+            { stroke: stroke || "#94a3b8" },
+          );
+          return createAndMutate(stub, obj);
         }
 
         // Default: rect
-        const obj = {
-          id,
-          type: "rect" as const,
-          x: x ?? 100 + Math.random() * 700,
-          y: Math.max(60, y ?? 100 + Math.random() * 500),
-          width: width ?? 150,
-          height: height ?? 100,
-          rotation: 0,
-          props: { fill: fill || "#3b82f6", stroke: stroke || "#2563eb" },
-          createdBy: "ai-agent",
-          updatedAt: Date.now(),
-        };
-        const result = await stub.mutate({ type: "obj:create", obj });
-        if (!result.ok) return { error: result.error };
-        return { created: id, type: "rect" };
+        const obj = makeObject(
+          "rect",
+          randomPos(x, y),
+          width ?? 150,
+          height ?? 100,
+          { fill: fill || "#3b82f6", stroke: stroke || "#2563eb" },
+        );
+        return createAndMutate(stub, obj);
       },
     }),
 
     // 3. createFrame
     createFrame: tool({
-      description: "Create a frame (labeled container/region) on the whiteboard to group or organize objects. Frames render behind other objects.",
+      description:
+        "Create a frame (labeled container/region) on the whiteboard to group or organize objects. Frames render behind other objects.",
       inputSchema: z.object({
         title: z.string().describe("The frame title/label"),
-        x: z.number().optional().describe("X position (default: random 100-800)"),
-        y: z.number().optional().describe("Y position (default: random 100-600)"),
-        width: z.number().optional().describe("Width in pixels (default: 400)"),
-        height: z.number().optional().describe("Height in pixels (default: 300)"),
+        x: z
+          .number()
+          .optional()
+          .describe("X position (default: random 100-800)"),
+        y: z
+          .number()
+          .optional()
+          .describe("Y position (default: random 100-600)"),
+        width: z
+          .number()
+          .optional()
+          .describe("Width in pixels (default: 400)"),
+        height: z
+          .number()
+          .optional()
+          .describe("Height in pixels (default: 300)"),
       }),
       execute: async ({ title, x, y, width, height }) => {
-        const id = crypto.randomUUID();
-        const obj = {
-          id,
-          type: "frame" as const,
-          x: x ?? 100 + Math.random() * 700,
-          y: Math.max(60, y ?? 100 + Math.random() * 500),
-          width: width ?? 400,
-          height: height ?? 300,
-          rotation: 0,
-          props: { text: typeof title === "string" && title.trim() ? title.trim() : "Frame" },
-          createdBy: "ai-agent",
-          updatedAt: Date.now(),
-        };
-        const result = await stub.mutate({ type: "obj:create", obj });
-        if (!result.ok) return { error: result.error };
-        return { created: id, type: "frame", title: obj.props.text };
+        const obj = makeObject(
+          "frame",
+          randomPos(x, y),
+          width ?? 400,
+          height ?? 300,
+          {
+            text:
+              typeof title === "string" && title.trim()
+                ? title.trim()
+                : "Frame",
+          },
+        );
+        return createAndMutate(stub, obj);
       },
     }),
 
     // 4. createConnector (resolves object centers server-side)
     createConnector: tool({
-      description: "Create a connector/arrow between two objects on the whiteboard. Pass the IDs of the objects to connect.",
+      description:
+        "Create a connector/arrow between two objects on the whiteboard. Pass the IDs of the objects to connect.",
       inputSchema: z.object({
         fromId: z.string().describe("ID of the source object"),
         toId: z.string().describe("ID of the target object"),
-        stroke: z.string().optional().describe("Stroke color hex (default: #94a3b8)"),
-        arrow: z.string().optional().describe("Arrow style: 'end' (default), 'both', or 'none'"),
+        stroke: z
+          .string()
+          .optional()
+          .describe("Stroke color hex (default: #94a3b8)"),
+        arrow: z
+          .string()
+          .optional()
+          .describe("Arrow style: 'end' (default), 'both', or 'none'"),
       }),
       execute: async ({ fromId, toId, stroke, arrow }) => {
         const fromObj = await stub.readObject(fromId);
@@ -175,32 +301,27 @@ export function createSDKTools(stub: BoardStub) {
         const w = x2 - x1;
         const h = y2 - y1;
         if (w === 0 && h === 0) {
-          return { error: "Cannot create zero-length connector (objects overlap)" };
+          return {
+            error: "Cannot create zero-length connector (objects overlap)",
+          };
         }
 
-        const arrowStyle = arrow === "both" ? "both" : arrow === "none" ? "none" : "end";
-        const id = crypto.randomUUID();
-        const obj = {
-          id,
-          type: "line" as const,
-          x: x1,
-          y: y1,
-          width: w,
-          height: h,
-          rotation: 0,
-          props: { stroke: stroke || "#94a3b8", arrow: arrowStyle as "end" | "both" | "none" },
-          createdBy: "ai-agent",
-          updatedAt: Date.now(),
-        };
-        const result = await stub.mutate({ type: "obj:create", obj });
-        if (!result.ok) return { error: result.error };
-        return { created: id, type: "connector", from: fromId, to: toId };
+        const arrowStyle =
+          arrow === "both" ? "both" : arrow === "none" ? "none" : "end";
+        const obj = makeObject("line", { x: x1, y: y1 }, w, h, {
+          stroke: stroke || "#94a3b8",
+          arrow: arrowStyle as "end" | "both" | "none",
+        });
+        const result = await createAndMutate(stub, obj);
+        if ("error" in result) return result;
+        return { ...result, from: fromId, to: toId };
       },
     }),
 
     // 5. moveObject
     moveObject: tool({
-      description: "Move an existing object to a new position on the whiteboard",
+      description:
+        "Move an existing object to a new position on the whiteboard",
       inputSchema: z.object({
         id: z.string().describe("The ID of the object to move"),
         x: z.number().describe("New X position"),
@@ -236,7 +357,8 @@ export function createSDKTools(stub: BoardStub) {
 
     // 7. updateText
     updateText: tool({
-      description: "Update the text content of a sticky note, text object, or frame title",
+      description:
+        "Update the text content of a sticky note, text object, or frame title",
       inputSchema: z.object({
         id: z.string().describe("The ID of the object to update"),
         text: z.string().describe("New text content"),
@@ -253,7 +375,8 @@ export function createSDKTools(stub: BoardStub) {
 
     // 8. changeColor
     changeColor: tool({
-      description: "Change the color of an object. Maps to props.color for stickies, props.fill for shapes.",
+      description:
+        "Change the color of an object. Maps to props.color for stickies, props.fill for shapes.",
       inputSchema: z.object({
         id: z.string().describe("The ID of the object to recolor"),
         color: z.string().describe("New hex color"),
@@ -277,33 +400,54 @@ export function createSDKTools(stub: BoardStub) {
       },
     }),
 
-    // 9. getBoardState (with filtering and summary mode)
+    // 9. getBoardState (with filtering, summary mode, and overlap scoring)
     getBoardState: tool({
-      description: "Read objects on the whiteboard. Optionally filter by type or specific IDs. For large boards (20+), returns a summary unless filtered.",
+      description:
+        "Read objects on the whiteboard. Optionally filter by type or specific IDs. For large boards (20+), returns a summary unless filtered.",
       inputSchema: z.object({
-        filter: z.string().optional().describe("Filter by object type: 'sticky', 'rect', 'circle', 'line', 'text', 'frame'"),
-        ids: z.array(z.string()).optional().describe("Array of specific object IDs to return"),
+        filter: z
+          .string()
+          .optional()
+          .describe(
+            "Filter by object type: 'sticky', 'rect', 'circle', 'line', 'text', 'frame'",
+          ),
+        ids: z
+          .array(z.string())
+          .optional()
+          .describe("Array of specific object IDs to return"),
       }),
       execute: async ({ filter, ids }) => {
         const objects = await stub.readObjects();
 
         if (ids && ids.length > 0) {
-          const matched = objects.filter((o: BoardObject) => ids.includes(o.id));
-          return matched;
+          return objects.filter((o: BoardObject) => ids.includes(o.id));
         }
 
         if (filter) {
-          const matched = objects.filter((o: BoardObject) => o.type === filter);
-          return matched;
+          return objects.filter((o: BoardObject) => o.type === filter);
+        }
+
+        // Compute and log overlap score for observability
+        const overlapScore = computeOverlapScore(objects);
+        if (overlapScore > 0) {
+          console.debug(
+            JSON.stringify({
+              event: "ai:overlap",
+              score: overlapScore,
+              total: objects.length,
+            }),
+          );
         }
 
         if (objects.length >= 20) {
           const counts: Record<string, number> = {};
-          for (const o of objects) counts[o.type] = (counts[o.type] || 0) + 1;
+          for (const o of objects)
+            counts[o.type] = (counts[o.type] || 0) + 1;
           return {
             summary: true,
             total: objects.length,
             countsByType: counts,
+            overlapScore,
             hint: "Use filter or ids parameter to get specific objects",
           };
         }

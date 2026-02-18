@@ -21,6 +21,8 @@ CollabBoard - real-time collaborative whiteboard with AI agent integration. Gaun
 ```bash
 # Dev
 npm run dev              # wrangler dev (backend + frontend)
+npm run health           # wait for dev server to be ready (polls :5173, no curl needed)
+node scripts/health.js --port=5174  # wait for worktree dev server
 # In worktrees (avoid port conflicts with main repo):
 VITE_PORT=5174 WRANGLER_PORT=8788 npm run dev
 
@@ -120,18 +122,23 @@ src/
     App.tsx             # App shell + hash routing (#board/{id})
     theme.ts            # Shared color constants (accent, surfaces, borders, cursors)
     components/
-      Board.tsx         # Canvas + toolbar + chat panel integration
+      Board.tsx         # Canvas + toolbar + chat panel integration (~1435 lines)
       BoardList.tsx     # Board grid (CRUD) - landing page after login
-      ChatPanel.tsx     # AI chat sidebar
+      ChatPanel.tsx     # AI chat sidebar (template coord injection for SWOT/Kanban/etc)
+      ConfettiBurst.tsx # Confetti particle burst animation (extracted from Board)
+      BoardGrid.tsx     # Dot grid + radial glow background (extracted from Board)
     hooks/
       useWebSocket.ts   # WebSocket state management (Board DO)
       useAIChat.ts      # Adapter: useAgentChat -> AIChatMessage (ChatPanel compat)
       useUndoRedo.ts    # Local undo/redo stack (max 50, Cmd+Z/Cmd+Shift+Z)
+      useAiObjectEffects.ts  # AI glow + confetti trigger logic (extracted from Board)
+    styles/
+      animations.css    # Shared CSS keyframes (cb-pulse, cb-confetti)
   server/               # CF Worker
     index.ts            # Hono app - routes, board CRUD, DO exports, agent routing, WS upgrade
     auth.ts             # Auth routes + PBKDF2 hashing + session helpers
-    chat-agent.ts       # AIChatAgent DO - WebSocket AI chat, model selection, system prompt
-    ai-tools-sdk.ts     # 10 tools as AI SDK tool() with Zod schemas
+    chat-agent.ts       # AIChatAgent DO - WebSocket AI chat, model selection, geometry system prompt
+    ai-tools-sdk.ts     # 10 tools as AI SDK tool() with Zod schemas + DRY helpers + overlap scoring
   shared/               # Types shared between client and server
     types.ts            # BoardObject, WSMessage, ChatMessage, User, etc.
     ai-tool-meta.ts     # Tool display metadata (icons, labels, summaries) for ChatPanel

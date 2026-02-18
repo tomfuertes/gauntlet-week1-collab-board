@@ -19,10 +19,52 @@ const SUGGESTED_PROMPTS = [
 ];
 
 const TEMPLATES: { label: string; prompt: string }[] = [
-  { label: "SWOT", prompt: "Create a SWOT analysis: make a 2x2 grid of 4 frames labeled Strengths, Weaknesses, Opportunities, Threats. Add 2 example stickies in each quadrant." },
-  { label: "Kanban", prompt: "Create a kanban board: make 3 frames side by side labeled To Do, In Progress, and Done. Add 3 example sticky notes in the To Do column." },
-  { label: "Retro", prompt: "Create a sprint retrospective: make 3 frames labeled What Went Well, What Didn't Go Well, and Action Items. Add 2 stickies in each." },
-  { label: "Brainstorm", prompt: "Create a brainstorm session: make a central sticky note labeled 'Topic' and surround it with 8 sticky notes in a circle pattern with creative ideas." },
+  {
+    label: "SWOT",
+    prompt: `Create a SWOT analysis with this exact layout:
+createFrame "Strengths" x=50 y=80 width=440 height=280
+createFrame "Weaknesses" x=520 y=80 width=440 height=280
+createFrame "Opportunities" x=50 y=390 width=440 height=280
+createFrame "Threats" x=520 y=390 width=440 height=280
+Then add 2 stickies inside each frame:
+Strengths: x=60,y=120 and x=260,y=120 (green #4ade80)
+Weaknesses: x=530,y=120 and x=730,y=120 (red #f87171)
+Opportunities: x=60,y=430 and x=260,y=430 (blue #60a5fa)
+Threats: x=530,y=430 and x=730,y=430 (orange #fb923c)
+Write brief example content on each sticky.`,
+  },
+  {
+    label: "Kanban",
+    prompt: `Create a Kanban board with this exact layout:
+createFrame "To Do" x=50 y=80 width=320 height=680
+createFrame "In Progress" x=400 y=80 width=320 height=680
+createFrame "Done" x=750 y=80 width=320 height=680
+Add 3 example task stickies in the To Do column:
+x=60 y=120, x=60 y=340, x=60 y=550
+Use yellow #fbbf24 stickies with brief task descriptions.`,
+  },
+  {
+    label: "Retro",
+    prompt: `Create a sprint retrospective with this exact layout:
+createFrame "What Went Well" x=50 y=80 width=320 height=480
+createFrame "What Didn't Go Well" x=400 y=80 width=320 height=480
+createFrame "Action Items" x=750 y=80 width=320 height=480
+Add 2 stickies per frame:
+Went Well: x=60,y=120 and x=60,y=330 (green #4ade80)
+Didn't Go Well: x=410,y=120 and x=410,y=330 (red #f87171)
+Action Items: x=760,y=120 and x=760,y=330 (blue #60a5fa)
+Write brief example content on each sticky.`,
+  },
+  {
+    label: "Brainstorm",
+    prompt: `Create a brainstorm layout:
+createStickyNote "Main Topic" x=450 y=350 color=#c084fc
+Then create 8 idea stickies in a circle around it:
+x=450,y=100 x=700,y=180 x=780,y=350 x=700,y=520
+x=450,y=600 x=200,y=520 x=120,y=350 x=200,y=180
+Alternate colors: #fbbf24, #60a5fa, #4ade80, #f87171.
+Write a creative brainstorm idea on each sticky.`,
+  },
 ];
 
 function ToolHistory({ tools }: { tools: NonNullable<AIChatMessage["tools"]> }) {

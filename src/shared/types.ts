@@ -34,7 +34,9 @@ export type WSClientMessage =
   | { type: "cursor"; x: number; y: number }
   | { type: "obj:create"; obj: BoardObject }
   | { type: "obj:update"; obj: Partial<BoardObject> & { id: string } }
-  | { type: "obj:delete"; id: string };
+  | { type: "obj:delete"; id: string }
+  | { type: "text:cursor"; objectId: string; position: number }
+  | { type: "text:blur"; objectId: string };
 
 export type WSServerMessage =
   | { type: "cursor"; userId: string; username: string; x: number; y: number }
@@ -43,7 +45,9 @@ export type WSServerMessage =
   | { type: "obj:delete"; id: string }
   | { type: "presence"; users: { id: string; username: string }[] }
   | { type: "init"; objects: BoardObject[] }
-  | { type: "board:deleted" };
+  | { type: "board:deleted" }
+  | { type: "text:cursor"; userId: string; username: string; objectId: string; position: number }
+  | { type: "text:blur"; userId: string; objectId: string };
 
 export interface ChatMessage {
   id: string;
