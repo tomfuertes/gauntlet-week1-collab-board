@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import type { AuthUser } from "../App";
 import { colors } from "../theme";
 
@@ -8,6 +8,7 @@ interface BoardMeta {
   created_by: string;
   created_at: string;
   updated_at: string;
+  unseen_count: number;
 }
 
 export function BoardList({ user, onSelectBoard, onLogout }: {
@@ -18,16 +19,29 @@ export function BoardList({ user, onSelectBoard, onLogout }: {
   const [boards, setBoards] = useState<BoardMeta[]>([]);
   const [loading, setLoading] = useState(true);
 
+  const fetchBoards = useCallback((signal?: AbortSignal) => {
+    return fetch("/api/boards", { signal })
+      .then((r) => {
+        if (!r.ok) throw new Error(`${r.status}`);
+        return r.json() as Promise<BoardMeta[]>;
+      })
+      .then(setBoards)
+      .catch(() => {
+        // Only reset to empty on initial load (loading=true); preserve stale data on poll failures
+        if (!signal?.aborted) setBoards((prev) => prev.length ? prev : []);
+      });
+  }, []);
+
   useEffect(() => {
     const controller = new AbortController();
     setLoading(true);
-    fetch("/api/boards", { signal: controller.signal })
-      .then((r) => r.json() as Promise<BoardMeta[]>)
-      .then(setBoards)
-      .catch(() => { if (!controller.signal.aborted) setBoards([]); })
+    fetchBoards(controller.signal)
       .finally(() => { if (!controller.signal.aborted) setLoading(false); });
-    return () => controller.abort();
-  }, []);
+
+    // Poll every 30s for activity badges
+    const interval = setInterval(() => fetchBoards(), 30_000);
+    return () => { controller.abort(); clearInterval(interval); };
+  }, [fetchBoards]);
 
   const handleCreate = async () => {
     const res = await fetch("/api/boards", {
@@ -111,11 +125,24 @@ export function BoardList({ user, onSelectBoard, onLogout }: {
                   background: colors.surface, border: `1px solid ${colors.border}`, borderRadius: 8,
                   padding: "1.5rem", cursor: "pointer", minHeight: 120,
                   display: "flex", flexDirection: "column", justifyContent: "space-between",
-                  transition: "border-color 0.15s",
+                  transition: "border-color 0.15s", position: "relative",
                 }}
                 onMouseEnter={(e) => (e.currentTarget.style.borderColor = colors.accentLight)}
                 onMouseLeave={(e) => (e.currentTarget.style.borderColor = colors.border)}
               >
+                {/* Unseen activity badge */}
+                {board.unseen_count > 0 && (
+                  <div style={{
+                    position: "absolute", top: -6, right: -6,
+                    background: colors.accent, color: "#fff",
+                    borderRadius: 10, minWidth: 20, height: 20,
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                    fontSize: "0.7rem", fontWeight: 700, padding: "0 5px",
+                    boxShadow: `0 0 8px ${colors.accentGlow}`,
+                  }}>
+                    {board.unseen_count > 99 ? "99+" : board.unseen_count}
+                  </div>
+                )}
                 <div>
                   <div style={{ fontWeight: 600, marginBottom: 4 }}>{board.name}</div>
                   <div style={{ fontSize: "0.75rem", color: colors.textDim }}>

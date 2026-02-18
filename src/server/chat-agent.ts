@@ -4,6 +4,7 @@ import { createWorkersAI } from "workers-ai-provider";
 import { createAnthropic } from "@ai-sdk/anthropic";
 import { createSDKTools } from "./ai-tools-sdk";
 import type { Bindings } from "./env";
+import { recordBoardActivity } from "./env";
 import type { BoardObject } from "../shared/types";
 
 const SYSTEM_PROMPT = `You are an improv scene partner on a shared canvas. This is multiplayer - messages come from different users (their name appears before their message). Address players by name when responding.
@@ -54,6 +55,13 @@ export class ChatAgent extends AIChatAgent<Bindings> {
   /* eslint-disable @typescript-eslint/no-explicit-any */
   async onChatMessage(onFinish: any, options?: { abortSignal?: AbortSignal }) {
     // this.name = boardId (set by client connecting to /agents/ChatAgent/<boardId>)
+    // Record chat activity for async notifications (non-blocking)
+    this.ctx.waitUntil(
+      recordBoardActivity(this.env.DB, this.name).catch((err: unknown) => {
+        console.error(JSON.stringify({ event: "activity:record", trigger: "chat", error: String(err) }));
+      })
+    );
+
     const doId = this.env.BOARD.idFromName(this.name);
     const boardStub = this.env.BOARD.get(doId);
     const batchId = crypto.randomUUID();
