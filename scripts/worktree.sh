@@ -77,6 +77,14 @@ cmd_create() {
   echo "Installing dependencies..."
   (cd "$wt_dir" && npm install --prefer-offline 2>&1 | tail -1)
 
+  # Build dist/ - wrangler dev needs it for static asset serving
+  echo "Building dist/..."
+  (cd "$wt_dir" && npm run build 2>&1 | tail -1)
+
+  # Apply D1 migrations - auth needs users/sessions/boards tables
+  echo "Applying local D1 migrations..."
+  (cd "$wt_dir" && npm run migrate:local 2>&1 | tail -1)
+
   # Copy local secrets (.dev.vars) so worktrees can run wrangler dev with API keys
   [[ -f "${REPO_ROOT}/.dev.vars" ]] && cp "${REPO_ROOT}/.dev.vars" "${wt_dir}/.dev.vars"
 
