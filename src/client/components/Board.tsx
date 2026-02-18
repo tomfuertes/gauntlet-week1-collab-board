@@ -228,7 +228,7 @@ function EmptyBoardOverlay({ onGenerate }: { onGenerate: (prompt: string) => voi
           textAlign: "center", marginBottom: 20,
           color: colors.text, fontSize: "1.125rem", fontWeight: 600,
         }}>
-          What would you like to create?
+          Set the scene
         </div>
 
         <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
@@ -241,7 +241,7 @@ function EmptyBoardOverlay({ onGenerate }: { onGenerate: (prompt: string) => voi
               if (e.key !== "Escape") e.stopPropagation();
             }}
             onKeyUp={(e) => { if (e.key !== "Escape") e.stopPropagation(); }}
-            placeholder="Describe your board... e.g. 'SWOT analysis for a mobile app'"
+            placeholder="Describe a scene... e.g. 'A detective who only solves crimes by smell'"
             style={{
               flex: 1, background: "rgba(30, 41, 59, 0.8)",
               border: `1px solid ${colors.border}`,
@@ -307,7 +307,7 @@ function EmptyBoardOverlay({ onGenerate }: { onGenerate: (prompt: string) => voi
           textAlign: "center", marginTop: 16,
           color: colors.textSubtle, fontSize: "0.6875rem",
         }}>
-          or double-click anywhere to add objects manually
+          or double-click the canvas to add props yourself
         </div>
       </div>
     </div>
