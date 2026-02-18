@@ -87,6 +87,22 @@ async function createAndMutate(stub: BoardStub, obj: BoardObject) {
   };
 }
 
+/** Mutate (update) an object's fields, returning a keyed result for LLM chaining */
+async function updateAndMutate(
+  stub: BoardStub,
+  id: string,
+  fields: Omit<Partial<BoardObject>, "id" | "updatedAt">,
+  resultKey: string,
+  extra?: Record<string, unknown>,
+) {
+  const result = await stub.mutate({
+    type: "obj:update",
+    obj: { id, ...fields, updatedAt: Date.now() },
+  });
+  if (!result.ok) return { error: result.error };
+  return { [resultKey]: id, ...extra };
+}
+
 /** Check if two board objects overlap (axis-aligned bounding boxes) */
 function rectsOverlap(a: BoardObject, b: BoardObject): boolean {
   return (
@@ -328,12 +344,7 @@ export function createSDKTools(stub: BoardStub) {
         y: z.number().describe("New Y position"),
       }),
       execute: async ({ id, x, y }) => {
-        const result = await stub.mutate({
-          type: "obj:update",
-          obj: { id, x, y, updatedAt: Date.now() },
-        });
-        if (!result.ok) return { error: result.error };
-        return { moved: id, x, y };
+        return updateAndMutate(stub, id, { x, y }, "moved", { x, y });
       },
     }),
 
@@ -346,12 +357,7 @@ export function createSDKTools(stub: BoardStub) {
         height: z.number().describe("New height"),
       }),
       execute: async ({ id, width, height }) => {
-        const result = await stub.mutate({
-          type: "obj:update",
-          obj: { id, width, height, updatedAt: Date.now() },
-        });
-        if (!result.ok) return { error: result.error };
-        return { resized: id, width, height };
+        return updateAndMutate(stub, id, { width, height }, "resized", { width, height });
       },
     }),
 
@@ -364,12 +370,7 @@ export function createSDKTools(stub: BoardStub) {
         text: z.string().describe("New text content"),
       }),
       execute: async ({ id, text }) => {
-        const result = await stub.mutate({
-          type: "obj:update",
-          obj: { id, props: { text }, updatedAt: Date.now() },
-        });
-        if (!result.ok) return { error: result.error };
-        return { updated: id, text };
+        return updateAndMutate(stub, id, { props: { text } }, "updated", { text });
       },
     }),
 
@@ -385,18 +386,11 @@ export function createSDKTools(stub: BoardStub) {
         const existing = await stub.readObject(id);
         if (!existing) return { error: `Object ${id} not found` };
 
-        const props: Record<string, string> = {};
-        if (existing.type === "sticky" || existing.type === "text") {
-          props.color = color;
-        } else {
-          props.fill = color;
-        }
-        const result = await stub.mutate({
-          type: "obj:update",
-          obj: { id, props, updatedAt: Date.now() },
-        });
-        if (!result.ok) return { error: result.error };
-        return { recolored: id, color };
+        const props: BoardObject["props"] =
+          existing.type === "sticky" || existing.type === "text"
+            ? { color }
+            : { fill: color };
+        return updateAndMutate(stub, id, { props }, "recolored", { color });
       },
     }),
 
@@ -470,3 +464,6 @@ export function createSDKTools(stub: BoardStub) {
     }),
   };
 }
+
+/** Tool name = each key in the registry returned by createSDKTools */
+export type ToolName = keyof ReturnType<typeof createSDKTools>;

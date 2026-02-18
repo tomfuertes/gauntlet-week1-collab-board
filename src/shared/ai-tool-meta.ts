@@ -1,19 +1,7 @@
 /** Tool display metadata - shared between server (SSE events) and client (ChatPanel) */
 
-export const TOOL_NAMES = [
-  "createStickyNote",
-  "createShape",
-  "createFrame",
-  "createConnector",
-  "moveObject",
-  "resizeObject",
-  "updateText",
-  "changeColor",
-  "getBoardState",
-  "deleteObject",
-] as const;
-
-export type ToolName = (typeof TOOL_NAMES)[number];
+import type { ToolName } from "../server/ai-tools-sdk";
+export type { ToolName };
 
 export const TOOL_ICONS: Record<ToolName, string> = {
   createStickyNote: "\u{1F4CC}",
