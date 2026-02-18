@@ -95,10 +95,18 @@ async function updateAndMutate(
   resultKey: string,
   extra?: Record<string, unknown>,
 ) {
-  const result = await stub.mutate({
-    type: "obj:update",
-    obj: { id, ...fields, updatedAt: Date.now() },
-  });
+  let result: MutateResult;
+  try {
+    result = await stub.mutate({
+      type: "obj:update",
+      obj: { id, ...fields, updatedAt: Date.now() },
+    });
+  } catch (err) {
+    console.error(
+      JSON.stringify({ event: "ai:update:error", id, error: String(err) }),
+    );
+    return { error: `Failed to update ${id}: ${err instanceof Error ? err.message : String(err)}` };
+  }
   if (!result.ok) return { error: result.error };
   return { [resultKey]: id, ...extra };
 }
