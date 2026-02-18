@@ -1,0 +1,1 @@
+After implementation, run /pr-review-toolkit:review-pr and fix all issues before starting UAT. After UAT passes, commit all changes to the feature branch. Do not open a PR. Use npm run dev for the dev server (ports auto-loaded from worktree.ports). Use scripts/localcurl.sh instead of curl for API testing.
