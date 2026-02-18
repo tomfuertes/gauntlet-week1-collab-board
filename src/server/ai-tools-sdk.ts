@@ -1,5 +1,6 @@
 import { tool } from "ai";
 import { z } from "zod";
+import { AI_USER_ID } from "../shared/types";
 import type { BoardObject } from "../shared/types";
 import type { MutateResult } from "./env";
 
@@ -14,6 +15,7 @@ interface BoardStub {
   readObjects(): Promise<BoardObject[]>;
   readObject(id: string): Promise<BoardObject | null>;
   mutate(msg: BoardMutation): Promise<MutateResult>;
+  injectCursor(x: number, y: number): Promise<void>;
 }
 
 // ---------------------------------------------------------------------------
@@ -45,7 +47,7 @@ function makeObject(
     height,
     rotation: 0,
     props,
-    createdBy: "ai-agent",
+    createdBy: AI_USER_ID,
     updatedAt: Date.now(),
     ...(batchId ? { batchId } : {}),
   };
@@ -79,6 +81,7 @@ async function createAndMutate(stub: BoardStub, obj: BoardObject) {
       h: obj.height,
     }),
   );
+  cursorToCenter(stub, obj);
   return {
     created: obj.id,
     type: obj.type,
@@ -111,6 +114,13 @@ async function updateAndMutate(
   }
   if (!result.ok) return { error: result.error };
   return { [resultKey]: id, ...extra };
+}
+
+/** Fire-and-forget: move AI cursor to object center. Never blocks tool execution. */
+function cursorToCenter(stub: BoardStub, obj: { x: number; y: number; width: number; height: number }) {
+  stub.injectCursor(obj.x + obj.width / 2, obj.y + obj.height / 2).catch((err: unknown) => {
+    console.debug(JSON.stringify({ event: "ai:cursor:error", error: String(err) }));
+  });
 }
 
 /** Check if two board objects overlap (axis-aligned bounding boxes) */
@@ -358,6 +368,8 @@ export function createSDKTools(stub: BoardStub, batchId?: string) {
         y: z.number().describe("New Y position"),
       }),
       execute: async ({ id, x, y }) => {
+        const existing = await stub.readObject(id);
+        if (existing) cursorToCenter(stub, { x, y, width: existing.width, height: existing.height });
         return updateAndMutate(stub, id, { x, y }, "moved", { x, y });
       },
     }),
@@ -371,6 +383,8 @@ export function createSDKTools(stub: BoardStub, batchId?: string) {
         height: z.number().describe("New height"),
       }),
       execute: async ({ id, width, height }) => {
+        const existing = await stub.readObject(id);
+        if (existing) cursorToCenter(stub, { x: existing.x, y: existing.y, width, height });
         return updateAndMutate(stub, id, { width, height }, "resized", { width, height });
       },
     }),
@@ -384,6 +398,8 @@ export function createSDKTools(stub: BoardStub, batchId?: string) {
         text: z.string().describe("New text content"),
       }),
       execute: async ({ id, text }) => {
+        const existing = await stub.readObject(id);
+        if (existing) cursorToCenter(stub, existing);
         return updateAndMutate(stub, id, { props: { text } }, "updated", { text });
       },
     }),
@@ -400,6 +416,7 @@ export function createSDKTools(stub: BoardStub, batchId?: string) {
         const existing = await stub.readObject(id);
         if (!existing) return { error: `Object ${id} not found` };
 
+        cursorToCenter(stub, existing);
         const props: BoardObject["props"] =
           existing.type === "sticky" || existing.type === "text"
             ? { color }

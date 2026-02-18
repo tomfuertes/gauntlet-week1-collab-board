@@ -3,6 +3,7 @@ import { Stage, Layer, Rect, Text, Group, Transformer, Ellipse, Line as KonvaLin
 import type { KonvaEventObject } from "konva/lib/Node";
 import Konva from "konva";
 import type { AuthUser } from "../App";
+import { AI_USER_ID } from "@shared/types";
 import type { BoardObject } from "@shared/types";
 import { useWebSocket, type ConnectionState } from "../hooks/useWebSocket";
 import { useUndoRedo } from "../hooks/useUndoRedo";
@@ -871,15 +872,19 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
         <div style={{ display: "flex", alignItems: "center", gap: "1rem" }}>
           {/* Presence avatars */}
           <div style={{ display: "flex", gap: 4 }}>
-            {presence.map((p) => (
-              <span key={p.id} style={{
-                background: colors.accent, borderRadius: "50%", width: 24, height: 24,
-                display: "flex", alignItems: "center", justifyContent: "center",
-                fontSize: "0.625rem", fontWeight: 600, color: "#fff",
-              }} title={p.username}>
-                {p.username[0].toUpperCase()}
-              </span>
-            ))}
+            {presence.map((p) => {
+              const isAi = p.id === AI_USER_ID;
+              return (
+                <span key={p.id} style={{
+                  background: isAi ? colors.aiCursor : colors.accent,
+                  borderRadius: "50%", width: 24, height: 24,
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  fontSize: "0.625rem", fontWeight: 600, color: "#fff",
+                }} title={p.username}>
+                  {isAi ? "AI" : p.username[0].toUpperCase()}
+                </span>
+              );
+            })}
           </div>
           <span style={{ color: "#888" }}>{Math.round(scale * 100)}%</span>
           <span>{user.displayName}</span>

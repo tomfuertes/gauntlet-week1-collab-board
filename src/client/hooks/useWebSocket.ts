@@ -121,6 +121,16 @@ export function useWebSocket(boardId: string): UseWebSocketReturn {
             break;
           case "presence":
             setPresence(msg.users);
+            // Remove cursors for users no longer present (cleans up AI ghost cursor)
+            setCursors((prev) => {
+              const activeIds = new Set(msg.users.map((u: { id: string }) => u.id));
+              let changed = false;
+              const next = new Map(prev);
+              for (const userId of next.keys()) {
+                if (!activeIds.has(userId)) { next.delete(userId); changed = true; }
+              }
+              return changed ? next : prev;
+            });
             break;
           case "obj:create":
             setObjects((prev) => new Map(prev).set(msg.obj.id, msg.obj));

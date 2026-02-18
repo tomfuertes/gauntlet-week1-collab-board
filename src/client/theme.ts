@@ -30,6 +30,9 @@ export const colors = {
   warning: "#facc15",
   error: "#f87171",
   info: "#94a3b8",
+
+  // AI presence
+  aiCursor: "#38bdf8", // sky-400 - distinct AI indicator
 } as const;
 
 // CSS cursor per tool mode

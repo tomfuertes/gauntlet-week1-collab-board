@@ -51,6 +51,9 @@ export type WSServerMessage =
   | { type: "text:cursor"; userId: string; username: string; objectId: string; position: number }
   | { type: "text:blur"; userId: string; objectId: string };
 
+export const AI_USER_ID = "ai-agent" as const;
+export const AI_USERNAME = "AI Assistant" as const;
+
 export interface ChatMessage {
   id: string;
   role: "user" | "assistant";

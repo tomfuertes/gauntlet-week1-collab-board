@@ -1,4 +1,5 @@
 import { DurableObject } from "cloudflare:workers";
+import { AI_USER_ID, AI_USERNAME } from "../shared/types";
 import type { BoardObject, WSClientMessage, WSServerMessage } from "../shared/types";
 import type { MutateResult } from "./env";
 
@@ -9,6 +10,9 @@ interface ConnectionMeta {
 }
 
 export class Board extends DurableObject {
+  // Timestamp when AI presence expires. Class properties reset on DO hibernation,
+  // which is correct - if the DO hibernated, the AI stream has already ended.
+  private aiActiveUntil = 0;
 
   // --- RPC methods (called by Worker via stub) ---
 
@@ -38,7 +42,21 @@ export class Board extends DurableObject {
   }
 
   async mutate(msg: WSClientMessage): Promise<MutateResult> {
-    return this.handleMutation(msg, "ai-agent");
+    return this.handleMutation(msg, AI_USER_ID);
+  }
+
+  /** Broadcast AI cursor position to all WS clients (virtual user - no real WS connection) */
+  async injectCursor(x: number, y: number): Promise<void> {
+    this.broadcast({
+      type: "cursor", userId: AI_USER_ID, username: AI_USERNAME, x, y,
+    });
+  }
+
+  /** Set AI presence visibility in the presence list */
+  async setAiPresence(active: boolean): Promise<void> {
+    this.aiActiveUntil = active ? Date.now() + 60_000 : 0;
+    const users = this.getPresenceList();
+    this.broadcast({ type: "presence", users });
   }
 
   /** Delete all objects created by a specific AI batch, broadcast deletions */
@@ -183,6 +201,9 @@ export class Board extends DurableObject {
         seen.add(meta.userId);
         users.push({ id: meta.userId, username: meta.username });
       }
+    }
+    if (this.aiActiveUntil > Date.now()) {
+      users.push({ id: AI_USER_ID, username: AI_USERNAME });
     }
     return users;
   }

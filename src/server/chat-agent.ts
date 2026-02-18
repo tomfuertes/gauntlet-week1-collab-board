@@ -68,16 +68,47 @@ export class ChatAgent extends AIChatAgent<Bindings> {
           "@cf/zai-org/glm-4.7-flash"
         );
 
-    const result = streamText({
-      model,
-      system: systemPrompt,
-      messages: await convertToModelMessages(this.messages),
-      tools,
-      onFinish,
-      stopWhen: stepCountIs(5),
-      abortSignal: options?.abortSignal,
+    // Show AI in presence bar while responding (best-effort, never blocks AI response)
+    await boardStub.setAiPresence(true).catch((err: unknown) => {
+      console.debug(JSON.stringify({ event: "ai:presence:start-error", error: String(err) }));
     });
 
-    return result.toUIMessageStreamResponse();
+    let presenceCleared = false;
+    const clearPresence = async () => {
+      if (presenceCleared) return;
+      presenceCleared = true;
+      try {
+        await boardStub.setAiPresence(false);
+      } catch (err) {
+        console.debug(JSON.stringify({ event: "ai:presence:cleanup-error", error: String(err) }));
+      }
+    };
+
+    const wrappedOnFinish: typeof onFinish = async (...args: Parameters<typeof onFinish>) => {
+      await clearPresence();
+      return onFinish(...args);
+    };
+
+    // Clean up presence if client disconnects mid-stream
+    options?.abortSignal?.addEventListener("abort", () => {
+      clearPresence();
+    }, { once: true });
+
+    try {
+      const result = streamText({
+        model,
+        system: systemPrompt,
+        messages: await convertToModelMessages(this.messages),
+        tools,
+        onFinish: wrappedOnFinish,
+        stopWhen: stepCountIs(5),
+        abortSignal: options?.abortSignal,
+      });
+
+      return result.toUIMessageStreamResponse();
+    } catch (err) {
+      await clearPresence();
+      throw err;
+    }
   }
 }
