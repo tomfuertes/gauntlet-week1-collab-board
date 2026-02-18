@@ -42,8 +42,8 @@ export function createTools(stub: BoardStub): ToolDef[] {
         const obj = {
           id,
           type: "sticky" as const,
-          x: Number(args.x) || 100 + Math.random() * 700,
-          y: Math.max(60, Number(args.y) || 100 + Math.random() * 500),
+          x: args.x ?? 100 + Math.random() * 700,
+          y: Math.max(60, args.y ?? 100 + Math.random() * 500),
           width: 200,
           height: 200,
           rotation: 0,
@@ -51,7 +51,8 @@ export function createTools(stub: BoardStub): ToolDef[] {
           createdBy: "ai-agent",
           updatedAt: Date.now(),
         };
-        await stub.mutate({ type: "obj:create", obj });
+        const result = await stub.mutate({ type: "obj:create", obj });
+        if (!result.ok) return JSON.stringify({ error: result.error });
         return JSON.stringify({ created: id, type: "sticky", text: args.text });
       },
     },
@@ -94,7 +95,8 @@ export function createTools(stub: BoardStub): ToolDef[] {
             createdBy: "ai-agent",
             updatedAt: Date.now(),
           };
-          await stub.mutate({ type: "obj:create", obj });
+          const result = await stub.mutate({ type: "obj:create", obj });
+          if (!result.ok) return JSON.stringify({ error: result.error });
           return JSON.stringify({ created: id, type: "circle", diameter });
         }
 
@@ -111,7 +113,8 @@ export function createTools(stub: BoardStub): ToolDef[] {
             createdBy: "ai-agent",
             updatedAt: Date.now(),
           };
-          await stub.mutate({ type: "obj:create", obj });
+          const result = await stub.mutate({ type: "obj:create", obj });
+          if (!result.ok) return JSON.stringify({ error: result.error });
           return JSON.stringify({ created: id, type: "line" });
         }
 
@@ -128,7 +131,8 @@ export function createTools(stub: BoardStub): ToolDef[] {
           createdBy: "ai-agent",
           updatedAt: Date.now(),
         };
-        await stub.mutate({ type: "obj:create", obj });
+        const result = await stub.mutate({ type: "obj:create", obj });
+        if (!result.ok) return JSON.stringify({ error: result.error });
         return JSON.stringify({ created: id, type: "rect" });
       },
     },
@@ -163,7 +167,8 @@ export function createTools(stub: BoardStub): ToolDef[] {
           createdBy: "ai-agent",
           updatedAt: Date.now(),
         };
-        await stub.mutate({ type: "obj:create", obj });
+        const result = await stub.mutate({ type: "obj:create", obj });
+        if (!result.ok) return JSON.stringify({ error: result.error });
         return JSON.stringify({ created: id, type: "frame", title: obj.props.text });
       },
     },
@@ -184,8 +189,8 @@ export function createTools(stub: BoardStub): ToolDef[] {
       },
       label: TOOL_LABELS.createConnector,
       async execute(args: { fromId: string; toId: string; stroke?: string; arrow?: string }) {
-        const fromObj = await stub.readObject(args.fromId) as BoardObject | null;
-        const toObj = await stub.readObject(args.toId) as BoardObject | null;
+        const fromObj = await stub.readObject(args.fromId);
+        const toObj = await stub.readObject(args.toId);
         if (!fromObj) return JSON.stringify({ error: `Source object ${args.fromId} not found` });
         if (!toObj) return JSON.stringify({ error: `Target object ${args.toId} not found` });
 
@@ -214,7 +219,8 @@ export function createTools(stub: BoardStub): ToolDef[] {
           createdBy: "ai-agent",
           updatedAt: Date.now(),
         };
-        await stub.mutate({ type: "obj:create", obj });
+        const result = await stub.mutate({ type: "obj:create", obj });
+        if (!result.ok) return JSON.stringify({ error: result.error });
         return JSON.stringify({ created: id, type: "connector", from: args.fromId, to: args.toId });
       },
     },
@@ -304,7 +310,7 @@ export function createTools(stub: BoardStub): ToolDef[] {
       },
       label: TOOL_LABELS.changeColor,
       async execute(args: { id: string; color: string }) {
-        const existing = await stub.readObject(args.id) as BoardObject | null;
+        const existing = await stub.readObject(args.id);
         if (!existing) return JSON.stringify({ error: `Object ${args.id} not found` });
 
         const props: Record<string, string> = {};
@@ -340,7 +346,7 @@ export function createTools(stub: BoardStub): ToolDef[] {
       },
       label: TOOL_LABELS.getBoardState,
       async execute(args: { filter?: string; ids?: string[] }) {
-        const objects = await stub.readObjects() as BoardObject[];
+        const objects = await stub.readObjects();
 
         if (args.ids && args.ids.length > 0) {
           const matched = objects.filter((o: BoardObject) => args.ids!.includes(o.id));

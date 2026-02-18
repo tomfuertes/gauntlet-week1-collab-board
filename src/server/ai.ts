@@ -82,7 +82,12 @@ aiRoutes.post("/chat", async (c) => {
           if (!args) args = {};
           console.debug(`[ai] tool:${t.name}`, JSON.stringify(args));
           emit({ type: "tool", name: t.name, label: t.label, args });
-          return t.execute(args);
+          try {
+            return await t.execute(args);
+          } catch (err) {
+            console.error(`[ai] tool ${t.name} failed:`, err);
+            return JSON.stringify({ error: `Tool ${t.name} failed: ${String(err)}` });
+          }
         },
       }));
 
@@ -191,7 +196,7 @@ aiRoutes.post("/chat", async (c) => {
             anthropicMessages.push({ role: "user", content: toolResults });
           }
         } else {
-          // --- Llama 3.3 70B via Workers AI (free tier fallback) ---
+          // --- GLM-4.7-Flash via Workers AI (free tier fallback) ---
           console.warn("[ai] ANTHROPIC_API_KEY not set - using GLM-4.7-Flash fallback");
           const response = await runWithTools(
             c.env.AI as any,
