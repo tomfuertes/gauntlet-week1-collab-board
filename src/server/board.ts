@@ -258,13 +258,13 @@ export class Board extends DurableObject<Bindings> {
     return users;
   }
 
-  private async recordEvent(event: ReplayEvent): Promise<void> {
+  private async recordEvent(event: ReplayEvent, debounceMs = 500): Promise<void> {
     const MAX_EVENTS = 2000;
 
-    // Debounce obj:update - skip if <500ms since last recorded for this object
+    // Debounce obj:update - skip if within debounce window since last recorded
     if (event.type === "obj:update" && event.obj) {
       const last = this.lastRecordedAt.get(event.obj.id);
-      if (last && event.ts - last < 500) return;
+      if (last && event.ts - last < debounceMs) return;
       this.lastRecordedAt.set(event.obj.id, event.ts);
     }
 
@@ -307,7 +307,12 @@ export class Board extends DurableObject<Bindings> {
         };
         await this.ctx.storage.put(`obj:${updated.id}`, updated);
         this.broadcast({ type: "obj:update", obj: updated }, excludeWs);
-        await this.recordEvent({ type: "obj:update", ts: updated.updatedAt, obj: updated });
+        const isSpatial = (msg.obj.x !== undefined && msg.obj.x !== existing.x) ||
+          (msg.obj.y !== undefined && msg.obj.y !== existing.y) ||
+          (msg.obj.width !== undefined && msg.obj.width !== existing.width) ||
+          (msg.obj.height !== undefined && msg.obj.height !== existing.height) ||
+          (msg.obj.rotation !== undefined && msg.obj.rotation !== existing.rotation);
+        await this.recordEvent({ type: "obj:update", ts: updated.updatedAt, obj: updated }, isSpatial ? 100 : 500);
         return { ok: true };
       }
       case "obj:delete": {

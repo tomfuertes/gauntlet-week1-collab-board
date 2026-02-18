@@ -311,6 +311,7 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
   const [scale, setScale] = useState(1);
   const [size, setSize] = useState({ width: window.innerWidth, height: window.innerHeight });
   const lastCursorSend = useRef(0);
+  const lastDragSendRef = useRef(0);
   const [toolMode, setToolMode] = useState<ToolMode>("select");
   const [chatOpen, setChatOpen] = useState(true);
   const [chatInitialPrompt, setChatInitialPrompt] = useState<string | undefined>();
@@ -611,20 +612,43 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
 
   const handleShapeDragMove = useCallback((e: KonvaEventObject<DragEvent>, id: string) => {
     const positions = dragStartPositionsRef.current;
-    if (positions.size === 0) return;
-    const startPos = positions.get(id);
-    if (!startPos) return;
-    const dx = e.target.x() - startPos.x;
-    const dy = e.target.y() - startPos.y;
-    for (const [sid, spos] of positions) {
-      if (sid === id) continue;
-      const node = shapeRefs.current.get(sid);
-      if (node) {
-        node.x(spos.x + dx);
-        node.y(spos.y + dy);
+
+    // Multi-select: move companion nodes visually
+    if (positions.size > 0) {
+      const startPos = positions.get(id);
+      if (startPos) {
+        const dx = e.target.x() - startPos.x;
+        const dy = e.target.y() - startPos.y;
+        for (const [sid, spos] of positions) {
+          if (sid === id) continue;
+          const node = shapeRefs.current.get(sid);
+          if (node) {
+            node.x(spos.x + dx);
+            node.y(spos.y + dy);
+          }
+        }
       }
     }
-  }, []);
+
+    // Throttled WS send for real-time multiplayer + replay recording
+    const now = Date.now();
+    if (now - lastDragSendRef.current < 100) return;
+    lastDragSendRef.current = now;
+
+    // Send primary dragged object position
+    send({ type: "obj:update", obj: { id, x: e.target.x(), y: e.target.y(), updatedAt: now } });
+
+    // Send companion objects in multi-select
+    if (positions.size > 0) {
+      for (const [sid] of positions) {
+        if (sid === id) continue;
+        const node = shapeRefs.current.get(sid);
+        if (node) {
+          send({ type: "obj:update", obj: { id: sid, x: node.x(), y: node.y(), updatedAt: now } });
+        }
+      }
+    }
+  }, [send]);
 
   const handleShapeDragEnd = useCallback((e: KonvaEventObject<DragEvent>, id: string) => {
     const positions = dragStartPositionsRef.current;
