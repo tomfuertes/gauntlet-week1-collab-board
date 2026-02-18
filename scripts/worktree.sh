@@ -147,15 +147,9 @@ export WRANGLER_SEND_METRICS=false
 EOF
   echo "Assigned ports: Vite=${vite_port}, Wrangler=${wrangler_port}"
 
-  # Copy prompt suffix so worktree agents get standard instructions
-  local suffix_file="${REPO_ROOT}/scripts/worktree-prompt-suffix.md"
-  if [[ -f "$suffix_file" ]]; then
-    cp "$suffix_file" "${wt_dir}/.worktree-prompt-suffix.md"
-  fi
-
   echo ""
   echo "Worktree ready. To start working:"
-  echo "  cd ${wt_dir} && claude \"<your feature prompt here>. Read CLAUDE.md first. Namespace playwright-cli sessions with -s=${branch}. \$(cat .worktree-prompt-suffix.md)\""
+  echo "  cd ${wt_dir} && claude"
   echo ""
   echo "Dev server (ports auto-loaded from worktree.ports):"
   echo "  npm run dev"

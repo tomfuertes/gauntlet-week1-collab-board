@@ -51,7 +51,7 @@ scripts/worktree.sh create <branch>    # create + git-crypt unlock + prints cd/c
 scripts/worktree.sh remove <branch>    # remove worktree + delete feat/<branch>
 scripts/worktree.sh list               # list active worktrees
 scripts/merge.sh <branch>              # merge feat/<branch> --no-ff + typecheck
-scripts/worktree-prompt-suffix.md      # standard instructions appended to worktree prompts
+scripts/worktree-prompt-suffix.md      # standard instructions - orchestrator reads and appends to worktree prompts
 ```
 
 When working in a worktree, use absolute paths for file tools. Run git commands directly (not `git -C`) - the working directory is already the repo/worktree.
