@@ -35,6 +35,17 @@ export const colors = {
   aiCursor: "#38bdf8", // sky-400 - distinct AI indicator
 } as const;
 
+// Stable color per userId via hash (same palette across Board, ChatPanel, Cursors)
+const CURSOR_COLORS = [
+  "#f87171", "#60a5fa", "#4ade80", "#fbbf24", "#a78bfa",
+  "#f472b6", "#34d399", "#fb923c", "#818cf8", "#22d3ee",
+] as const;
+
+export function getUserColor(userId: string): string {
+  const hash = userId.split("").reduce((h, c) => (h * 31 + c.charCodeAt(0)) | 0, 0);
+  return CURSOR_COLORS[Math.abs(hash) % CURSOR_COLORS.length];
+}
+
 // CSS cursor per tool mode
 export const toolCursors: Record<string, string> = {
   select: "default",

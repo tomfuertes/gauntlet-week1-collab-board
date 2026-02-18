@@ -1,20 +1,8 @@
 import { useRef, useEffect } from "react";
 import { Circle, Group, Line, Text } from "react-konva";
 import type Konva from "konva";
-import { colors } from "../theme";
+import { colors, getUserColor } from "../theme";
 import { AI_USER_ID } from "@shared/types";
-
-// Distinct colors for up to 10 users
-const CURSOR_COLORS = [
-  "#f87171", "#60a5fa", "#4ade80", "#fbbf24", "#a78bfa",
-  "#f472b6", "#34d399", "#fb923c", "#818cf8", "#22d3ee",
-];
-
-/** Stable color per userId via hash (matches Board.tsx getUserColor) */
-function getUserColor(userId: string): string {
-  const hash = userId.split("").reduce((h, c) => (h * 31 + c.charCodeAt(0)) | 0, 0);
-  return CURSOR_COLORS[Math.abs(hash) % CURSOR_COLORS.length];
-}
 
 // Each frame the cursor moves 25% of the remaining distance.
 // At 60fps with 30fps cursor updates, a 100px jump reaches 95% in ~200ms.

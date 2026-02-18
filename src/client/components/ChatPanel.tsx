@@ -1,19 +1,9 @@
 import React, { useRef, useEffect, useState } from "react";
-import { useAIChat } from "../hooks/useAIChat";
-import type { AIChatMessage } from "../hooks/useAIChat";
-import { colors } from "../theme";
+import { useAIChat, type AIChatMessage } from "../hooks/useAIChat";
+import { colors, getUserColor } from "../theme";
 import { getToolIcon, toolSummary } from "../../shared/ai-tool-meta";
+import "../styles/animations.css";
 import { BOARD_TEMPLATES } from "../../shared/board-templates";
-
-// Stable color per userId via hash (same palette as Board.tsx / Cursors.tsx)
-const CURSOR_COLORS = [
-  "#f87171", "#60a5fa", "#4ade80", "#fbbf24", "#a78bfa",
-  "#f472b6", "#34d399", "#fb923c", "#818cf8", "#22d3ee",
-];
-function getUserColor(userId: string): string {
-  const hash = userId.split("").reduce((h, c) => (h * 31 + c.charCodeAt(0)) | 0, 0);
-  return CURSOR_COLORS[Math.abs(hash) % CURSOR_COLORS.length];
-}
 
 interface ChatPanelProps {
   boardId: string;
@@ -25,10 +15,10 @@ interface ChatPanelProps {
 }
 
 const SUGGESTED_PROMPTS = [
-  "What's on this board?",
-  "Create a SWOT analysis",
-  "Organize stickies by color",
-  "Add 5 brainstorm ideas about AI",
+  "Add a plot twist",
+  "Introduce a new character",
+  "What happens next?",
+  "The health inspector arrives",
 ];
 
 function ToolHistory({ tools }: { tools: NonNullable<AIChatMessage["tools"]> }) {
@@ -109,25 +99,6 @@ export function ChatPanel({ boardId, username, onClose, initialPrompt, selectedI
   };
 
   return (
-    <>
-    <style>{`
-      @keyframes chat-bounce {
-        0%, 80%, 100% { transform: translateY(0); }
-        40% { transform: translateY(-6px); }
-      }
-      .chat-bounce-dots { display: inline-flex; gap: 3px; align-items: center; height: 16px; }
-      .chat-dot {
-        width: 6px; height: 6px; border-radius: 50%; background: #94a3b8;
-        animation: chat-bounce 1.4s ease-in-out infinite;
-      }
-      .chat-dot:nth-child(2) { animation-delay: 0.16s; }
-      .chat-dot:nth-child(3) { animation-delay: 0.32s; }
-      @keyframes chat-pulse {
-        0%, 100% { opacity: 1; }
-        50% { opacity: 0.5; }
-      }
-      .chat-pulse-text { animation: chat-pulse 2s ease-in-out infinite; }
-    `}</style>
     <div style={{
       position: "absolute", bottom: 72, right: 16, width: 360, maxHeight: "min(520px, calc(100vh - 140px))",
       zIndex: 30, background: "rgba(15, 23, 42, 0.97)", border: "1px solid #334155",
@@ -298,6 +269,5 @@ export function ChatPanel({ boardId, username, onClose, initialPrompt, selectedI
         </button>
       </div>
     </div>
-    </>
   );
 }

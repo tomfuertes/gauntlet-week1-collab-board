@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { Board } from "./components/Board";
 import { BoardList } from "./components/BoardList";
 import { AuthForm } from "./components/AuthForm";
+import { colors } from "./theme";
 
 export interface AuthUser {
   id: string;
@@ -16,28 +17,28 @@ function parseBoardId(): string | null {
 
 function PrivacyPolicy() {
   return (
-    <div style={{ minHeight: "100vh", background: "#1a1a2e", color: "#eee", padding: "2rem" }}>
+    <div style={{ minHeight: "100vh", background: colors.bg, color: colors.text, padding: "2rem" }}>
       <div style={{ maxWidth: 640, margin: "0 auto" }}>
-        <a href="#" style={{ color: "#818cf8", fontSize: "0.875rem" }}>&larr; Back</a>
+        <a href="#" style={{ color: colors.accentLight, fontSize: "0.875rem" }}>&larr; Back</a>
         <h1 style={{ fontSize: "1.5rem", marginTop: "1rem" }}>Privacy Policy</h1>
-        <p style={{ color: "#94a3b8", lineHeight: 1.8 }}>
+        <p style={{ color: colors.textMuted, lineHeight: 1.8 }}>
           CollabBoard stores only the data you provide: username, display name, and a hashed password.
           Board content (objects, positions, text) is stored in Cloudflare Durable Objects tied to each board.
           Session cookies are used for authentication and expire after 7 days.
         </p>
         <h2 style={{ fontSize: "1.125rem", marginTop: "1.5rem" }}>Data Collection</h2>
-        <p style={{ color: "#94a3b8", lineHeight: 1.8 }}>
+        <p style={{ color: colors.textMuted, lineHeight: 1.8 }}>
           We collect only what you explicitly provide. No analytics, tracking pixels, or third-party scripts are used.
           AI chat messages are processed server-side via Cloudflare Workers AI and are not stored beyond the session.
         </p>
         <h2 style={{ fontSize: "1.125rem", marginTop: "1.5rem" }}>Data Deletion</h2>
-        <p style={{ color: "#94a3b8", lineHeight: 1.8 }}>
+        <p style={{ color: colors.textMuted, lineHeight: 1.8 }}>
           You can delete your account and all associated data at any time via the account settings
-          or by sending a DELETE request to <code style={{ color: "#818cf8" }}>/api/user</code>.
+          or by sending a DELETE request to <code style={{ color: colors.accentLight }}>/api/user</code>.
           This permanently removes your user record, sessions, and all boards you created.
         </p>
         <h2 style={{ fontSize: "1.125rem", marginTop: "1.5rem" }}>Contact</h2>
-        <p style={{ color: "#94a3b8", lineHeight: 1.8 }}>
+        <p style={{ color: colors.textMuted, lineHeight: 1.8 }}>
           For privacy inquiries, contact the project maintainer via the repository.
         </p>
       </div>
@@ -67,7 +68,7 @@ export function App() {
 
   if (loading) {
     return (
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100vh", background: "#1a1a2e", color: "#eee" }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100vh", background: colors.bg, color: colors.text }}>
         Loading...
       </div>
     );
