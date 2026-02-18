@@ -53,7 +53,6 @@ open board -> play scene -> share replay link -> recruit new player
 
 - AI Director nudge not firing on prod (DO alarm timing or threshold issue)
 - Async badges: boards only visible to owner, no cross-user board discovery
-- `messages.59.content.5.tool_use.input: Input should be a valid dictionary` on prod (AI SDK tool call validation error)
 
 ## Planned Refactors
 
