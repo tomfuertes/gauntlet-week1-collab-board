@@ -31,6 +31,7 @@ interface UseWebSocketReturn {
   createObject: (obj: BoardObject) => void;
   updateObject: (partial: Partial<BoardObject> & { id: string }) => void;
   deleteObject: (id: string) => void;
+  batchUndo: (batchId: string) => void;
 }
 
 const BACKOFF_BASE_MS = 1000;
@@ -220,5 +221,10 @@ export function useWebSocket(boardId: string): UseWebSocketReturn {
     send({ type: "obj:delete", id });
   }, [send]);
 
-  return { connectionState, initialized, cursors, textCursors, objects, presence, send, createObject, updateObject, deleteObject };
+  /** Send batch:undo to Board DO via WS - deletes all objects with matching batchId server-side */
+  const batchUndo = useCallback((batchId: string) => {
+    send({ type: "batch:undo", batchId });
+  }, [send]);
+
+  return { connectionState, initialized, cursors, textCursors, objects, presence, send, createObject, updateObject, deleteObject, batchUndo };
 }

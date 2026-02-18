@@ -2,6 +2,22 @@
 
 *Internal project management scratch. Not a deliverable.*
 
+## Session 16 Context (Feb 18, 2026)
+
+### What Was Done
+- **AI Batch Undo (Sprint 3):** One-click undo of all objects from a single AI action. `batchId` on BoardObject, generated per `streamText` call in `chat-agent.ts`, stamped on all AI-created objects. "Undo AI" button appears after AI completes, auto-hides after 10s or on canvas interaction. Two undo paths: Cmd+Z via `pushExternalBatch` on the undo stack (batch entry tagged with batchId), and "Undo AI" button (uses stack undo if top matches, falls back to server-side `batch:undo` WS message). Server-side `undoBatch` on Board DO lists/deletes objects by batchId and broadcasts `obj:delete` for each.
+
+### What's Next
+- [ ] Verify chat history persistence across page refreshes
+- [ ] Production deploy verification
+- [ ] Sprint 1: AI Cursor Presence (~6hrs)
+- [ ] Sprint 2: Contextual AI Actions / right-click menu (~6hrs)
+- [x] Sprint 3: AI Batch Undo (~4hrs) - DONE
+- [ ] Sprint 4: Intent Preview / ghost objects (~6hrs)
+- [ ] Sprint 5: AI Board Generation from description (~4hrs)
+
+---
+
 ## Session 15 Context (Feb 18, 2026)
 
 ### What Was Done
@@ -11,21 +27,11 @@
 - **Stale cursor TTL (PR #24):** `lastSeen` + 5s sweep interval for text cursors dropped on WS disconnect
 - **Competitive research:** Miro Sidekicks, FigJam selection-gated AI, tldraw Make Real, MS Whiteboard Categorize. Synthesized into 5 sprint proposals.
 
-### What's Next
-- [ ] Verify chat history persistence across page refreshes
-- [ ] Production deploy verification (PRs #23 + #24 auto-deployed)
-- [ ] Run SWOT template 3x on prod, measure overlap score (target: 0)
-- [ ] Sprint 1: AI Cursor Presence (~6hrs)
-- [ ] Sprint 2: Contextual AI Actions / right-click menu (~6hrs)
-- [ ] Sprint 3: AI Batch Undo (~4hrs)
-- [ ] Sprint 4: Intent Preview / ghost objects (~6hrs)
-- [ ] Sprint 5: AI Board Generation from description (~4hrs)
-
 ---
 
 ## Roadmap Status
 
-**Shipped:** Pre-search, scaffold, auth, infinite canvas, cursor sync, presence, sticky notes, rectangles, circles, lines, connectors/arrows, standalone text, frames, move/resize/rotate, multi-select, copy/paste/duplicate, undo/redo, delete, AI agent (10 tools, DRY helpers, overlap scoring), chat panel (chips, templates, typing indicator), multi-board CRUD, hash routing, color picker, toolbar, connection toasts, loading skeleton, empty state hint, cursor smoothing, entrance animations, confetti, gradient background, cursor trails, keyboard shortcuts, privacy policy, data deletion endpoint, context menu, selection-aware AI, AI object glow, live text sync, remote carets, stale cursor TTL.
+**Shipped:** Pre-search, scaffold, auth, infinite canvas, cursor sync, presence, sticky notes, rectangles, circles, lines, connectors/arrows, standalone text, frames, move/resize/rotate, multi-select, copy/paste/duplicate, undo/redo, delete, AI agent (10 tools, DRY helpers, overlap scoring), chat panel (chips, templates, typing indicator), multi-board CRUD, hash routing, color picker, toolbar, connection toasts, loading skeleton, empty state hint, cursor smoothing, entrance animations, confetti, gradient background, cursor trails, keyboard shortcuts, privacy policy, data deletion endpoint, context menu, selection-aware AI, AI object glow, live text sync, remote carets, stale cursor TTL, **AI batch undo (batchId, Undo AI button, Cmd+Z batch support)**.
 
 **Skipped (scope cut):** Fit-to-content button, ambient grid parallax, board minimap.
 

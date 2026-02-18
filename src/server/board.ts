@@ -41,6 +41,21 @@ export class Board extends DurableObject {
     return this.handleMutation(msg, "ai-agent");
   }
 
+  /** Delete all objects created by a specific AI batch, broadcast deletions */
+  private async undoBatch(batchId: string): Promise<void> {
+    const entries = await this.ctx.storage.list<BoardObject>({ prefix: "obj:" });
+    const toDelete: string[] = [];
+    for (const [key, obj] of entries) {
+      if (obj.batchId === batchId) toDelete.push(key);
+    }
+    if (toDelete.length === 0) return;
+    await this.ctx.storage.delete(toDelete);
+    for (const key of toDelete) {
+      const id = key.slice(4); // strip "obj:" prefix
+      this.broadcast({ type: "obj:delete", id });
+    }
+  }
+
   // --- WebSocket upgrade (requires HTTP) ---
 
   async fetch(request: Request): Promise<Response> {
@@ -104,6 +119,11 @@ export class Board extends DurableObject {
     if (msg.type === "text:blur") {
       ws.serializeAttachment({ ...meta, editingObjectId: undefined } satisfies ConnectionMeta);
       this.broadcast({ type: "text:blur", userId: meta.userId, objectId: msg.objectId }, ws);
+      return;
+    }
+
+    if (msg.type === "batch:undo") {
+      await this.undoBatch(msg.batchId);
       return;
     }
 
