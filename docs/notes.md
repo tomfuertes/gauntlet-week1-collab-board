@@ -5,37 +5,33 @@
 ## Session 16 Context (Feb 18, 2026)
 
 ### What Was Done
-- **AI Batch Undo (Sprint 3):** One-click undo of all objects from a single AI action. `batchId` on BoardObject, generated per `streamText` call in `chat-agent.ts`, stamped on all AI-created objects. "Undo AI" button appears after AI completes, auto-hides after 10s or on canvas interaction. Two undo paths: Cmd+Z via `pushExternalBatch` on the undo stack (batch entry tagged with batchId), and "Undo AI" button (uses stack undo if top matches, falls back to server-side `batch:undo` WS message). Server-side `undoBatch` on Board DO lists/deletes objects by batchId and broadcasts `obj:delete` for each.
+- **DRY refactor (merged):** `updateAndMutate` helper + type-linked `ToolName` export. Also added try/catch to `deleteObject`. Net: +46/-45 lines across 2 files.
+- **PM Skills evaluation (merged):** Tested 3 of 42 skills against CollabBoard. 2 survived: company-research (WebSearch), discovery-process (KILL gate). Full results in `docs/pm-eval/`. Pipeline (ccpm + bridge) rejected.
+- **Sprint reprioritization via PM eval:** All 3 skills converged on AI Board Generation as Sprint 1. KILL'd Sprints 2+4 (contextual AI actions, intent preview). PIVOTed Sprint 1 to 2hr lite version. Cut 26hrs planned to 10hrs.
+- **AI Board Generation (PR #26, merged):** Empty state sparkle overlay, suggestion chips, board-templates.ts with layout presets, enhanced system prompt. Gateway feature - first thing evaluators see.
+- **AI Batch Undo (PR #25, merged):** batchId on AI-created objects, Undo AI button, Cmd+Z batch support. One click to undo a 12-object SWOT.
+- **AI Presence Lite (merged):** AI cursor dot (pulsing, sky-400), AI in presence bar during tool execution. Fire-and-forget cursorToCenter() on all tools. Idempotent cleanup (onFinish + abort + try/catch).
+- **UAT on prod (3 parallel agents):** Chat persistence PASS, SWOT overlap 0/3 runs PASS, prod smoke test PASS (auth, CRUD, AI, 2-browser sync all verified).
+- **Inside the Box analysis:** Applied SIT framework (Subtraction, Division, Multiplication, Task Unification, Attribute Dependency) to find differentiated niches. Explored business niches (solo strategist, facilitator, adversarial strategy, system design interviews, incident war room) and joy/play niches (worldbuilder, conspiracy board, ELI5, collaborative story, digital garden, improv canvas).
+- **North star exploration:** Multiplayer improv canvas. Shared chat (already works via AIChatAgent DO), shared canvas (already works via Board DO), AI as scene partner. ~3hrs of new code on existing architecture. Written to `docs/new-north-star.md`.
 
 ### What's Next
-- [ ] Verify chat history persistence across page refreshes
-- [ ] Production deploy verification
-- [ ] Sprint 1: AI Cursor Presence (~6hrs)
-- [ ] Sprint 2: Contextual AI Actions / right-click menu (~6hrs)
-- [x] Sprint 3: AI Batch Undo (~4hrs) - DONE
-- [ ] Sprint 4: Intent Preview / ghost objects (~6hrs)
-- [ ] Sprint 5: AI Board Generation from description (~4hrs)
-
----
-
-## Session 15 Context (Feb 18, 2026)
-
-### What Was Done
-- **Live text sync + multi-cursor typing:** Real-time text broadcast, remote caret indicators via mirror-div technique, `text:cursor`/`text:blur` WS messages, DO hibernation-safe attachment state
-- **Architecture audit (PR #23):** DRY AI tools, system prompt geometry tables, template coord injection, Board.tsx extractions (1616->1435 lines), overlap scoring, observability logging
-- **PR review fixes (PR #23):** setTimeout cleanup, try-catch on DO RPC, try-finally DOM cleanup, cursor color consistency (hash-based), connector return value, WS error logging
-- **Stale cursor TTL (PR #24):** `lastSeen` + 5s sweep interval for text cursors dropped on WS disconnect
-- **Competitive research:** Miro Sidekicks, FigJam selection-gated AI, tldraw Make Real, MS Whiteboard Categorize. Synthesized into 5 sprint proposals.
+- [ ] Improv canvas: username attribution in chat messages (attach sender in useAgentChat body)
+- [ ] Improv canvas: ChatPanel multiplayer UI (color-coded names per sender)
+- [ ] Improv canvas: "Yes, and" system prompt mode in chat-agent.ts
+- [ ] Improv canvas: scene starter templates (replace business templates in board gen overlay)
+- [ ] devlog entry for Session 16
+- [ ] Deliverables check: demo video, AI cost analysis, social post (Final gate Feb 22)
 
 ---
 
 ## Roadmap Status
 
-**Shipped:** Pre-search, scaffold, auth, infinite canvas, cursor sync, presence, sticky notes, rectangles, circles, lines, connectors/arrows, standalone text, frames, move/resize/rotate, multi-select, copy/paste/duplicate, undo/redo, delete, AI agent (10 tools, DRY helpers, overlap scoring), chat panel (chips, templates, typing indicator), multi-board CRUD, hash routing, color picker, toolbar, connection toasts, loading skeleton, empty state hint, cursor smoothing, entrance animations, confetti, gradient background, cursor trails, keyboard shortcuts, privacy policy, data deletion endpoint, context menu, selection-aware AI, AI object glow, live text sync, remote carets, stale cursor TTL, **AI batch undo (batchId, Undo AI button, Cmd+Z batch support)**.
+**Shipped:** Pre-search, scaffold, auth, infinite canvas, cursor sync, presence, sticky notes, rectangles, circles, lines, connectors/arrows, standalone text, frames, move/resize/rotate, multi-select, copy/paste/duplicate, undo/redo, delete, AI agent (10 tools, DRY helpers, overlap scoring, updateAndMutate, type-linked ToolName), chat panel (chips, templates, typing indicator, server-side history persistence), multi-board CRUD, hash routing, color picker, toolbar, connection toasts, loading skeleton, empty state hint, cursor smoothing, entrance animations, confetti, gradient background, cursor trails, keyboard shortcuts, privacy policy, data deletion endpoint, context menu, selection-aware AI, AI object glow, live text sync, remote carets, stale cursor TTL, AI batch undo (batchId, Undo AI button, Cmd+Z batch), AI presence lite (cursor dot, presence bar), AI board generation (empty state overlay, suggestion chips, board-templates.ts).
 
-**Skipped (scope cut):** Fit-to-content button, ambient grid parallax, board minimap.
+**Killed (PM eval):** Contextual AI Actions (clustering unreliable on free-tier LLM), Intent Preview (problem overlap with batch undo at 3x cost).
 
-**Fast-Follow (post-submission):** OAuth, board permissions, export (PDF/PNG), mobile-responsive UI.
+**Exploring:** Multiplayer improv canvas (see `docs/new-north-star.md`).
 
 ---
 
@@ -81,6 +77,11 @@
 | Feb 17 | Overlap score metric over visual QA | Single number for AI layout quality |
 | Feb 18 | Hash-based cursor colors over index-based | Deterministic per userId regardless of array order |
 | Feb 18 | TTL sweep for ephemeral WS state | Can't rely on explicit cleanup messages (text:blur drops on disconnect) |
+| Feb 18 | DRY updateAndMutate + type-linked ToolName | Mirrors createAndMutate pattern; compiler enforces tool metadata sync |
+| Feb 18 | AI Board Gen = Sprint 1 (was Sprint 5) | 3 independent PM evals converged: table stakes per Figma Make + Miro Flows |
+| Feb 18 | KILL Sprints 2+4 | Sprint 2: clustering unreliable on free-tier LLM. Sprint 4: problem overlap with batch undo |
+| Feb 18 | 2 of 42 PM skills worth installing | company-research (WebSearch), discovery-process (KILL gate). Rest is theater. |
+| Feb 18 | Multiplayer improv canvas as north star | Existing shared chat + canvas arch needs only ~3hrs new code. Differentiated niche: nobody has multiplayer + AI + canvas + improv. |
 
 ---
 
