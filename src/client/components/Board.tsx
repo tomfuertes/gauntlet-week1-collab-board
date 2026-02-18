@@ -221,13 +221,72 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
   // Bulk drag state
   const dragStartPositionsRef = useRef<Map<string, { x: number; y: number }>>(new Map());
 
-  const { connectionState, initialized, cursors, textCursors, objects, presence, send, createObject: wsCreate, updateObject: wsUpdate, deleteObject: wsDelete } = useWebSocket(boardId);
-  const { createObject, updateObject, deleteObject, startBatch, commitBatch, undo, redo } = useUndoRedo(objects, wsCreate, wsUpdate, wsDelete);
+  const { connectionState, initialized, cursors, textCursors, objects, presence, send, createObject: wsCreate, updateObject: wsUpdate, deleteObject: wsDelete, batchUndo } = useWebSocket(boardId);
+  const { createObject, updateObject, deleteObject, startBatch, commitBatch, undo, redo, pushExternalBatch, topTag } = useUndoRedo(objects, wsCreate, wsUpdate, wsDelete);
   const { aiGlowIds, confettiPos, confettiKey, clearConfetti } = useAiObjectEffects(objects, initialized, scale, stagePos, size);
 
   // Stable refs to avoid recreating callbacks on every state change
   const objectsRef = useRef(objects);
   objectsRef.current = objects;
+
+  // --- AI Batch Undo state ---
+  const [undoAiBatchId, setUndoAiBatchId] = useState<string | null>(null);
+  const undoAiTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const processedBatchIds = useRef(new Set<string>());
+
+  /** Called when ChatPanel AI response completes - find batch objects and register for undo */
+  const handleAIComplete = useCallback(() => {
+    const currentObjects = objectsRef.current;
+    // Find the most recent batchId among all objects
+    let latestBatchId: string | null = null;
+    let latestUpdatedAt = 0;
+    for (const [, obj] of currentObjects) {
+      if (obj.batchId && obj.updatedAt > latestUpdatedAt) {
+        latestUpdatedAt = obj.updatedAt;
+        latestBatchId = obj.batchId;
+      }
+    }
+    if (!latestBatchId) return;
+    // Skip if this batch was already processed (AI responded with text only, no new objects)
+    if (processedBatchIds.current.has(latestBatchId)) return;
+    processedBatchIds.current.add(latestBatchId);
+
+    // Collect all objects in this batch
+    const batchObjects: BoardObject[] = [];
+    for (const [, obj] of currentObjects) {
+      if (obj.batchId === latestBatchId) batchObjects.push(obj);
+    }
+    if (batchObjects.length === 0) return;
+
+    // Push to undo stack so Cmd+Z undoes the whole batch
+    pushExternalBatch(batchObjects, latestBatchId);
+
+    // Show the "Undo AI" button
+    setUndoAiBatchId(latestBatchId);
+    if (undoAiTimerRef.current) clearTimeout(undoAiTimerRef.current);
+    undoAiTimerRef.current = setTimeout(() => setUndoAiBatchId(null), 10000);
+  }, [pushExternalBatch]);
+
+  /** Handle "Undo AI" button click */
+  const handleUndoAiBatch = useCallback(() => {
+    if (!undoAiBatchId) return;
+
+    // If the AI batch is the top of the undo stack, use the stack (supports redo)
+    if (topTag() === undoAiBatchId) {
+      undo();
+    } else {
+      // Targeted deletion: batch-delete all objects with this batchId via WS
+      batchUndo(undoAiBatchId);
+    }
+
+    setUndoAiBatchId(null);
+    if (undoAiTimerRef.current) clearTimeout(undoAiTimerRef.current);
+  }, [undoAiBatchId, topTag, undo, batchUndo]);
+
+  // Cleanup undo AI timer on unmount
+  useEffect(() => {
+    return () => { if (undoAiTimerRef.current) clearTimeout(undoAiTimerRef.current); };
+  }, []);
   const stagePosRef = useRef(stagePos);
   stagePosRef.current = stagePos;
   const scaleRef = useRef(scale);
@@ -493,6 +552,8 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
 
   // Stage mousedown: marquee (select mode) or frame draft (frame mode)
   const handleStageMouseDown = useCallback((e: KonvaEventObject<MouseEvent>) => {
+    // Dismiss "Undo AI" button on any canvas interaction
+    setUndoAiBatchId(null);
     if (e.target !== stageRef.current) return;
 
     const stage = stageRef.current;
@@ -1213,7 +1274,46 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
           onClose={() => { setChatOpen(false); setChatInitialPrompt(undefined); }}
           initialPrompt={chatInitialPrompt}
           selectedIds={selectedIds}
+          onAIComplete={handleAIComplete}
         />
+      )}
+
+      {/* Undo AI batch button - appears after AI creates objects */}
+      {undoAiBatchId && (
+        <button
+          onClick={handleUndoAiBatch}
+          style={{
+            position: "absolute",
+            bottom: 80,
+            right: chatOpen ? 392 : 16,
+            zIndex: 31,
+            display: "flex",
+            alignItems: "center",
+            gap: 6,
+            padding: "8px 14px",
+            background: "rgba(99, 102, 241, 0.15)",
+            border: "1px solid rgba(99, 102, 241, 0.4)",
+            borderRadius: 8,
+            color: "#c7d2fe",
+            fontSize: "0.8125rem",
+            fontWeight: 500,
+            cursor: "pointer",
+            backdropFilter: "blur(8px)",
+            transition: "all 0.15s ease",
+            animation: "cb-undo-ai-in 0.25s ease-out",
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.background = "rgba(99, 102, 241, 0.25)";
+            e.currentTarget.style.borderColor = "rgba(99, 102, 241, 0.6)";
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.background = "rgba(99, 102, 241, 0.15)";
+            e.currentTarget.style.borderColor = "rgba(99, 102, 241, 0.4)";
+          }}
+        >
+          <span style={{ fontSize: "0.875rem" }}>&#x21B6;</span>
+          Undo AI
+        </button>
       )}
 
       {/* Right-click context menu */}

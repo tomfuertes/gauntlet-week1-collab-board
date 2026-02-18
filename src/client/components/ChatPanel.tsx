@@ -9,6 +9,7 @@ interface ChatPanelProps {
   onClose: () => void;
   initialPrompt?: string;
   selectedIds?: Set<string>;
+  onAIComplete?: () => void;
 }
 
 const SUGGESTED_PROMPTS = [
@@ -96,11 +97,22 @@ function ToolHistory({ tools }: { tools: NonNullable<AIChatMessage["tools"]> }) 
   );
 }
 
-export function ChatPanel({ boardId, onClose, initialPrompt, selectedIds }: ChatPanelProps) {
+export function ChatPanel({ boardId, onClose, initialPrompt, selectedIds, onAIComplete }: ChatPanelProps) {
   const { messages, loading, status, sendMessage } = useAIChat(boardId, selectedIds);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const initialPromptHandled = useRef(false);
+
+  // Detect AI response completion (loading: true -> false) and notify parent
+  const prevLoadingRef = useRef(false);
+  const onAICompleteRef = useRef(onAIComplete);
+  onAICompleteRef.current = onAIComplete;
+  useEffect(() => {
+    if (prevLoadingRef.current && !loading) {
+      onAICompleteRef.current?.();
+    }
+    prevLoadingRef.current = loading;
+  }, [loading]);
 
   // Auto-scroll to bottom on new messages
   useEffect(() => {

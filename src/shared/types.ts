@@ -28,6 +28,7 @@ export interface BoardObject {
   };
   createdBy: string;
   updatedAt: number;
+  batchId?: string;
 }
 
 export type WSClientMessage =
@@ -36,7 +37,8 @@ export type WSClientMessage =
   | { type: "obj:update"; obj: Partial<BoardObject> & { id: string } }
   | { type: "obj:delete"; id: string }
   | { type: "text:cursor"; objectId: string; position: number }
-  | { type: "text:blur"; objectId: string };
+  | { type: "text:blur"; objectId: string }
+  | { type: "batch:undo"; batchId: string };
 
 export type WSServerMessage =
   | { type: "cursor"; userId: string; username: string; x: number; y: number }

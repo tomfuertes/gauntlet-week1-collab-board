@@ -36,7 +36,8 @@ export class ChatAgent extends AIChatAgent<Bindings> {
     // this.name = boardId (set by client connecting to /agents/ChatAgent/<boardId>)
     const doId = this.env.BOARD.idFromName(this.name);
     const boardStub = this.env.BOARD.get(doId);
-    const tools = createSDKTools(boardStub);
+    const batchId = crypto.randomUUID();
+    const tools = createSDKTools(boardStub, batchId);
 
     // Build system prompt with optional selection context
     let systemPrompt = SYSTEM_PROMPT;

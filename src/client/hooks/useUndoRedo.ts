@@ -5,7 +5,7 @@ type UndoableAction =
   | { type: "create"; obj: BoardObject }
   | { type: "update"; before: BoardObject; after: BoardObject }
   | { type: "delete"; obj: BoardObject }
-  | { type: "batch"; actions: UndoableAction[] };
+  | { type: "batch"; actions: UndoableAction[]; tag?: string };
 
 const MAX_UNDO = 50;
 
@@ -153,5 +153,23 @@ export function useUndoRedo(
     }
   }, [replayAction]);
 
-  return { createObject, updateObject, deleteObject, startBatch, commitBatch, undo, redo };
+  /** Push externally-created objects (e.g. from AI via WS) to the undo stack without re-creating them */
+  const pushExternalBatch = useCallback((objs: BoardObject[], tag?: string) => {
+    if (objs.length === 0) return;
+    const actions: UndoableAction[] = objs.map(obj => ({ type: "create" as const, obj: snapshot(obj) }));
+    if (actions.length === 1) {
+      push(actions[0]);
+    } else {
+      push({ type: "batch", actions, tag });
+    }
+  }, [push]);
+
+  /** Check if the top of the undo stack has a matching tag (for targeted undo) */
+  const topTag = useCallback((): string | undefined => {
+    if (indexRef.current < 0) return undefined;
+    const action = stackRef.current[indexRef.current];
+    return action.type === "batch" ? action.tag : undefined;
+  }, []);
+
+  return { createObject, updateObject, deleteObject, startBatch, commitBatch, undo, redo, pushExternalBatch, topTag };
 }

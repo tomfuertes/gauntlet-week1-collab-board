@@ -35,6 +35,7 @@ function makeObject(
   width: number,
   height: number,
   props: BoardObject["props"],
+  batchId?: string,
 ): BoardObject {
   return {
     id: crypto.randomUUID(),
@@ -46,6 +47,7 @@ function makeObject(
     props,
     createdBy: "ai-agent",
     updatedAt: Date.now(),
+    ...(batchId ? { batchId } : {}),
   };
 }
 
@@ -135,7 +137,7 @@ function computeOverlapScore(objects: BoardObject[]): number {
 // ---------------------------------------------------------------------------
 
 /** Create the full AI SDK tool registry bound to a specific Board DO stub */
-export function createSDKTools(stub: BoardStub) {
+export function createSDKTools(stub: BoardStub, batchId?: string) {
   return {
     // 1. createStickyNote
     createStickyNote: tool({
@@ -162,7 +164,7 @@ export function createSDKTools(stub: BoardStub) {
         const obj = makeObject("sticky", randomPos(x, y), 200, 200, {
           text: text || "New note",
           color: color || "#fbbf24",
-        });
+        }, batchId);
         return createAndMutate(stub, obj);
       },
     }),
@@ -228,6 +230,7 @@ export function createSDKTools(stub: BoardStub) {
             diameter,
             diameter,
             { fill: fill || "#3b82f6", stroke: stroke || "#2563eb" },
+            batchId,
           );
           return createAndMutate(stub, obj);
         }
@@ -239,6 +242,7 @@ export function createSDKTools(stub: BoardStub) {
             width ?? 200,
             height ?? 0,
             { stroke: stroke || "#94a3b8" },
+            batchId,
           );
           return createAndMutate(stub, obj);
         }
@@ -250,6 +254,7 @@ export function createSDKTools(stub: BoardStub) {
           width ?? 150,
           height ?? 100,
           { fill: fill || "#3b82f6", stroke: stroke || "#2563eb" },
+          batchId,
         );
         return createAndMutate(stub, obj);
       },
@@ -290,6 +295,7 @@ export function createSDKTools(stub: BoardStub) {
                 ? title.trim()
                 : "Frame",
           },
+          batchId,
         );
         return createAndMutate(stub, obj);
       },
@@ -335,7 +341,7 @@ export function createSDKTools(stub: BoardStub) {
         const obj = makeObject("line", { x: x1, y: y1 }, w, h, {
           stroke: stroke || "#94a3b8",
           arrow: arrowStyle as "end" | "both" | "none",
-        });
+        }, batchId);
         const result = await createAndMutate(stub, obj);
         if ("error" in result) return result;
         return { ...result, from: fromId, to: toId };
