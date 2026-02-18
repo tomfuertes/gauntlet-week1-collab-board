@@ -79,8 +79,10 @@ export function ReplayViewer({ boardId, onBack }: ReplayViewerProps) {
   const [size, setSize] = useState({ width: window.innerWidth, height: window.innerHeight });
 
   const objectsRef = useRef(new Map<string, BoardObject>());
+  const renderMapRef = useRef(new Map<string, BoardObject>());
   const [objects, setObjects] = useState<BoardObject[]>([]);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const rafRef = useRef(0);
 
   // Fetch events on mount
   useEffect(() => {
@@ -111,21 +113,87 @@ export function ReplayViewer({ boardId, onBack }: ReplayViewerProps) {
   }, []);
 
   const applyEvent = useCallback((evt: ReplayEvent) => {
-    const map = objectsRef.current;
+    const targets = objectsRef.current;
+    const rendered = renderMapRef.current;
+
     if (evt.type === "obj:create" && evt.obj) {
-      map.set(evt.obj.id, evt.obj);
+      targets.set(evt.obj.id, evt.obj);
+      rendered.set(evt.obj.id, { ...evt.obj }); // instant appear
     } else if (evt.type === "obj:update" && evt.obj) {
-      const existing = map.get(evt.obj.id);
+      const existing = targets.get(evt.obj.id);
       if (existing) {
-        map.set(evt.obj.id, { ...existing, ...evt.obj, props: { ...existing.props, ...(evt.obj.props || {}) } });
+        targets.set(evt.obj.id, { ...existing, ...evt.obj, props: { ...existing.props, ...(evt.obj.props || {}) } });
       } else {
-        map.set(evt.obj.id, evt.obj);
+        targets.set(evt.obj.id, evt.obj);
+        rendered.set(evt.obj.id, { ...evt.obj }); // new object, instant
+      }
+      // Apply non-spatial props instantly to rendered copy
+      const r = rendered.get(evt.obj.id);
+      if (r && evt.obj.props) {
+        r.props = { ...r.props, ...evt.obj.props };
       }
     } else if (evt.type === "obj:delete" && evt.id) {
-      map.delete(evt.id);
+      targets.delete(evt.id);
+      rendered.delete(evt.id); // instant removal
     }
-    setObjects([...map.values()]);
+
+    setObjects([...rendered.values()]);
   }, []);
+
+  // RAF interpolation loop - lerps rendered positions toward targets
+  useEffect(() => {
+    if (!playing) return;
+
+    const LERP = 0.25;
+    const SNAP = 0.5;
+    const targets = objectsRef.current;
+    const rendered = renderMapRef.current;
+
+    function tick() {
+      let changed = false;
+
+      for (const [id, target] of targets) {
+        const r = rendered.get(id);
+        if (!r) {
+          rendered.set(id, { ...target });
+          changed = true;
+          continue;
+        }
+
+        for (const key of ['x', 'y', 'width', 'height', 'rotation'] as const) {
+          const diff = target[key] - r[key];
+          if (Math.abs(diff) > SNAP) {
+            r[key] += diff * LERP;
+            changed = true;
+          } else if (diff !== 0) {
+            r[key] = target[key];
+            changed = true;
+          }
+        }
+      }
+
+      if (changed) {
+        setObjects([...rendered.values()]);
+      }
+
+      rafRef.current = requestAnimationFrame(tick);
+    }
+
+    rafRef.current = requestAnimationFrame(tick);
+    return () => {
+      cancelAnimationFrame(rafRef.current);
+      // Snap to final positions on pause/stop
+      let snapped = false;
+      for (const [id, target] of targets) {
+        const r = rendered.get(id);
+        if (!r || r.x !== target.x || r.y !== target.y || r.width !== target.width || r.height !== target.height || r.rotation !== target.rotation) {
+          rendered.set(id, { ...target });
+          snapped = true;
+        }
+      }
+      if (snapped) setObjects([...rendered.values()]);
+    };
+  }, [playing]);
 
   // Playback engine
   useEffect(() => {
@@ -155,6 +223,7 @@ export function ReplayViewer({ boardId, onBack }: ReplayViewerProps) {
     } else if (currentIndex >= events.length - 1) {
       // Restart from beginning
       objectsRef.current.clear();
+      renderMapRef.current.clear();
       setObjects([]);
       setCurrentIndex(-1);
       setPlaying(true);
