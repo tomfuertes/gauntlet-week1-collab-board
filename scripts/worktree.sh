@@ -154,7 +154,7 @@ cmd_remove() {
   fi
 
   echo "Removing worktree at ${wt_dir}..."
-  git worktree remove "$wt_dir"
+  git worktree remove --force "$wt_dir"
 
   if git show-ref --verify --quiet "refs/heads/${feat_branch}"; then
     echo "Deleting branch ${feat_branch}..."
