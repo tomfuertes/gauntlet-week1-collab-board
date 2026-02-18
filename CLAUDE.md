@@ -24,7 +24,11 @@ npm run dev              # wrangler dev (backend + frontend)
 npm run health           # wait for dev server to be ready (polls :5173, no curl needed)
 node scripts/health.js --port=5174  # wait for worktree dev server
 # In worktrees (avoid port conflicts with main repo):
-VITE_PORT=5174 WRANGLER_PORT=8788 npm run dev
+# IMPORTANT: Fresh worktrees need full setup before dev server works:
+npm install                              # worktree may have stale/incomplete node_modules
+npm run build                            # wrangler crashes without dist/ directory
+npm run migrate:local                    # initialize local D1 database
+source worktree.ports && npm run dev     # use worktree-specific ports from worktree.ports file
 
 # Build & Deploy (CF git integration auto-deploys on push to main)
 npm run build            # Vite build
