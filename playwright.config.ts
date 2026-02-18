@@ -10,7 +10,7 @@ export default defineConfig({
   expect: { timeout: 5_000 },
   reporter: [["dot"], ["html", { open: "never" }]],
   use: {
-    baseURL: `http://localhost:${process.env.WRANGLER_PORT || 8787}`,
+    baseURL: `http://localhost:${process.env.VITE_PORT || 5173}`,
     screenshot: "only-on-failure",
     trace: "retain-on-failure",
   },

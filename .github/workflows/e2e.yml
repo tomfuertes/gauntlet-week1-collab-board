@@ -72,6 +72,7 @@ jobs:
       - name: Run E2E tests
         run: npx playwright test
         env:
+          VITE_PORT: "5175"
           WRANGLER_PORT: "8789"
 
       - name: Upload test results
