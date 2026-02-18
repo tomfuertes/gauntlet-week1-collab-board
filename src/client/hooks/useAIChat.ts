@@ -36,6 +36,7 @@ export function useAIChat(boardId: string, selectedIds?: Set<string>, username?:
     messages: uiMessages,
     sendMessage: sdkSendMessage,
     status: sdkStatus,
+    error: sdkError,
   } = useAgentChat({
     agent,
     body: { selectedIds: selectedIdsArray, username },
@@ -86,6 +87,7 @@ export function useAIChat(boardId: string, selectedIds?: Set<string>, username?:
   }, [uiMessages]);
 
   const loading = sdkStatus === "streaming" || sdkStatus === "submitted";
+  const error = sdkStatus === "error" ? (sdkError?.message || "Something went wrong") : undefined;
   const status =
     sdkStatus === "submitted"
       ? "Thinking..."
@@ -103,5 +105,5 @@ export function useAIChat(boardId: string, selectedIds?: Set<string>, username?:
     [sdkSendMessage, username],
   );
 
-  return { messages, loading, status, sendMessage };
+  return { messages, loading, status, error, sendMessage };
 }

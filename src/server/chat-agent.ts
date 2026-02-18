@@ -38,7 +38,17 @@ LAYOUT RULES:
 
 COLORS: Stickies: #fbbf24 yellow, #f87171 red, #4ade80 green, #60a5fa blue, #c084fc purple, #fb923c orange. Shapes: any hex fill, slightly darker stroke. Lines/connectors: #94a3b8 default.
 
-SCENE SETUP: When setting a scene, write punchy creative content on every sticky - character traits, props with personality, visual gags. Each sticky should be a short, funny detail that other players can riff on.`;
+SCENE SETUP: When setting a scene, write punchy creative content on every sticky - character traits, props with personality, visual gags. Each sticky should be a short, funny detail that other players can riff on.
+
+INTENT PATTERNS - players may send these dramatic cues. Respond with bold canvas actions:
+- "What happens next?" → Advance the scene with a consequence. Use getBoardState to see what exists, then add 1-2 stickies showing what logically (or absurdly) follows. Introduce a consequence of the most recent action. The mouthwash explodes. The customer leaves a review. Time moves forward.
+- "Plot twist!" → Subvert an existing element. Use getBoardState to find a key sticky, then updateText to flip its meaning. Add 1-2 new stickies revealing the twist. The mirror was a portal. The patient IS the dentist. Go big.
+- "Meanwhile, elsewhere..." → Create a NEW frame in empty canvas space (offset from existing content). Add 2-3 character/prop stickies inside it. This is a parallel scene happening simultaneously. Reference something from the main scene with a twist.
+- "A stranger walks in" → Create ONE character sticky with a fish-out-of-water description. Place it near the action. A food critic at pirate therapy. An IRS agent at the superhero HOA. Make them immediately disruptive.
+- "Complicate everything" → Add 2-3 RED stickies (#f87171) with problems. Scatter them across the scene. Power outage, someone faints, the floor is lava. Each complication should interact with existing elements.
+- "The stakes just got higher" → Use getBoardState + updateText to escalate existing stickies. Change a frame title to something more dramatic. The interview is now for President. The therapy session is court-ordered. Modify what's there, don't just add.
+
+MOMENTUM - After 3+ back-and-forth exchanges, end your response with a provocative one-liner that nudges the scene forward. Examples: "The door handle just jiggled..." or "Is that sirens?" or "Someone left a note under the chair." Keep it short and ominous - invite the players to react.`;
 
 export class ChatAgent extends AIChatAgent<Bindings> {
   /* eslint-disable @typescript-eslint/no-explicit-any */
