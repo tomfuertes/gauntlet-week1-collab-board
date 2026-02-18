@@ -14,10 +14,13 @@ export interface AIChatMessage {
   id: string;
   role: "user" | "assistant";
   content: string;
+  sender?: string;
   tools?: ToolCall[];
 }
 
-export function useAIChat(boardId: string, selectedIds?: Set<string>) {
+const SENDER_RE = /^\[([^\]]+)\]\s*/;
+
+export function useAIChat(boardId: string, selectedIds?: Set<string>, username?: string) {
   // Connect to ChatAgent DO instance named by boardId
   const agent = useAgent({
     agent: "ChatAgent",
@@ -35,7 +38,7 @@ export function useAIChat(boardId: string, selectedIds?: Set<string>) {
     status: sdkStatus,
   } = useAgentChat({
     agent,
-    body: { selectedIds: selectedIdsArray },
+    body: { selectedIds: selectedIdsArray, username },
   });
 
   // Map UIMessage[] to AIChatMessage[] for ChatPanel compatibility
@@ -57,14 +60,26 @@ export function useAIChat(boardId: string, selectedIds?: Set<string>) {
         }
       }
 
+      // Extract [username] prefix from user messages for multiplayer attribution
+      let sender: string | undefined;
+      let displayContent = content;
+      if (msg.role === "user") {
+        const match = content.match(SENDER_RE);
+        if (match) {
+          sender = match[1];
+          displayContent = content.slice(match[0].length);
+        }
+      }
+
       return {
         id: msg.id,
         role: msg.role as "user" | "assistant",
         content:
-          content ||
+          displayContent ||
           (tools.length > 0
             ? "I performed the requested actions on the board."
             : ""),
+        sender,
         tools: tools.length > 0 ? tools : undefined,
       };
     });
@@ -79,11 +94,13 @@ export function useAIChat(boardId: string, selectedIds?: Set<string>) {
         : "";
 
   // Wrap sendMessage to match old interface (takes a string, not UIMessage)
+  // Prefix [username] for multiplayer attribution in persisted history
   const sendMessage = useCallback(
     (text: string) => {
-      sdkSendMessage({ text });
+      const prefixed = username ? `[${username}] ${text}` : text;
+      sdkSendMessage({ text: prefixed });
     },
-    [sdkSendMessage],
+    [sdkSendMessage, username],
   );
 
   return { messages, loading, status, sendMessage };
