@@ -10,11 +10,30 @@ interface ChatPanelProps {
 
 const TOOL_ICONS: Record<string, string> = {
   create_sticky: "+note",
+  create_text: "+text",
   create_rect: "+rect",
+  create_circle: "+circle",
+  create_line: "+line",
+  create_connector: "+arrow",
+  create_frame: "+frame",
   read_board: "read",
   update_object: "edit",
   delete_object: "del",
 };
+
+const SUGGESTED_PROMPTS = [
+  "What's on this board?",
+  "Create a SWOT analysis",
+  "Organize stickies by color",
+  "Add 5 brainstorm ideas about AI",
+];
+
+const TEMPLATES: { label: string; prompt: string }[] = [
+  { label: "SWOT", prompt: "Create a SWOT analysis: make a 2x2 grid of 4 frames labeled Strengths, Weaknesses, Opportunities, Threats. Add 2 example stickies in each quadrant." },
+  { label: "Kanban", prompt: "Create a kanban board: make 3 frames side by side labeled To Do, In Progress, and Done. Add 3 example sticky notes in the To Do column." },
+  { label: "Retro", prompt: "Create a sprint retrospective: make 3 frames labeled What Went Well, What Didn't Go Well, and Action Items. Add 2 stickies in each." },
+  { label: "Brainstorm", prompt: "Create a brainstorm session: make a central sticky note labeled 'Topic' and surround it with 8 sticky notes in a circle pattern with creative ideas." },
+];
 
 function ToolHistory({ tools }: { tools: NonNullable<AIChatMessage["tools"]> }) {
   const [open, setOpen] = useState(false);
@@ -77,6 +96,25 @@ export function ChatPanel({ boardId, onClose }: ChatPanelProps) {
   };
 
   return (
+    <>
+    <style>{`
+      @keyframes chat-bounce {
+        0%, 80%, 100% { transform: translateY(0); }
+        40% { transform: translateY(-6px); }
+      }
+      .chat-bounce-dots { display: inline-flex; gap: 3px; align-items: center; height: 16px; }
+      .chat-dot {
+        width: 6px; height: 6px; border-radius: 50%; background: #94a3b8;
+        animation: chat-bounce 1.4s ease-in-out infinite;
+      }
+      .chat-dot:nth-child(2) { animation-delay: 0.16s; }
+      .chat-dot:nth-child(3) { animation-delay: 0.32s; }
+      @keyframes chat-pulse {
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0.5; }
+      }
+      .chat-pulse-text { animation: chat-pulse 2s ease-in-out infinite; }
+    `}</style>
     <div style={{
       position: "absolute", top: 0, right: 0, bottom: 0, width: 380, zIndex: 30,
       background: "rgba(15, 23, 42, 0.97)", borderLeft: "1px solid #334155",
@@ -102,8 +140,27 @@ export function ChatPanel({ boardId, onClose }: ChatPanelProps) {
         display: "flex", flexDirection: "column", gap: "0.75rem",
       }}>
         {messages.length === 0 && !loading && (
-          <div style={{ color: "#64748b", fontSize: "0.8125rem", textAlign: "center", marginTop: "2rem" }}>
-            Ask me to create stickies, organize the board, or answer questions about what's on it.
+          <div style={{ textAlign: "center", marginTop: "2rem" }}>
+            <div style={{ color: "#64748b", fontSize: "0.8125rem", marginBottom: "1rem" }}>
+              Try a suggestion to get started:
+            </div>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 8, justifyContent: "center" }}>
+              {SUGGESTED_PROMPTS.map((prompt) => (
+                <button
+                  key={prompt}
+                  onClick={() => sendMessage(prompt)}
+                  style={{
+                    background: "#1e293b", border: "1px solid #334155", borderRadius: 16,
+                    padding: "6px 12px", cursor: "pointer", color: "#e2e8f0",
+                    fontSize: "0.75rem", transition: "border-color 0.15s",
+                  }}
+                  onMouseEnter={(e) => { e.currentTarget.style.borderColor = colors.accent; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.borderColor = "#334155"; }}
+                >
+                  {prompt}
+                </button>
+              ))}
+            </div>
           </div>
         )}
         {messages.map((msg) => (
@@ -133,10 +190,43 @@ export function ChatPanel({ boardId, onClose }: ChatPanelProps) {
             alignSelf: "flex-start", padding: "0.5rem 0.75rem",
             borderRadius: "12px 12px 12px 4px", background: "#1e293b",
             color: "#94a3b8", fontSize: "0.8125rem",
+            display: "flex", alignItems: "center", gap: 4, minHeight: 24,
           }}>
-            {status || "Thinking..."}
+            {!status || status === "Thinking..." ? (
+              <span className="chat-bounce-dots">
+                <span className="chat-dot" />
+                <span className="chat-dot" />
+                <span className="chat-dot" />
+              </span>
+            ) : (
+              <span className="chat-pulse-text">{status}</span>
+            )}
           </div>
         )}
+      </div>
+
+      {/* Templates */}
+      <div style={{
+        padding: "0.375rem 0.75rem", borderTop: "1px solid #1e293b", flexShrink: 0,
+        display: "flex", gap: 6, overflowX: "auto",
+      }}>
+        {TEMPLATES.map((t) => (
+          <button
+            key={t.label}
+            onClick={() => sendMessage(t.prompt)}
+            disabled={loading}
+            style={{
+              background: "none", border: "1px solid #334155", borderRadius: 6,
+              padding: "3px 8px", cursor: loading ? "not-allowed" : "pointer",
+              color: "#94a3b8", fontSize: "0.6875rem", whiteSpace: "nowrap",
+              transition: "border-color 0.15s, color 0.15s", flexShrink: 0,
+            }}
+            onMouseEnter={(e) => { if (!loading) { e.currentTarget.style.borderColor = colors.accent; e.currentTarget.style.color = "#e2e8f0"; } }}
+            onMouseLeave={(e) => { e.currentTarget.style.borderColor = "#334155"; e.currentTarget.style.color = "#94a3b8"; }}
+          >
+            {t.label}
+          </button>
+        ))}
       </div>
 
       {/* Input */}
@@ -170,5 +260,6 @@ export function ChatPanel({ boardId, onClose }: ChatPanelProps) {
         </button>
       </div>
     </div>
+    </>
   );
 }
