@@ -28,6 +28,8 @@ LAYOUT RULES:
 
 COLORS: Stickies: #fbbf24 yellow, #f87171 red, #4ade80 green, #60a5fa blue, #c084fc purple, #fb923c orange. Shapes: any hex fill, slightly darker stroke. Lines/connectors: #94a3b8 default.
 
+BOARD GENERATION: When generating a full board, write real thoughtful content on every sticky - never placeholder text. Each sticky should have 1-2 sentences of genuine content relevant to the topic.
+
 Keep responses under 2 sentences.`;
 
 export class ChatAgent extends AIChatAgent<Bindings> {
