@@ -13,7 +13,7 @@ CollabBoard - real-time collaborative whiteboard with AI agent integration. Gaun
 - **Real-time:** Durable Objects + WebSockets (one DO per board, LWW conflict resolution)
 - **Auth:** Custom (username/password, PBKDF2 hash, D1 sessions, cookie-based)
 - **Database:** DO Storage (board objects as KV) + D1 (users/sessions/board metadata)
-- **AI:** Cloudflare Agents SDK (`AIChatAgent` DO) + Vercel AI SDK v6 (`streamText`, `tool()`). `ChatAgent` DO per board (instance name = boardId), WebSocket streaming, server-side chat persistence (DO SQLite). 10 tools in `src/server/ai-tools-sdk.ts` (Zod schemas), display metadata in `src/shared/ai-tool-meta.ts`. Models: GLM-4.7-Flash (free tier) or Claude Haiku 4.5 (if `ANTHROPIC_API_KEY` set) via `@ai-sdk/anthropic`.
+- **AI:** Cloudflare Agents SDK (`AIChatAgent` DO) + Vercel AI SDK v6 (`streamText`, `generateText`, `tool()`). `ChatAgent` DO per board (instance name = boardId), WebSocket streaming, server-side chat persistence (DO SQLite). 10 tools in `src/server/ai-tools-sdk.ts` (Zod schemas), display metadata in `src/shared/ai-tool-meta.ts`. Models: GLM-4.7-Flash (free tier) or Claude Haiku 4.5 (if `ANTHROPIC_API_KEY` set) via `@ai-sdk/anthropic`. **AI Director:** proactive mode - after 60s inactivity, `onDirectorNudge` fires via DO schedule alarm, uses `generateText` (non-streaming) with scene-phase-specific prompts, builds `UIMessage` manually and broadcasts via `persistMessages()`.
 - **Deploy:** CF git integration auto-deploys on push to main
 
 ## Commands

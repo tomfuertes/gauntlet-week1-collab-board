@@ -1,10 +1,48 @@
 import { AIChatAgent } from "@cloudflare/ai-chat";
-import { streamText, convertToModelMessages, stepCountIs } from "ai";
+import {
+  streamText,
+  generateText,
+  convertToModelMessages,
+  stepCountIs,
+} from "ai";
+import type { UIMessage } from "ai";
 import { createWorkersAI } from "workers-ai-provider";
 import { createAnthropic } from "@ai-sdk/anthropic";
 import { createSDKTools } from "./ai-tools-sdk";
 import type { Bindings } from "./env";
 import type { BoardObject } from "../shared/types";
+
+// ---------------------------------------------------------------------------
+// Scene phase system - dramatic arc for proactive AI director
+// ---------------------------------------------------------------------------
+
+type ScenePhase =
+  | "setup"
+  | "escalation"
+  | "complication"
+  | "climax"
+  | "callback";
+
+function computeScenePhase(userMessageCount: number): ScenePhase {
+  if (userMessageCount <= 2) return "setup";
+  if (userMessageCount <= 5) return "escalation";
+  if (userMessageCount <= 8) return "complication";
+  if (userMessageCount <= 11) return "climax";
+  return "callback";
+}
+
+const DIRECTOR_PROMPTS: Record<ScenePhase, string> = {
+  setup:
+    "The scene needs an establishment detail. Add a prop, character trait, or location detail that gives players something to react to. Create 1-2 stickies with punchy, specific details.",
+  escalation:
+    "Raise the stakes. Introduce a complication that makes the current situation more urgent or absurd. Something that forces the characters to react. Create 1-2 RED stickies (#f87171) with problems.",
+  complication:
+    "Things should go wrong in an unexpected way. Subvert an existing element - use getBoardState to find something to twist. Add a sticky that recontextualizes what's already there.",
+  climax:
+    "Maximum tension. Everything should converge. Reference callbacks from earlier in the scene. Use getBoardState to find early elements and bring them back at the worst possible moment.",
+  callback:
+    "Full circle. Reference the very first elements of the scene. Create a callback that ties everything together with a twist. Check getBoardState for the oldest objects.",
+};
 
 const SYSTEM_PROMPT = `You are an improv scene partner on a shared canvas. This is multiplayer - messages come from different users (their name appears before their message). Address players by name when responding.
 
@@ -48,10 +86,29 @@ INTENT PATTERNS - players may send these dramatic cues. Respond with bold canvas
 - "Complicate everything" → Add 2-3 RED stickies (#f87171) with problems. Scatter them across the scene. Power outage, someone faints, the floor is lava. Each complication should interact with existing elements.
 - "The stakes just got higher" → Use getBoardState + updateText to escalate existing stickies. Change a frame title to something more dramatic. The interview is now for President. The therapy session is court-ordered. Modify what's there, don't just add.
 
+DRAMATIC STRUCTURE - scenes follow this arc:
+1. SETUP: Establish characters, location, premise.
+2. ESCALATION: Raise stakes, add complications.
+3. COMPLICATION: Things go wrong. Unexpected twists.
+4. CLIMAX: Maximum tension/absurdity. Everything converges.
+5. CALLBACK: Reference early elements. Full circle.
+
 MOMENTUM - After 3+ back-and-forth exchanges, end your response with a provocative one-liner that nudges the scene forward. Examples: "The door handle just jiggled..." or "Is that sirens?" or "Someone left a note under the chair." Keep it short and ominous - invite the players to react.`;
 
 export class ChatAgent extends AIChatAgent<Bindings> {
   /* eslint-disable @typescript-eslint/no-explicit-any */
+
+  /** Choose model: Haiku if ANTHROPIC_API_KEY set, else GLM free tier */
+  private _getModel() {
+    return this.env.ANTHROPIC_API_KEY
+      ? createAnthropic({ apiKey: this.env.ANTHROPIC_API_KEY })(
+          "claude-haiku-4-5-20251001"
+        )
+      : (createWorkersAI({ binding: this.env.AI }) as any)(
+          "@cf/zai-org/glm-4.7-flash"
+        );
+  }
+
   async onChatMessage(onFinish: any, options?: { abortSignal?: AbortSignal }) {
     // this.name = boardId (set by client connecting to /agents/ChatAgent/<boardId>)
     const doId = this.env.BOARD.idFromName(this.name);
@@ -85,14 +142,7 @@ export class ChatAgent extends AIChatAgent<Bindings> {
       }
     }
 
-    // Choose model: Haiku if ANTHROPIC_API_KEY set, else GLM free tier
-    const model = this.env.ANTHROPIC_API_KEY
-      ? createAnthropic({ apiKey: this.env.ANTHROPIC_API_KEY })(
-          "claude-haiku-4-5-20251001"
-        )
-      : (createWorkersAI({ binding: this.env.AI }) as any)(
-          "@cf/zai-org/glm-4.7-flash"
-        );
+    const model = this._getModel();
 
     // Show AI in presence bar while responding (best-effort, never blocks AI response)
     await boardStub.setAiPresence(true).catch((err: unknown) => {
@@ -120,6 +170,9 @@ export class ChatAgent extends AIChatAgent<Bindings> {
       clearPresence();
     }, { once: true });
 
+    // Reset the director inactivity timer on every user message
+    this._resetDirectorTimer();
+
     try {
       const result = streamText({
         model,
@@ -135,6 +188,173 @@ export class ChatAgent extends AIChatAgent<Bindings> {
     } catch (err) {
       await clearPresence();
       throw err;
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // AI Director - proactive scene complications after inactivity
+  // ---------------------------------------------------------------------------
+
+  /** Cancel existing director schedule and set a new 60s timer */
+  private _resetDirectorTimer() {
+    // Fire-and-forget: schedule management should never block chat response
+    (async () => {
+      try {
+        // Cancel any existing director nudge schedules
+        const existing = this.getSchedules({ type: "delayed" });
+        for (const s of existing) {
+          if (s.callback === "onDirectorNudge") {
+            await this.cancelSchedule(s.id);
+          }
+        }
+        // Only schedule if there's an active scene (messages exist)
+        if (this.messages.length > 0) {
+          await this.schedule(60, "onDirectorNudge" as keyof this);
+        }
+      } catch (err) {
+        console.warn(
+          JSON.stringify({
+            event: "director:timer-error",
+            error: String(err),
+          })
+        );
+      }
+    })();
+  }
+
+  /** Called by DO alarm after 60s of inactivity - generates a proactive scene complication */
+  async onDirectorNudge(
+    _payload: unknown,
+    currentSchedule?: { id: string }
+  ) {
+    // Guard: skip if another timer was set after this one fired
+    // Note: the SDK deletes the schedule row AFTER the callback returns,
+    // so we must exclude the currently-executing schedule by ID
+    const lastSchedules = this.getSchedules({ type: "delayed" });
+    const hasPending = lastSchedules.some(
+      (s) =>
+        s.callback === "onDirectorNudge" && s.id !== currentSchedule?.id
+    );
+    if (hasPending) {
+      return;
+    }
+
+    // Guard: skip if a stream is already in progress
+    if (this._activeStreamId) {
+      return;
+    }
+
+    // Guard: skip if no scene started
+    if (this.messages.length === 0) {
+      return;
+    }
+
+    console.debug(
+      JSON.stringify({
+        event: "director:nudge",
+        boardId: this.name,
+        messageCount: this.messages.length,
+      })
+    );
+
+    const doId = this.env.BOARD.idFromName(this.name);
+    const boardStub = this.env.BOARD.get(doId);
+    const batchId = crypto.randomUUID();
+    const tools = createSDKTools(boardStub, batchId);
+
+    // Determine scene phase from user message count
+    const userMessageCount = this.messages.filter(
+      (m) => m.role === "user"
+    ).length;
+    const phase = computeScenePhase(userMessageCount);
+
+    const model = this._getModel();
+
+    // Show AI presence while generating
+    await boardStub.setAiPresence(true).catch(() => {});
+
+    try {
+      const directorSystem =
+        SYSTEM_PROMPT +
+        `\n\n[DIRECTOR MODE] You are the scene director. The players have been quiet for a while. ` +
+        `Current scene phase: ${phase.toUpperCase()}. ` +
+        DIRECTOR_PROMPTS[phase] +
+        `\n\nAct NOW - add something to the canvas to restart momentum. ` +
+        `Keep your chat response to 1 sentence max, something provocative that invites players to react.`;
+
+      const result = await generateText({
+        model,
+        system: directorSystem,
+        messages: await convertToModelMessages(this.messages),
+        tools,
+        stopWhen: stepCountIs(3),
+      });
+
+      // Build UIMessage from generateText result
+      const parts: UIMessage["parts"] = [];
+
+      // Add tool call parts from all steps
+      for (const step of result.steps) {
+        for (const tc of step.toolCalls) {
+          const tr = step.toolResults.find(
+            (r: { toolCallId: string }) => r.toolCallId === tc.toolCallId
+          );
+          if (tr) {
+            parts.push({
+              type: "dynamic-tool" as const,
+              toolName: tc.toolName,
+              toolCallId: tc.toolCallId,
+              state: "output-available" as const,
+              input: tc.input,
+              output: tr.output,
+            });
+          } else {
+            parts.push({
+              type: "dynamic-tool" as const,
+              toolName: tc.toolName,
+              toolCallId: tc.toolCallId,
+              state: "output-error" as const,
+              input: tc.input,
+              errorText: "Tool execution did not return a result",
+            });
+          }
+        }
+      }
+
+      // Add text part if present
+      if (result.text) {
+        parts.push({ type: "text" as const, text: result.text });
+      }
+
+      // Only persist if we actually generated something
+      if (parts.length > 0) {
+        const directorMessage: UIMessage = {
+          id: crypto.randomUUID(),
+          role: "assistant",
+          parts,
+        };
+        this.messages.push(directorMessage);
+        await this.persistMessages(this.messages);
+      }
+
+      console.debug(
+        JSON.stringify({
+          event: "director:nudge-complete",
+          boardId: this.name,
+          phase,
+          partsCount: parts.length,
+        })
+      );
+    } catch (err) {
+      console.error(
+        JSON.stringify({
+          event: "director:nudge-error",
+          boardId: this.name,
+          error: String(err),
+        })
+      );
+    } finally {
+      await boardStub.setAiPresence(false).catch(() => {});
     }
   }
 }
