@@ -41,10 +41,16 @@ export class ChatAgent extends AIChatAgent<Bindings> {
     const batchId = crypto.randomUUID();
     const tools = createSDKTools(boardStub, batchId);
 
-    // Build system prompt with optional selection context
+    // Build system prompt with optional selection + multiplayer context
     let systemPrompt = SYSTEM_PROMPT;
     const body =
       options && "body" in options ? (options as any).body : undefined;
+
+    // Multiplayer attribution: tell the AI who is speaking
+    if (body?.username) {
+      systemPrompt += `\n\nThis is a multiplayer board. Messages from users are prefixed with [username]. The current speaker is ${body.username}. Address users by name when relevant.`;
+    }
+
     if (body?.selectedIds?.length) {
       const objects = await boardStub.readObjects();
       const selected = (objects as BoardObject[]).filter((o: BoardObject) =>

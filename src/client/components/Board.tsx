@@ -1402,6 +1402,7 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
       {chatOpen && (
         <ChatPanel
           boardId={boardId}
+          username={user.username}
           onClose={() => {
             setChatOpen(false);
             setChatInitialPrompt(undefined);

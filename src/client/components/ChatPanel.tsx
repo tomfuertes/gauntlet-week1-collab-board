@@ -5,8 +5,19 @@ import { colors } from "../theme";
 import { getToolIcon, toolSummary } from "../../shared/ai-tool-meta";
 import { BOARD_TEMPLATES } from "../../shared/board-templates";
 
+// Stable color per userId via hash (same palette as Board.tsx / Cursors.tsx)
+const CURSOR_COLORS = [
+  "#f87171", "#60a5fa", "#4ade80", "#fbbf24", "#a78bfa",
+  "#f472b6", "#34d399", "#fb923c", "#818cf8", "#22d3ee",
+];
+function getUserColor(userId: string): string {
+  const hash = userId.split("").reduce((h, c) => (h * 31 + c.charCodeAt(0)) | 0, 0);
+  return CURSOR_COLORS[Math.abs(hash) % CURSOR_COLORS.length];
+}
+
 interface ChatPanelProps {
   boardId: string;
+  username?: string;
   onClose: () => void;
   initialPrompt?: string;
   selectedIds?: Set<string>;
@@ -49,8 +60,8 @@ function ToolHistory({ tools }: { tools: NonNullable<AIChatMessage["tools"]> }) 
   );
 }
 
-export function ChatPanel({ boardId, onClose, initialPrompt, selectedIds, onAIComplete }: ChatPanelProps) {
-  const { messages, loading, status, sendMessage } = useAIChat(boardId, selectedIds);
+export function ChatPanel({ boardId, username, onClose, initialPrompt, selectedIds, onAIComplete }: ChatPanelProps) {
+  const { messages, loading, status, sendMessage } = useAIChat(boardId, selectedIds, username);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const lastHandledPrompt = useRef<string | undefined>(undefined);
@@ -167,28 +178,51 @@ export function ChatPanel({ boardId, onClose, initialPrompt, selectedIds, onAICo
             </div>
           </div>
         )}
-        {messages.map((msg) => (
-          <div key={msg.id} style={{
-            alignSelf: msg.role === "user" ? "flex-end" : "flex-start",
-            maxWidth: "85%",
-          }}>
-            {msg.role === "assistant" && msg.tools && (
-              <ToolHistory tools={msg.tools} />
-            )}
-            <div style={{
-              padding: "0.5rem 0.75rem",
-              borderRadius: msg.role === "user" ? "12px 12px 4px 12px" : "12px 12px 12px 4px",
-              background: msg.role === "user" ? colors.accent : "#1e293b",
-              color: msg.role === "user" ? "#fff" : "#e2e8f0",
-              fontSize: "0.8125rem",
-              lineHeight: 1.5,
-              whiteSpace: "pre-wrap",
-              wordBreak: "break-word",
+        {messages.map((msg) => {
+          const isMe = msg.sender === username;
+          const senderColor = msg.role === "assistant"
+            ? colors.aiCursor
+            : msg.sender
+              ? getUserColor(msg.sender)
+              : colors.accent;
+          const senderLabel = msg.role === "assistant" ? "AI" : msg.sender;
+
+          return (
+            <div key={msg.id} style={{
+              alignSelf: msg.role === "user" ? "flex-end" : "flex-start",
+              maxWidth: "85%",
             }}>
-              {msg.content}
+              {msg.role === "assistant" && msg.tools && (
+                <ToolHistory tools={msg.tools} />
+              )}
+              {senderLabel && (
+                <div style={{
+                  fontSize: "0.6875rem",
+                  fontWeight: 600,
+                  color: senderColor,
+                  marginBottom: 2,
+                  textAlign: msg.role === "user" ? "right" : "left",
+                  paddingLeft: msg.role === "user" ? 0 : 4,
+                  paddingRight: msg.role === "user" ? 4 : 0,
+                }}>
+                  {isMe ? "You" : senderLabel}
+                </div>
+              )}
+              <div style={{
+                padding: "0.5rem 0.75rem",
+                borderRadius: msg.role === "user" ? "12px 12px 4px 12px" : "12px 12px 12px 4px",
+                background: msg.role === "user" ? colors.accent : "#1e293b",
+                color: msg.role === "user" ? "#fff" : "#e2e8f0",
+                fontSize: "0.8125rem",
+                lineHeight: 1.5,
+                whiteSpace: "pre-wrap",
+                wordBreak: "break-word",
+              }}>
+                {msg.content}
+              </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
         {loading && (
           <div style={{
             alignSelf: "flex-start", padding: "0.5rem 0.75rem",
