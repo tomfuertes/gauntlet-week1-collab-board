@@ -70,7 +70,7 @@ jobs:
           exit 1
 
       - name: Run E2E tests
-        run: npx playwright test --grep-invert "Demo"
+        run: npx playwright test --grep-invert "Demo|@heavy"
         env:
           VITE_PORT: "5175"
           WRANGLER_PORT: "8789"

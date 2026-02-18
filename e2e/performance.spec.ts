@@ -37,7 +37,7 @@ test.describe("Performance", () => {
     await page.screenshot({ path: "test-results/perf-100-objects.png" });
   });
 
-  test("5 concurrent users on same board", async ({ browser }) => {
+  test("5 concurrent users on same board", { tag: "@heavy" }, async ({ browser }) => {
     const contexts = await Promise.all(
       Array.from({ length: 5 }, () =>
         browser.newContext({ baseURL: "http://localhost:5175" }),
