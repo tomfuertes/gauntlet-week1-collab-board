@@ -3,6 +3,7 @@ import { useAIChat } from "../hooks/useAIChat";
 import type { AIChatMessage } from "../hooks/useAIChat";
 import { colors } from "../theme";
 import { getToolIcon, toolSummary } from "../../shared/ai-tool-meta";
+import { BOARD_TEMPLATES } from "../../shared/board-templates";
 
 interface ChatPanelProps {
   boardId: string;
@@ -16,55 +17,6 @@ const SUGGESTED_PROMPTS = [
   "Create a SWOT analysis",
   "Organize stickies by color",
   "Add 5 brainstorm ideas about AI",
-];
-
-const TEMPLATES: { label: string; prompt: string }[] = [
-  {
-    label: "SWOT",
-    prompt: `Create a SWOT analysis with this exact layout:
-createFrame "Strengths" x=50 y=80 width=440 height=280
-createFrame "Weaknesses" x=520 y=80 width=440 height=280
-createFrame "Opportunities" x=50 y=390 width=440 height=280
-createFrame "Threats" x=520 y=390 width=440 height=280
-Then add 2 stickies inside each frame:
-Strengths: x=60,y=120 and x=260,y=120 (green #4ade80)
-Weaknesses: x=530,y=120 and x=730,y=120 (red #f87171)
-Opportunities: x=60,y=430 and x=260,y=430 (blue #60a5fa)
-Threats: x=530,y=430 and x=730,y=430 (orange #fb923c)
-Write brief example content on each sticky.`,
-  },
-  {
-    label: "Kanban",
-    prompt: `Create a Kanban board with this exact layout:
-createFrame "To Do" x=50 y=80 width=320 height=680
-createFrame "In Progress" x=400 y=80 width=320 height=680
-createFrame "Done" x=750 y=80 width=320 height=680
-Add 3 example task stickies in the To Do column:
-x=60 y=120, x=60 y=340, x=60 y=550
-Use yellow #fbbf24 stickies with brief task descriptions.`,
-  },
-  {
-    label: "Retro",
-    prompt: `Create a sprint retrospective with this exact layout:
-createFrame "What Went Well" x=50 y=80 width=320 height=480
-createFrame "What Didn't Go Well" x=400 y=80 width=320 height=480
-createFrame "Action Items" x=750 y=80 width=320 height=480
-Add 2 stickies per frame:
-Went Well: x=60,y=120 and x=60,y=330 (green #4ade80)
-Didn't Go Well: x=410,y=120 and x=410,y=330 (red #f87171)
-Action Items: x=760,y=120 and x=760,y=330 (blue #60a5fa)
-Write brief example content on each sticky.`,
-  },
-  {
-    label: "Brainstorm",
-    prompt: `Create a brainstorm layout:
-createStickyNote "Main Topic" x=450 y=350 color=#c084fc
-Then create 8 idea stickies in a circle around it:
-x=450,y=100 x=700,y=180 x=780,y=350 x=700,y=520
-x=450,y=600 x=200,y=520 x=120,y=350 x=200,y=180
-Alternate colors: #fbbf24, #60a5fa, #4ade80, #f87171.
-Write a creative brainstorm idea on each sticky.`,
-  },
 ];
 
 function ToolHistory({ tools }: { tools: NonNullable<AIChatMessage["tools"]> }) {
@@ -100,7 +52,7 @@ export function ChatPanel({ boardId, onClose, initialPrompt, selectedIds }: Chat
   const { messages, loading, status, sendMessage } = useAIChat(boardId, selectedIds);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
-  const initialPromptHandled = useRef(false);
+  const lastHandledPrompt = useRef<string | undefined>(undefined);
 
   // Auto-scroll to bottom on new messages
   useEffect(() => {
@@ -109,15 +61,15 @@ export function ChatPanel({ boardId, onClose, initialPrompt, selectedIds }: Chat
     }
   }, [messages, loading, status]);
 
-  // Focus input on mount; auto-send initialPrompt if provided
+  // Auto-send initialPrompt when it changes (supports overlay + context menu)
   useEffect(() => {
-    if (initialPrompt && !initialPromptHandled.current) {
-      initialPromptHandled.current = true;
+    if (initialPrompt && initialPrompt !== lastHandledPrompt.current) {
+      lastHandledPrompt.current = initialPrompt;
       sendMessage(initialPrompt);
-    } else {
+    } else if (!initialPrompt) {
       inputRef.current?.focus();
     }
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [initialPrompt]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleSubmit = () => {
     const text = inputRef.current?.value.trim();
@@ -250,7 +202,7 @@ export function ChatPanel({ boardId, onClose, initialPrompt, selectedIds }: Chat
         padding: "0.375rem 0.75rem", borderTop: "1px solid #1e293b", flexShrink: 0,
         display: "flex", gap: 6, overflowX: "auto",
       }}>
-        {TEMPLATES.map((t) => (
+        {BOARD_TEMPLATES.map((t) => (
           <button
             key={t.label}
             onClick={() => sendMessage(t.prompt)}
