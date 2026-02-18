@@ -42,6 +42,7 @@ npm run format           # prettier --write
 
 # Type Check
 npm run typecheck        # tsc --noEmit
+npx tsc --noEmit         # direct tsc (use if wrangler types swallows output)
 ```
 
 ## Git Worktrees
@@ -99,8 +100,8 @@ npx playwright test --reporter=dot     # minimal output (default 'list' floods c
 
 **Known gotchas:**
 - Sandbox blocks Playwright browser launch and `wrangler dev`. Use `dangerouslyDisableSandbox: true` for both.
-- Local wrangler WebSocket: first WS connection often drops; the app reconnects but E2E tests must account for this. Use `createObjectsViaWS()` helper (in `e2e/helpers.ts`) instead of UI double-click for reliable object creation in tests.
-- `wsRef.current` can be null after a drop even when React state shows "connected" - tests should retry or wait for `init` message.
+- **WS flakiness in local dev is expected.** First WS connection often drops with wrangler dev. The app reconnects but E2E/UAT tests must account for this. Use `createObjectsViaWS()` helper (in `e2e/helpers.ts`) instead of UI double-click for reliable object creation. `wsRef.current` can be null after a drop even when React state shows "connected". Validate real-time features on production deploy.
+- **HMR hook-order false positive:** "React has detected a change in the order of Hooks called by Board" during dev = Vite HMR artifact, not a real bug. Full page reload fixes it. Never investigate this error in a live dev session.
 
 ### Worktree Agent Conventions
 
@@ -166,6 +167,10 @@ DO echoes mutations to OTHER clients only (sender already applied optimistically
 
 **IMPORTANT:** The WS message field for objects is `obj` (not `object`). Example: `{ type: "obj:create", obj: { id, type, x, y, ... } }`. Using `object` instead of `obj` silently fails - the DO ignores the message.
 
+**Ephemeral state TTL pattern:** For cursor-like state that relies on explicit cleanup messages (e.g. `text:blur`), also track `lastSeen` + sweep with `setInterval`. Messages can be dropped on WS disconnect; TTL ensures eventual consistency without server changes.
+
+**DO hibernation:** Class-level properties reset on hibernation. Store ephemeral per-connection state in `ws.serializeAttachment()` - survives hibernation and is readable in `webSocketClose`.
+
 ### Board Object Shape
 
 ```typescript
@@ -188,6 +193,8 @@ Each object stored as separate DO Storage key (`obj:{uuid}`, ~200 bytes). LWW vi
 - Two-browser test is the primary validation method throughout development
 - Hash-based routing (`#board/{id}`) - no React Router, no server-side routing needed
 - Board list shows user's own boards + system boards; any auth'd user can access any board via URL
+- AI tool helpers: `randomPos()`, `makeObject()`, `createAndMutate()` in `ai-tools-sdk.ts` - all create tools use these. `createAndMutate` handles error logging and returns `{x, y, width, height}` for LLM chaining.
+- Cursor colors: `getUserColor(userId)` uses hash-based assignment (same palette in Board.tsx and Cursors.tsx). Never use array-index-based color assignment - it produces inconsistent colors across components.
 
 ## Doc Sync Workflow
 
@@ -237,3 +244,4 @@ Never run playwright-cli sessions or full test suites in main Opus context. Alwa
 - **Never use `git -C <path>`** - run git commands directly (e.g., `git status`, `git commit`). The working directory is already the repo. `git -C` bypasses the permission allowlist and forces manual approval on every invocation. This applies to both the main repo and worktrees.
 - Use `scripts/localcurl.sh` instead of `curl` for local API testing (localhost-only wrapper, whitelisted in worktrees)
 - Start dev servers with `run_in_background: true` on the Bash tool, not `&` or `2>&1 &`. The background task mechanism handles this cleanly without needing shell backgrounding.
+- Never leave sprint/task codes (A1, B2, etc.) in code comments - they're meaningless without the plan doc
