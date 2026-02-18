@@ -143,6 +143,58 @@ function computeOverlapScore(objects: BoardObject[]): number {
 }
 
 // ---------------------------------------------------------------------------
+// Instrumentation
+// ---------------------------------------------------------------------------
+
+/** Wrap a tool execute function with timing and structured logging */
+function instrumentExecute<TArgs, TResult>(
+  toolName: string,
+  fn: (args: TArgs) => Promise<TResult>,
+): (args: TArgs) => Promise<TResult> {
+  return async (args: TArgs) => {
+    const start = Date.now();
+    try {
+      const result = await fn(args);
+      const durationMs = Date.now() - start;
+      const ok = !(result && typeof result === "object" && "error" in result);
+      console.debug(
+        JSON.stringify({
+          event: "ai:tool",
+          tool: toolName,
+          durationMs,
+          ok,
+          ...(ok ? {} : { error: (result as Record<string, unknown>).error }),
+        }),
+      );
+      return result;
+    } catch (err) {
+      const durationMs = Date.now() - start;
+      console.error(
+        JSON.stringify({
+          event: "ai:tool",
+          tool: toolName,
+          durationMs,
+          ok: false,
+          error: err instanceof Error ? err.message : String(err),
+        }),
+      );
+      throw err;
+    }
+  };
+}
+
+/** Board object with LLM-irrelevant fields stripped for token savings */
+type LLMBoardObject = Omit<BoardObject, "updatedAt" | "createdBy" | "batchId" | "rotation"> & { rotation?: number };
+
+/** Strip LLM-irrelevant fields from board objects to reduce token usage */
+function stripForLLM(obj: BoardObject): LLMBoardObject {
+  const { updatedAt: _updatedAt, createdBy: _createdBy, batchId: _batchId, rotation, ...rest } = obj;
+  // Only include rotation when non-zero (meaningful)
+  if (rotation) return { ...rest, rotation };
+  return rest;
+}
+
+// ---------------------------------------------------------------------------
 // Tool registry
 // ---------------------------------------------------------------------------
 
@@ -170,13 +222,13 @@ export function createSDKTools(stub: BoardStub, batchId?: string) {
             "Hex color (default: #fbbf24 yellow). Options: #fbbf24, #f87171, #4ade80, #60a5fa, #c084fc, #fb923c",
           ),
       }),
-      execute: async ({ text, x, y, color }) => {
+      execute: instrumentExecute("createStickyNote", async ({ text, x, y, color }) => {
         const obj = makeObject("sticky", randomPos(x, y), 200, 200, {
           text: text || "New note",
           color: color || "#fbbf24",
         }, batchId);
         return createAndMutate(stub, obj);
-      },
+      }),
     }),
 
     // 2. createShape (rect, circle, line)
@@ -220,7 +272,7 @@ export function createSDKTools(stub: BoardStub, batchId?: string) {
           .optional()
           .describe("Stroke color hex (default: #2563eb)"),
       }),
-      execute: async ({
+      execute: instrumentExecute("createShape", async ({
         shape: shapeArg,
         x,
         y,
@@ -267,7 +319,7 @@ export function createSDKTools(stub: BoardStub, batchId?: string) {
           batchId,
         );
         return createAndMutate(stub, obj);
-      },
+      }),
     }),
 
     // 3. createFrame
@@ -293,7 +345,7 @@ export function createSDKTools(stub: BoardStub, batchId?: string) {
           .optional()
           .describe("Height in pixels (default: 300)"),
       }),
-      execute: async ({ title, x, y, width, height }) => {
+      execute: instrumentExecute("createFrame", async ({ title, x, y, width, height }) => {
         const obj = makeObject(
           "frame",
           randomPos(x, y),
@@ -308,7 +360,7 @@ export function createSDKTools(stub: BoardStub, batchId?: string) {
           batchId,
         );
         return createAndMutate(stub, obj);
-      },
+      }),
     }),
 
     // 4. createConnector (resolves object centers server-side)
@@ -327,7 +379,7 @@ export function createSDKTools(stub: BoardStub, batchId?: string) {
           .optional()
           .describe("Arrow style: 'end' (default), 'both', or 'none'"),
       }),
-      execute: async ({ fromId, toId, stroke, arrow }) => {
+      execute: instrumentExecute("createConnector", async ({ fromId, toId, stroke, arrow }) => {
         const fromObj = await stub.readObject(fromId);
         const toObj = await stub.readObject(toId);
         if (!fromObj) return { error: `Source object ${fromId} not found` };
@@ -355,7 +407,7 @@ export function createSDKTools(stub: BoardStub, batchId?: string) {
         const result = await createAndMutate(stub, obj);
         if ("error" in result) return result;
         return { ...result, from: fromId, to: toId };
-      },
+      }),
     }),
 
     // 5. moveObject
@@ -367,11 +419,11 @@ export function createSDKTools(stub: BoardStub, batchId?: string) {
         x: z.number().describe("New X position"),
         y: z.number().describe("New Y position"),
       }),
-      execute: async ({ id, x, y }) => {
+      execute: instrumentExecute("moveObject", async ({ id, x, y }) => {
         const existing = await stub.readObject(id);
         if (existing) cursorToCenter(stub, { x, y, width: existing.width, height: existing.height });
         return updateAndMutate(stub, id, { x, y }, "moved", { x, y });
-      },
+      }),
     }),
 
     // 6. resizeObject
@@ -382,11 +434,11 @@ export function createSDKTools(stub: BoardStub, batchId?: string) {
         width: z.number().describe("New width"),
         height: z.number().describe("New height"),
       }),
-      execute: async ({ id, width, height }) => {
+      execute: instrumentExecute("resizeObject", async ({ id, width, height }) => {
         const existing = await stub.readObject(id);
         if (existing) cursorToCenter(stub, { x: existing.x, y: existing.y, width, height });
         return updateAndMutate(stub, id, { width, height }, "resized", { width, height });
-      },
+      }),
     }),
 
     // 7. updateText
@@ -397,11 +449,11 @@ export function createSDKTools(stub: BoardStub, batchId?: string) {
         id: z.string().describe("The ID of the object to update"),
         text: z.string().describe("New text content"),
       }),
-      execute: async ({ id, text }) => {
+      execute: instrumentExecute("updateText", async ({ id, text }) => {
         const existing = await stub.readObject(id);
         if (existing) cursorToCenter(stub, existing);
         return updateAndMutate(stub, id, { props: { text } }, "updated", { text });
-      },
+      }),
     }),
 
     // 8. changeColor
@@ -412,7 +464,7 @@ export function createSDKTools(stub: BoardStub, batchId?: string) {
         id: z.string().describe("The ID of the object to recolor"),
         color: z.string().describe("New hex color"),
       }),
-      execute: async ({ id, color }) => {
+      execute: instrumentExecute("changeColor", async ({ id, color }) => {
         const existing = await stub.readObject(id);
         if (!existing) return { error: `Object ${id} not found` };
 
@@ -422,7 +474,7 @@ export function createSDKTools(stub: BoardStub, batchId?: string) {
             ? { color }
             : { fill: color };
         return updateAndMutate(stub, id, { props }, "recolored", { color });
-      },
+      }),
     }),
 
     // 9. getBoardState (with filtering, summary mode, and overlap scoring)
@@ -441,15 +493,19 @@ export function createSDKTools(stub: BoardStub, batchId?: string) {
           .optional()
           .describe("Array of specific object IDs to return"),
       }),
-      execute: async ({ filter, ids }) => {
+      execute: instrumentExecute("getBoardState", async ({ filter, ids }) => {
         const objects = await stub.readObjects();
 
         if (ids && ids.length > 0) {
-          return objects.filter((o: BoardObject) => ids.includes(o.id));
+          return objects
+            .filter((o: BoardObject) => ids.includes(o.id))
+            .map(stripForLLM);
         }
 
         if (filter) {
-          return objects.filter((o: BoardObject) => o.type === filter);
+          return objects
+            .filter((o: BoardObject) => o.type === filter)
+            .map(stripForLLM);
         }
 
         // Compute and log overlap score for observability
@@ -477,8 +533,8 @@ export function createSDKTools(stub: BoardStub, batchId?: string) {
           };
         }
 
-        return objects;
-      },
+        return objects.map(stripForLLM);
+      }),
     }),
 
     // 10. deleteObject
@@ -487,7 +543,7 @@ export function createSDKTools(stub: BoardStub, batchId?: string) {
       inputSchema: z.object({
         id: z.string().describe("The ID of the object to delete"),
       }),
-      execute: async ({ id }) => {
+      execute: instrumentExecute("deleteObject", async ({ id }) => {
         let result: MutateResult;
         try {
           result = await stub.mutate({ type: "obj:delete", id });
@@ -499,7 +555,7 @@ export function createSDKTools(stub: BoardStub, batchId?: string) {
         }
         if (!result.ok) return { error: result.error };
         return { deleted: id };
-      },
+      }),
     }),
   };
 }

@@ -2,14 +2,15 @@
 
 *Internal project management scratch. Not a deliverable.*
 
-## Session 17 Context (Feb 18, 2026)
+## Session 18 Context (Feb 18, 2026)
 
 ### What Was Done
-- **Multiplayer chat attribution (merged):** `[username]` prefix in persisted messages, AI sees "Alice said: ...". Color-coded sender names in ChatPanel via `getUserColor()`. Two-worktree parallel build.
-- **Improv mode (PR #27, merged):** "Yes, and" system prompt (escalate by one notch, callbacks, spatial canvas, short punchlines). 7 scene starter templates replacing business templates. Overlay text updated to improv theme.
-- **UI consistency cleanup (merged):** Deduplicated `getUserColor()` + `CURSOR_COLORS` to theme.ts (was in 3 files). Killed hardcoded hex in BoardList/App (now use `colors.*`). Extracted ChatPanel `<style>` keyframes to animations.css. Updated suggestion chips to improv ("Add a plot twist", etc).
-- **Worktree DX (5 commits):** `scripts/dev.sh` auto-loads `worktree.ports` (no more `source` command). `worktree.sh create` now runs `npm install`, `npm run build`, `npm run migrate:local`. `worktree.sh remove` uses `--force` for gitignored files, errors on dirty tracked files.
-- **Dep bumps:** ai 6.0.90->6.0.91, hono 4.7.0->4.11.10, wrangler 4.65.0->4.66.0.
+- **AI architecture audit (feat/ai-audit):** Deep audit of the 6-file AI agent system before Feb 22 gate.
+  - Extracted prompts to `src/server/prompts.ts` with `PROMPT_VERSION = "v1"` for behavior-prompt correlation
+  - Added `instrumentExecute()` wrapper on all 10 AI tools - structured `ai:tool` logs with timing + success
+  - Added request-level metrics in `onChatMessage`/`onDirectorNudge` - `ai:request:start`/`ai:request:end` with model, prompt version, step count, tool call count, duration
+  - Optimized `getBoardState` token usage - strips `updatedAt`, `createdBy`, `batchId`, zero `rotation` (~15 tokens/object saved)
+  - Created `docs/ai-architecture.md` - full request lifecycle, tool registry, scene phases, observability events
 
 ### What's Next
 - [ ] AI Director UAT (send message, wait 60s, verify proactive nudge appears)
