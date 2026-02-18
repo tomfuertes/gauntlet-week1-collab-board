@@ -100,7 +100,7 @@ export function ChatPanel({ boardId, username, onClose, initialPrompt, selectedI
 
   return (
     <div style={{
-      position: "absolute", bottom: 72, right: 16, width: 360, maxHeight: "min(520px, calc(100vh - 140px))",
+      position: "absolute", top: 16, bottom: 72, right: 16, width: 360,
       zIndex: 30, background: "rgba(15, 23, 42, 0.97)", border: "1px solid #334155",
       borderRadius: 12, boxShadow: "0 8px 32px rgba(0,0,0,0.4)",
       display: "flex", flexDirection: "column",
