@@ -15,7 +15,10 @@ export interface TextCursorState {
   username: string;
   objectId: string;
   position: number;
+  lastSeen: number;
 }
+
+const TEXT_CURSOR_TTL_MS = 5000; // clear stale editing indicators if no update within 5s
 
 interface UseWebSocketReturn {
   connectionState: ConnectionState;
@@ -104,7 +107,7 @@ export function useWebSocket(boardId: string): UseWebSocketReturn {
           case "text:cursor":
             setTextCursors((prev) => {
               const next = new Map(prev);
-              next.set(msg.userId, { userId: msg.userId, username: msg.username, objectId: msg.objectId, position: msg.position });
+              next.set(msg.userId, { userId: msg.userId, username: msg.username, objectId: msg.objectId, position: msg.position, lastSeen: Date.now() });
               return next;
             });
             break;
@@ -164,6 +167,25 @@ export function useWebSocket(boardId: string): UseWebSocketReturn {
       wsRef.current = null;
     };
   }, [boardId]);
+
+  // Sweep stale text cursors - handles text:blur dropped on WS disconnect
+  useEffect(() => {
+    const id = setInterval(() => {
+      const now = Date.now();
+      setTextCursors((prev) => {
+        let changed = false;
+        const next = new Map(prev);
+        for (const [userId, tc] of next) {
+          if (now - tc.lastSeen > TEXT_CURSOR_TTL_MS) {
+            next.delete(userId);
+            changed = true;
+          }
+        }
+        return changed ? next : prev;
+      });
+    }, 2000);
+    return () => clearInterval(id);
+  }, []);
 
   const send = useCallback((msg: WSClientMessage) => {
     if (wsRef.current?.readyState === WebSocket.OPEN) {
