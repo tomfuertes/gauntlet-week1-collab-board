@@ -121,12 +121,13 @@ src/
   client/               # React SPA
     index.html          # Vite entry
     main.tsx            # React root
-    App.tsx             # App shell + hash routing (#board/{id})
+    App.tsx             # App shell + hash routing (#board/{id}, #replay/{id})
     theme.ts            # Shared color constants (accent, surfaces, borders, cursors)
     components/
       Board.tsx         # Canvas + toolbar + chat panel integration (~1435 lines)
       BoardList.tsx     # Board grid (CRUD) - landing page after login
       ChatPanel.tsx     # AI chat sidebar (template coord injection for SWOT/Kanban/etc)
+      ReplayViewer.tsx  # Read-only scene replay player (public, no auth)
       ConfettiBurst.tsx # Confetti particle burst animation (extracted from Board)
       BoardGrid.tsx     # Dot grid + radial glow background (extracted from Board)
     hooks/
@@ -137,12 +138,12 @@ src/
     styles/
       animations.css    # Shared CSS keyframes (cb-pulse, cb-confetti)
   server/               # CF Worker
-    index.ts            # Hono app - routes, board CRUD, DO exports, agent routing, WS upgrade
+    index.ts            # Hono app - routes, board CRUD, DO exports, agent routing, WS upgrade, public replay API
     auth.ts             # Auth routes + PBKDF2 hashing + session helpers
     chat-agent.ts       # AIChatAgent DO - WebSocket AI chat, model selection, geometry system prompt
     ai-tools-sdk.ts     # 10 tools as AI SDK tool() with Zod schemas + DRY helpers + overlap scoring
   shared/               # Types shared between client and server
-    types.ts            # BoardObject, WSMessage, ChatMessage, User, etc.
+    types.ts            # BoardObject, WSMessage, ChatMessage, ReplayEvent, User, etc.
     ai-tool-meta.ts     # Tool display metadata (icons, labels, summaries) for ChatPanel
 migrations/             # D1 SQL migrations (tracked via d1_migrations table, npm run migrate)
 ```
@@ -156,6 +157,7 @@ migrations/             # D1 SQL migrations (tracked via d1_migrations table, np
 5. DO manages all board state: objects in DO Storage (`obj:{uuid}`), cursors in memory
 6. Mutations flow: client applies optimistically -> sends to DO -> DO persists + broadcasts to other clients
 7. AI commands: client connects to ChatAgent DO via WebSocket (`/agents/ChatAgent/<boardId>`) -> `useAgentChat` sends messages -> ChatAgent runs `streamText()` with tools -> tool callbacks via Board DO RPC (`readObject`/`mutate`) -> Board DO persists + broadcasts to all board WebSocket clients
+8. Scene replay: Board DO records mutations as `evt:{ts}:{rand}` keys in storage (debounced 500ms for updates, 2000 cap). Public `GET /api/boards/:id/replay` returns sorted events. `#replay/{id}` route renders read-only ReplayViewer (no auth required).
 
 ### WebSocket Protocol
 
@@ -178,7 +180,7 @@ DO echoes mutations to OTHER clients only (sender already applied optimistically
 { id, type, x, y, width, height, rotation, props: { text?, color?, fill?, stroke?, arrow? }, createdBy, updatedAt, batchId? }
 ```
 
-Each object stored as separate DO Storage key (`obj:{uuid}`, ~200 bytes). LWW via `updatedAt`. `batchId` groups AI-created objects from a single `streamText` call for batch undo.
+Each object stored as separate DO Storage key (`obj:{uuid}`, ~200 bytes). LWW via `updatedAt`. `batchId` groups AI-created objects from a single `streamText` call for batch undo. Replay events stored as `evt:{16-padded-ts}:{4-char-rand}` keys (max 2000, `obj:update` debounced 500ms per object).
 
 ## Key Constraints
 

@@ -112,6 +112,15 @@ app.delete("/api/user", async (c) => {
   return c.json({ deleted: true });
 });
 
+// Public replay endpoint - no auth (shareable replay URLs)
+app.get("/api/boards/:boardId/replay", async (c) => {
+  const boardId = c.req.param("boardId");
+  const doId = c.env.BOARD.idFromName(boardId);
+  const stub = c.env.BOARD.get(doId);
+  const events = await stub.readEvents();
+  return c.json(events);
+});
+
 // Agent SDK route (auth-protected)
 app.all("/agents/*", async (c) => {
   const sessionId = getCookie(c, "session");

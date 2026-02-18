@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { Board } from "./components/Board";
 import { BoardList } from "./components/BoardList";
 import { AuthForm } from "./components/AuthForm";
+import { ReplayViewer } from "./components/ReplayViewer";
 import { colors } from "./theme";
 
 export interface AuthUser {
@@ -12,6 +13,11 @@ export interface AuthUser {
 
 function parseBoardId(): string | null {
   const match = location.hash.match(/^#board\/(.+)$/);
+  return match ? match[1] : null;
+}
+
+function parseReplayId(): string | null {
+  const match = location.hash.match(/^#replay\/(.+)$/);
   return match ? match[1] : null;
 }
 
@@ -50,10 +56,14 @@ export function App() {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [loading, setLoading] = useState(true);
   const [boardId, setBoardId] = useState<string | null>(parseBoardId);
+  const [replayId, setReplayId] = useState<string | null>(parseReplayId);
 
-  // Sync boardId with hash changes (back/forward navigation)
+  // Sync boardId/replayId with hash changes (back/forward navigation)
   useEffect(() => {
-    const onHashChange = () => setBoardId(parseBoardId());
+    const onHashChange = () => {
+      setBoardId(parseBoardId());
+      setReplayId(parseReplayId());
+    };
     window.addEventListener("hashchange", onHashChange);
     return () => window.removeEventListener("hashchange", onHashChange);
   }, []);
@@ -76,6 +86,17 @@ export function App() {
 
   if (location.hash === "#privacy") {
     return <PrivacyPolicy />;
+  }
+
+  // Replay is public - before auth gate
+  if (replayId) {
+    return (
+      <ReplayViewer
+        key={replayId}
+        boardId={replayId}
+        onBack={() => { location.hash = ""; setReplayId(null); }}
+      />
+    );
   }
 
   if (!user) {

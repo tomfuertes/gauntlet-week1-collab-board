@@ -354,6 +354,7 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
 
   // --- AI Batch Undo state ---
   const [undoAiBatchId, setUndoAiBatchId] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
   const undoAiTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const processedBatchIds = useRef(new Set<string>());
 
@@ -1010,6 +1011,13 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
           </div>
           <span style={{ color: "#888" }}>{Math.round(scale * 100)}%</span>
           <span>{user.displayName}</span>
+          <button onClick={() => {
+            navigator.clipboard.writeText(`${location.origin}/#replay/${boardId}`);
+            setCopied(true);
+            setTimeout(() => setCopied(false), 2000);
+          }} style={{ background: "none", border: "1px solid #475569", borderRadius: 4, color: "#94a3b8", padding: "0.25rem 0.5rem", cursor: "pointer", fontSize: "0.75rem" }}>
+            {copied ? "Copied!" : "Share Scene"}
+          </button>
           <button onClick={handleLogout} style={{ background: "none", border: "1px solid #475569", borderRadius: 4, color: "#94a3b8", padding: "0.25rem 0.5rem", cursor: "pointer", fontSize: "0.75rem" }}>
             Logout
           </button>
