@@ -43,6 +43,7 @@
 - Circles have no resize handles
 - WS reconnect: no max retry, no non-retryable close code handling
 - Undo stack not cleared on WS reconnect
+- No guard against `sendMessage` when ChatAgent WS is disconnected - messages silently lost
 
 **Won't Fix (Week 1):**
 - `send()` silently drops messages during reconnect window

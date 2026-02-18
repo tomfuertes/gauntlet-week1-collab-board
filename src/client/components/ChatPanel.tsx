@@ -14,12 +14,89 @@ interface ChatPanelProps {
   onAIComplete?: () => void;
 }
 
-const SUGGESTED_PROMPTS = [
-  "Add a plot twist",
-  "Introduce a new character",
-  "What happens next?",
-  "The health inspector arrives",
+// ---------------------------------------------------------------------------
+// Dynamic intent chips - rotate based on conversation phase
+// ---------------------------------------------------------------------------
+
+interface IntentChip {
+  prompt: string;
+  category: "scene" | "character" | "chaos";
+}
+
+const SCENE_SET_INTENTS: IntentChip[] = [
+  { prompt: "What happens next?", category: "scene" },
+  { prompt: "A stranger walks in", category: "character" },
+  { prompt: "Plot twist!", category: "scene" },
 ];
+
+const MID_SCENE_INTENTS: IntentChip[] = [
+  { prompt: "Complicate everything", category: "chaos" },
+  { prompt: "Meanwhile, elsewhere...", category: "scene" },
+  { prompt: "The stakes just got higher", category: "chaos" },
+  { prompt: "A stranger walks in", category: "character" },
+];
+
+const DEEP_SCENE_INTENTS: IntentChip[] = [
+  { prompt: "Plot twist!", category: "scene" },
+  { prompt: "Meanwhile, elsewhere...", category: "scene" },
+  { prompt: "Complicate everything", category: "chaos" },
+  { prompt: "The stakes just got higher", category: "chaos" },
+];
+
+const CATEGORY_COLORS: Record<IntentChip["category"], string> = {
+  scene: colors.accent,
+  character: colors.warning,
+  chaos: colors.error,
+};
+
+/** Pick intent chips based on user message count (excludes AI replies) */
+function getIntentChips(userMessageCount: number): IntentChip[] {
+  if (userMessageCount <= 0) return []; // empty state uses templates instead
+  if (userMessageCount <= 2) return SCENE_SET_INTENTS;
+  if (userMessageCount <= 5) return MID_SCENE_INTENTS;
+  return DEEP_SCENE_INTENTS;
+}
+
+function ChipButton({ label, color, borderRadius, disabled, onClick }: {
+  label: string;
+  color: string;
+  borderRadius: number;
+  disabled: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      style={{
+        background: "none",
+        border: `1px solid ${color}44`,
+        borderRadius,
+        padding: "3px 10px",
+        cursor: disabled ? "not-allowed" : "pointer",
+        color,
+        fontSize: "0.6875rem",
+        whiteSpace: "nowrap",
+        transition: "border-color 0.15s, background 0.15s, color 0.15s",
+        flexShrink: 0,
+      }}
+      onMouseEnter={(e) => {
+        if (!disabled) {
+          e.currentTarget.style.borderColor = color;
+          e.currentTarget.style.background = `${color}18`;
+          e.currentTarget.style.color = "#e2e8f0";
+        }
+      }}
+      onMouseLeave={(e) => {
+        e.currentTarget.style.borderColor = `${color}44`;
+        e.currentTarget.style.background = "none";
+        e.currentTarget.style.color = color;
+      }}
+    >
+      {label}
+    </button>
+  );
+}
 
 function ToolHistory({ tools }: { tools: NonNullable<AIChatMessage["tools"]> }) {
   const [open, setOpen] = useState(true);
@@ -51,7 +128,7 @@ function ToolHistory({ tools }: { tools: NonNullable<AIChatMessage["tools"]> }) 
 }
 
 export function ChatPanel({ boardId, username, onClose, initialPrompt, selectedIds, onAIComplete }: ChatPanelProps) {
-  const { messages, loading, status, sendMessage } = useAIChat(boardId, selectedIds, username);
+  const { messages, loading, status, error, sendMessage } = useAIChat(boardId, selectedIds, username);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const lastHandledPrompt = useRef<string | undefined>(undefined);
@@ -128,24 +205,7 @@ export function ChatPanel({ boardId, username, onClose, initialPrompt, selectedI
         {messages.length === 0 && !loading && (
           <div style={{ textAlign: "center", marginTop: "2rem" }}>
             <div style={{ color: "#64748b", fontSize: "0.8125rem", marginBottom: "1rem" }}>
-              Try a suggestion to get started:
-            </div>
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 8, justifyContent: "center" }}>
-              {SUGGESTED_PROMPTS.map((prompt) => (
-                <button
-                  key={prompt}
-                  onClick={() => sendMessage(prompt)}
-                  style={{
-                    background: "#1e293b", border: "1px solid #334155", borderRadius: 16,
-                    padding: "6px 12px", cursor: "pointer", color: "#e2e8f0",
-                    fontSize: "0.75rem", transition: "border-color 0.15s",
-                  }}
-                  onMouseEnter={(e) => { e.currentTarget.style.borderColor = colors.accent; }}
-                  onMouseLeave={(e) => { e.currentTarget.style.borderColor = "#334155"; }}
-                >
-                  {prompt}
-                </button>
-              ))}
+              Pick a scene to get started, or type your own:
             </div>
           </div>
         )}
@@ -212,30 +272,45 @@ export function ChatPanel({ boardId, username, onClose, initialPrompt, selectedI
             )}
           </div>
         )}
+        {error && !loading && (
+          <div style={{
+            alignSelf: "flex-start", padding: "0.5rem 0.75rem",
+            borderRadius: "12px 12px 12px 4px", background: "rgba(248, 113, 113, 0.1)",
+            color: colors.error, fontSize: "0.8125rem",
+          }}>
+            {error}
+          </div>
+        )}
       </div>
 
-      {/* Templates */}
+      {/* Chips bar: scene templates when empty, intent chips when in-scene */}
       <div style={{
         padding: "0.375rem 0.75rem", borderTop: "1px solid #1e293b", flexShrink: 0,
-        display: "flex", gap: 6, overflowX: "auto",
+        display: "flex", gap: 6, overflowX: "auto", alignItems: "center",
       }}>
-        {BOARD_TEMPLATES.map((t) => (
-          <button
-            key={t.label}
-            onClick={() => sendMessage(t.prompt)}
-            disabled={loading}
-            style={{
-              background: "none", border: "1px solid #334155", borderRadius: 6,
-              padding: "3px 8px", cursor: loading ? "not-allowed" : "pointer",
-              color: "#94a3b8", fontSize: "0.6875rem", whiteSpace: "nowrap",
-              transition: "border-color 0.15s, color 0.15s", flexShrink: 0,
-            }}
-            onMouseEnter={(e) => { if (!loading) { e.currentTarget.style.borderColor = colors.accent; e.currentTarget.style.color = "#e2e8f0"; } }}
-            onMouseLeave={(e) => { e.currentTarget.style.borderColor = "#334155"; e.currentTarget.style.color = "#94a3b8"; }}
-          >
-            {t.label}
-          </button>
-        ))}
+        {messages.length === 0 ? (
+          BOARD_TEMPLATES.map((t) => (
+            <ChipButton
+              key={t.label}
+              label={t.label}
+              color={colors.textMuted}
+              borderRadius={6}
+              disabled={loading}
+              onClick={() => sendMessage(t.prompt)}
+            />
+          ))
+        ) : (
+          getIntentChips(messages.filter((m) => m.role === "user").length).map((chip) => (
+            <ChipButton
+              key={chip.prompt}
+              label={chip.prompt}
+              color={CATEGORY_COLORS[chip.category]}
+              borderRadius={16}
+              disabled={loading}
+              onClick={() => sendMessage(chip.prompt)}
+            />
+          ))
+        )}
       </div>
 
       {/* Input */}
