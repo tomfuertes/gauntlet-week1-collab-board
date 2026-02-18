@@ -118,6 +118,26 @@ app.delete("/api/user", async (c) => {
   return c.json({ deleted: true });
 });
 
+// Public gallery endpoint - boards with replay events (no auth)
+app.get("/api/boards/public", async (c) => {
+  try {
+    const { results } = await c.env.DB.prepare(
+      `SELECT b.id, b.name, u.display_name AS creator,
+              a.last_activity_at, a.activity_count AS eventCount
+       FROM boards b
+       JOIN users u ON u.id = b.created_by
+       JOIN board_activity a ON a.board_id = b.id
+       WHERE a.activity_count > 0
+       ORDER BY a.last_activity_at DESC
+       LIMIT 50`
+    ).all<{ id: string; name: string; creator: string; last_activity_at: string; eventCount: number }>();
+    return c.json(results);
+  } catch (err) {
+    console.error(JSON.stringify({ event: "gallery:public:error", error: String(err) }));
+    return c.json([], 500);
+  }
+});
+
 // Public replay endpoint - no auth (shareable replay URLs)
 app.get("/api/boards/:boardId/replay", async (c) => {
   const boardId = c.req.param("boardId");

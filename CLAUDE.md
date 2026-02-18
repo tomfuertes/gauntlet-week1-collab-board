@@ -128,6 +128,7 @@ src/
       BoardList.tsx     # Board grid (CRUD) - landing page after login
       ChatPanel.tsx     # AI chat sidebar (template coord injection for SWOT/Kanban/etc)
       ReplayViewer.tsx  # Read-only scene replay player (public, no auth)
+      SceneGallery.tsx  # Public gallery grid of replayable scenes (#gallery route)
       ConfettiBurst.tsx # Confetti particle burst animation (extracted from Board)
       BoardGrid.tsx     # Dot grid + radial glow background (extracted from Board)
     hooks/
@@ -138,7 +139,7 @@ src/
     styles/
       animations.css    # Shared CSS keyframes (cb-pulse, cb-confetti)
   server/               # CF Worker
-    index.ts            # Hono app - routes, board CRUD, DO exports, agent routing, WS upgrade, public replay API
+    index.ts            # Hono app - routes, board CRUD, DO exports, agent routing, WS upgrade, public replay + gallery API
     auth.ts             # Auth routes + PBKDF2 hashing + session helpers
     chat-agent.ts       # AIChatAgent DO - WebSocket AI chat, model selection, geometry system prompt
     ai-tools-sdk.ts     # 10 tools as AI SDK tool() with Zod schemas + DRY helpers + overlap scoring
@@ -158,6 +159,7 @@ migrations/             # D1 SQL migrations (tracked via d1_migrations table, np
 6. Mutations flow: client applies optimistically -> sends to DO -> DO persists + broadcasts to other clients
 7. AI commands: client connects to ChatAgent DO via WebSocket (`/agents/ChatAgent/<boardId>`) -> `useAgentChat` sends messages -> ChatAgent runs `streamText()` with tools -> tool callbacks via Board DO RPC (`readObject`/`mutate`) -> Board DO persists + broadcasts to all board WebSocket clients
 8. Scene replay: Board DO records mutations as `evt:{ts}:{rand}` keys in storage (debounced 500ms for updates, 2000 cap). Public `GET /api/boards/:id/replay` returns sorted events. `#replay/{id}` route renders read-only ReplayViewer (no auth required).
+9. Scene gallery: Public `GET /api/boards/public` returns boards with activity (D1 join: boards + users + board_activity). `#gallery` route renders SceneGallery grid (no auth). Cards link to `#replay/{id}`.
 
 ### WebSocket Protocol
 
@@ -194,7 +196,7 @@ Each object stored as separate DO Storage key (`obj:{uuid}`, ~200 bytes). LWW vi
 - WebSocket reconnect with exponential backoff (1s-10s cap), `disconnected` after 5 initial failures
 - Performance targets: 60fps canvas, <100ms object sync, <50ms cursor sync, 500+ objects, 5+ users
 - Two-browser test is the primary validation method throughout development
-- Hash-based routing (`#board/{id}`) - no React Router, no server-side routing needed
+- Hash-based routing (`#board/{id}`, `#replay/{id}`, `#gallery`, `#privacy`) - no React Router, no server-side routing needed
 - Board list shows user's own boards + system boards; any auth'd user can access any board via URL
 - AI tool helpers: `randomPos()`, `makeObject()`, `createAndMutate()` in `ai-tools-sdk.ts` - all create tools use these. `createAndMutate` handles error logging and returns `{x, y, width, height}` for LLM chaining.
 - Cursor colors: `getUserColor(userId)` uses hash-based assignment (same palette in Board.tsx and Cursors.tsx). Never use array-index-based color assignment - it produces inconsistent colors across components.
