@@ -465,7 +465,15 @@ export function createSDKTools(stub: BoardStub) {
         id: z.string().describe("The ID of the object to delete"),
       }),
       execute: async ({ id }) => {
-        const result = await stub.mutate({ type: "obj:delete", id });
+        let result: MutateResult;
+        try {
+          result = await stub.mutate({ type: "obj:delete", id });
+        } catch (err) {
+          console.error(
+            JSON.stringify({ event: "ai:delete:error", id, error: String(err) }),
+          );
+          return { error: `Failed to delete ${id}: ${err instanceof Error ? err.message : String(err)}` };
+        }
         if (!result.ok) return { error: result.error };
         return { deleted: id };
       },
