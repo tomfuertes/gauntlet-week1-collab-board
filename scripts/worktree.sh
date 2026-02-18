@@ -77,6 +77,10 @@ cmd_create() {
   echo "Installing dependencies..."
   (cd "$wt_dir" && npm install --prefer-offline 2>&1 | tail -1)
 
+  # Generate wrangler types (worker-configuration.d.ts) for Cloudflare bindings
+  echo "Generating wrangler types..."
+  (cd "$wt_dir" && npx wrangler types 2>&1 | tail -1)
+
   # Build dist/ - wrangler dev needs it for static asset serving
   echo "Building dist/..."
   (cd "$wt_dir" && npm run build 2>&1 | tail -1)

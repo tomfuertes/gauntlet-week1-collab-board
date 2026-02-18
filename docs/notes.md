@@ -12,10 +12,9 @@
 - **Dep bumps:** ai 6.0.90->6.0.91, hono 4.7.0->4.11.10, wrangler 4.65.0->4.66.0.
 
 ### What's Next
-- [ ] AI Director UAT (send message, wait 60s, verify proactive nudge appears)
-- [ ] UAT on prod (full improv flow: auth -> board -> scene gen -> multiplayer chat with attribution)
-- [ ] AI cost analysis
-- [ ] Final gate Feb 22
+- [ ] UAT on prod (running - full improv flow + scene playback + async badges)
+- [ ] AI architecture audit (worktree: feat/ai-audit)
+- [ ] Scene gallery (worktree: feat/scene-gallery)
 
 ---
 
@@ -71,7 +70,7 @@
 | Feb 18 | Hash-based cursor colors over index-based | Deterministic per userId regardless of array order |
 | Feb 18 | TTL sweep for ephemeral WS state | Can't rely on explicit cleanup messages |
 | Feb 18 | Multiplayer improv canvas as north star | Existing shared chat + canvas needs ~3hrs new code. Nobody has multiplayer + AI + canvas + improv. |
-| Feb 18 | No Tailwind (yet) | 118 inline styles across 5 components. Fix consistency (theme dedup, kill hardcoded hex) not framework. Revisit post-deadline if >15 components. |
+| Feb 18 | No Tailwind (yet) | 118 inline styles across 5 components. Fix consistency (theme dedup, kill hardcoded hex) not framework. Revisit if >15 components. |
 | Feb 18 | Worktree DX: auto-load ports in dev.sh | Eliminates un-whitelistable `source worktree.ports` command |
 
 ---
