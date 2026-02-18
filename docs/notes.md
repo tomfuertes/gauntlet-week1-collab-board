@@ -5,25 +5,54 @@
 ## Session 18 Context (Feb 18, 2026)
 
 ### What Was Done
-- **AI architecture audit (feat/ai-audit):** Deep audit of the 6-file AI agent system before Feb 22 gate.
-  - Extracted prompts to `src/server/prompts.ts` with `PROMPT_VERSION = "v1"` for behavior-prompt correlation
-  - Added `instrumentExecute()` wrapper on all 10 AI tools - structured `ai:tool` logs with timing + success
-  - Added request-level metrics in `onChatMessage`/`onDirectorNudge` - `ai:request:start`/`ai:request:end` with model, prompt version, step count, tool call count, duration
-  - Optimized `getBoardState` token usage - strips `updatedAt`, `createdBy`, `batchId`, zero `rotation` (~15 tokens/object saved)
-  - Created `docs/ai-architecture.md` - full request lifecycle, tool registry, scene phases, observability events
+- **Perf overlay (merged + reviewed):** FPS, msg age, object count, Konva nodes, connection state. Review caught broken WS latency measurement (replaced with honest msg age), bare catch, stale FPS buffer, refs in deps array.
+- **UX intents (merged):** Dynamic intent chips + AI intent patterns for improv canvas.
+- **AI Director (merged):** Proactive mode - scene complications after 60s inactivity, scene phase tracking in DO, dramatic structure system prompt.
+- **Scene playback (merged):** Event recording in DO, public replay endpoint, ReplayViewer with play/pause, share scene button, `#replay/{id}` route.
+- **Async notifications (merged):** D1 activity tracking (migration 0003), activity endpoint, unread badges in BoardList.
+- **Scene gallery (merged):** Public `#gallery` route, `/api/boards/public` endpoint, SceneGallery grid with replay links.
+- **AI architecture audit (merged):** Extracted prompts to `src/server/prompts.ts` with version constants, structured tool call logging (`instrumentExecute()`), optimized `getBoardState` token usage, `docs/ai-architecture.md`.
+- **CI fix:** Skipped heavy 5-user perf test in CI (runner OOM), tagged `@heavy`.
+- **Worktree DX:** Added `wrangler types` to worktree setup, codified lifecycle (implement -> review -> fix -> UAT -> commit, no PR).
 
-### What's Next
-- [ ] UAT on prod (running - full improv flow + scene playback + async badges)
-- [ ] AI architecture audit (worktree: feat/ai-audit)
-- [ ] Scene gallery (worktree: feat/scene-gallery)
+### UAT Results (Prod)
+- 14/17 pass. Two known failures:
+  - AI Director nudge didn't fire after 70s idle (DO alarm issue on prod)
+  - Async badges: boards not visible cross-user (board discovery gap, not notification bug)
+- Core viral loop works: auth -> board -> scene -> AI objects -> share replay -> watch replay
+
+### The Loop
+
+```
+open board -> play scene -> share replay link -> recruit new player
+                                 ^                      |
+                                 |   async badges       |
+                                 +--- bring them back --+
+```
 
 ---
 
 ## Roadmap Status
 
-**Shipped:** Pre-search, scaffold, auth, infinite canvas, cursor sync, presence, sticky notes, rectangles, circles, lines, connectors/arrows, standalone text, frames, move/resize/rotate, multi-select, copy/paste/duplicate, undo/redo, delete, AI agent (10 tools, DRY helpers, overlap scoring, updateAndMutate, type-linked ToolName), chat panel (chips, templates, typing indicator, server-side history persistence), multi-board CRUD, hash routing, color picker, toolbar, connection toasts, loading skeleton, empty state hint, cursor smoothing, entrance animations, confetti, gradient background, cursor trails, keyboard shortcuts, privacy policy, data deletion endpoint, context menu, selection-aware AI, AI object glow, live text sync, remote carets, stale cursor TTL, AI batch undo (batchId, Undo AI button, Cmd+Z batch), AI presence lite (cursor dot, presence bar), AI board generation (empty state overlay, suggestion chips, board-templates.ts), multiplayer chat attribution ([username] prefix, color-coded sender names), improv mode ("yes, and" prompt, 7 scene templates), UI consistency (theme dedup, animations.css extraction), AI Director proactive mode (scene phases, 60s inactivity nudge, DO schedule alarms, generateText non-streaming), scene playback (event recording in DO, public replay endpoint, ReplayViewer with play/pause, share scene button), scene gallery (public #gallery route, GET /api/boards/public, scene cards with gradient thumbnails + play button).
+**Shipped:** Pre-search, scaffold, auth, infinite canvas, cursor sync, presence, sticky notes, rectangles, circles, lines, connectors/arrows, standalone text, frames, move/resize/rotate, multi-select, copy/paste/duplicate, undo/redo, delete, AI agent (10 tools, DRY helpers, overlap scoring, updateAndMutate, type-linked ToolName), chat panel (chips, templates, typing indicator, server-side history persistence), multi-board CRUD, hash routing, color picker, toolbar, connection toasts, loading skeleton, empty state hint, cursor smoothing, entrance animations, confetti, gradient background, cursor trails, keyboard shortcuts, privacy policy, data deletion endpoint, context menu, selection-aware AI, AI object glow, live text sync, remote carets, stale cursor TTL, AI batch undo (batchId, Undo AI button, Cmd+Z batch), AI presence lite (cursor dot, presence bar), AI board generation (empty state overlay, suggestion chips, board-templates.ts), multiplayer chat attribution ([username] prefix, color-coded sender names), improv mode ("yes, and" prompt, 7 scene templates), UI consistency (theme dedup, animations.css extraction), AI Director proactive mode (scene phases, 60s inactivity nudge, DO schedule alarms, generateText non-streaming), scene playback (event recording in DO, public replay endpoint, ReplayViewer with play/pause, share scene button), scene gallery (public #gallery route, GET /api/boards/public, scene cards with gradient thumbnails + play button), perf overlay (FPS, msg age, nodes, connection state), dynamic intent chips, AI architecture audit (prompt versioning, tool observability, structured logging).
 
 **Killed (PM eval):** Contextual AI Actions (clustering unreliable on free-tier LLM), Intent Preview (problem overlap with batch undo at 3x cost).
+
+## Roadmap
+
+| Feature | Notes |
+|---------|-------|
+| Improv game modes | Scenes From a Hat, Yes-And chains - structured replayability |
+| Audience/spectator mode | Read-only WS + emoji reactions - improv needs witnesses |
+| Mobile-first chat view | Canvas as secondary "stage" - phone users |
+| Custom AI characters | Upload personality, share characters |
+| Persistent characters across scenes | Continuity creates attachment |
+| Daily scene challenges + leaderboard | Brings people back daily |
+
+## Known Bugs
+
+- AI Director nudge not firing on prod (DO alarm timing or threshold issue)
+- Async badges: boards only visible to owner, no cross-user board discovery
 
 ---
 
@@ -44,7 +73,7 @@
 - Circles have no resize handles
 - WS reconnect: no max retry, no non-retryable close code handling
 - Undo stack not cleared on WS reconnect
-- No guard against `sendMessage` when ChatAgent WS is disconnected - messages silently lost
+- No guard against `sendMessage` when ChatAgent WS is disconnected
 
 **Won't Fix (Week 1):**
 - `send()` silently drops messages during reconnect window
@@ -71,8 +100,10 @@
 | Feb 18 | Hash-based cursor colors over index-based | Deterministic per userId regardless of array order |
 | Feb 18 | TTL sweep for ephemeral WS state | Can't rely on explicit cleanup messages |
 | Feb 18 | Multiplayer improv canvas as north star | Existing shared chat + canvas needs ~3hrs new code. Nobody has multiplayer + AI + canvas + improv. |
-| Feb 18 | No Tailwind (yet) | 118 inline styles across 5 components. Fix consistency (theme dedup, kill hardcoded hex) not framework. Revisit if >15 components. |
+| Feb 18 | No Tailwind (yet) | 118 inline styles across 5 components. Revisit if >15 components. |
 | Feb 18 | Worktree DX: auto-load ports in dev.sh | Eliminates un-whitelistable `source worktree.ports` command |
+| Feb 18 | Msg age over fake WS latency | DO doesn't echo cursors; measure something honest instead |
+| Feb 18 | Prompt versioning in prompts.ts | Correlate behavior changes to prompt versions in logs |
 
 ---
 

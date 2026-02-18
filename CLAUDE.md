@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project
 
-CollabBoard - real-time collaborative whiteboard with AI agent integration. Gauntlet AI Week 1 exercise. Solo dev with AI-first methodology (Claude Code + Cursor). Exploring multiplayer improv canvas as creative direction (see `docs/new-north-star.md`).
+CollabBoard - multiplayer improv canvas with AI agent integration. Real-time collaborative whiteboard where players and AI improvise scenes together. Solo dev with AI-first methodology (Claude Code + Cursor). See `docs/new-north-star.md` for creative direction.
 
 ## Stack
 
@@ -124,11 +124,12 @@ src/
     App.tsx             # App shell + hash routing (#board/{id}, #replay/{id})
     theme.ts            # Shared color constants (accent, surfaces, borders, cursors)
     components/
-      Board.tsx         # Canvas + toolbar + chat panel integration (~1435 lines)
+      Board.tsx         # Canvas + toolbar + chat panel integration (~1800 lines)
       BoardList.tsx     # Board grid (CRUD) - landing page after login
-      ChatPanel.tsx     # AI chat sidebar (template coord injection for SWOT/Kanban/etc)
+      ChatPanel.tsx     # AI chat sidebar (dynamic intent chips, improv scene interaction)
       ReplayViewer.tsx  # Read-only scene replay player (public, no auth)
       SceneGallery.tsx  # Public gallery grid of replayable scenes (#gallery route)
+      PerfOverlay.tsx   # Dev performance overlay (FPS, msg age, nodes, connection state)
       ConfettiBurst.tsx # Confetti particle burst animation (extracted from Board)
       BoardGrid.tsx     # Dot grid + radial glow background (extracted from Board)
     hooks/
@@ -141,6 +142,7 @@ src/
   server/               # CF Worker
     index.ts            # Hono app - routes, board CRUD, DO exports, agent routing, WS upgrade, public replay + gallery API
     auth.ts             # Auth routes + PBKDF2 hashing + session helpers
+    env.ts              # Bindings type, D1 helpers (recordBoardActivity, markBoardSeen)
     prompts.ts          # All LLM prompt content + scene phases + PROMPT_VERSION constant
     chat-agent.ts       # AIChatAgent DO - WebSocket AI chat, model selection, request metrics
     ai-tools-sdk.ts     # 10 tools as AI SDK tool() with Zod schemas + instrumentExecute wrapper + DRY helpers
