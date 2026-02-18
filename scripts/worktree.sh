@@ -153,6 +153,16 @@ cmd_remove() {
     exit 1
   fi
 
+  # Check for uncommitted changes to tracked files
+  if git -C "$wt_dir" diff --quiet 2>/dev/null && git -C "$wt_dir" diff --cached --quiet 2>/dev/null; then
+    : # clean
+  else
+    echo "Warning: ${wt_dir} has uncommitted changes to tracked files:"
+    git -C "$wt_dir" diff --stat
+    read -rp "Force remove anyway? [y/N] " confirm
+    [[ "$confirm" != [yY]* ]] && { echo "Aborted."; exit 1; }
+  fi
+
   echo "Removing worktree at ${wt_dir}..."
   git worktree remove --force "$wt_dir"
 
