@@ -34,7 +34,7 @@ const COLOR_PRESETS = [
   "#94a3b8", // slate
 ];
 
-const SIDEBAR_W = 48;
+const TOOLBAR_H = 46; // 36px icons + 8px padding + 2px border
 
 // Mirror-div technique: find pixel coords of character at `position` inside a textarea
 function getCaretPixelPos(textarea: HTMLTextAreaElement, position: number): { x: number; y: number } {
@@ -1370,14 +1370,18 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
         />
       )}
 
-      {/* Vertical Toolbar - Left Sidebar */}
+      {/* Floating Toolbar - Bottom Center */}
       <div style={{
-        position: "absolute", left: 0, top: 48, bottom: 0, width: SIDEBAR_W, zIndex: 10,
-        background: "rgba(22, 33, 62, 0.95)", borderRight: "1px solid #334155",
-        display: "flex", flexDirection: "column", alignItems: "center",
-        paddingTop: 8, gap: 2,
+        position: "absolute", bottom: 16, left: "50%", transform: "translateX(-50%)", zIndex: 20,
+        background: "rgba(22, 33, 62, 0.85)", border: `1px solid ${colors.border}`,
+        backdropFilter: "blur(12px)", WebkitBackdropFilter: "blur(12px)",
+        borderRadius: 999, boxShadow: "0 4px 24px rgba(0,0,0,0.4)",
+        display: "flex", alignItems: "center",
+        padding: "4px 8px", gap: 2,
+        maxWidth: "calc(100vw - 32px)",
       }}>
         <ToolIconBtn icon={<IconSelect />} title="Select (V)" active={toolMode === "select"} onClick={() => setToolMode("select")} />
+        <ToolbarSep />
         <ToolIconBtn icon={<IconSticky />} title="Sticky note (S)" active={toolMode === "sticky"} onClick={() => setToolMode("sticky")} />
         <ToolIconBtn icon={<IconRect />} title="Rectangle (R)" active={toolMode === "rect"} onClick={() => setToolMode("rect")} />
         <ToolIconBtn icon={<IconCircle />} title="Circle (C)" active={toolMode === "circle"} onClick={() => setToolMode("circle")} />
@@ -1385,7 +1389,7 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
         <ToolIconBtn icon={<IconArrow />} title="Arrow (A)" active={toolMode === "arrow"} onClick={() => setToolMode("arrow")} />
         <ToolIconBtn icon={<IconText />} title="Text (T)" active={toolMode === "text"} onClick={() => setToolMode("text")} />
         <ToolIconBtn icon={<IconFrame />} title="Frame (F)" active={toolMode === "frame"} onClick={() => setToolMode("frame")} />
-        <div style={{ width: 28, borderTop: "1px solid #334155", margin: "4px 0" }} />
+        <ToolbarSep />
         <ToolIconBtn
           icon={<IconDelete />}
           title="Delete selected (Del)"
@@ -1393,9 +1397,8 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
           onClick={deleteSelected}
           disabled={selectedIds.size === 0}
         />
-        <div style={{ flex: 1 }} />
+        <ToolbarSep />
         <ToolIconBtn icon={<IconChat />} title="AI Assistant (/)" active={chatOpen} onClick={() => setChatOpen((o) => !o)} />
-        <div style={{ height: 8 }} />
       </div>
 
       {/* AI Chat Panel */}
@@ -1497,7 +1500,7 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
         );
       })()}
 
-      {/* Color picker - shown when objects are selected */}
+      {/* Color picker - shown above floating toolbar when objects are selected */}
       {selectedIds.size > 0 && (() => {
         const firstId = [...selectedIds][0];
         const firstObj = objects.get(firstId);
@@ -1507,10 +1510,11 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
         const currentColor = firstObj.props[propKey];
         return (
           <div style={{
-            position: "absolute", bottom: 16, left: "50%", transform: "translateX(-50%)",
-            display: "flex", gap: 6, zIndex: 10, padding: "6px 10px",
-            background: "rgba(22, 33, 62, 0.95)", border: "1px solid #334155",
-            borderRadius: 8,
+            position: "absolute", bottom: TOOLBAR_H + 24, left: "50%", transform: "translateX(-50%)",
+            display: "flex", gap: 6, zIndex: 20, padding: "6px 10px",
+            background: colors.overlayHeader, border: `1px solid ${colors.border}`,
+            borderRadius: 999, backdropFilter: "blur(12px)", WebkitBackdropFilter: "blur(12px)",
+            boxShadow: "0 4px 16px rgba(0,0,0,0.3)",
           }}>
             {COLOR_PRESETS.map((color) => (
               <button
@@ -1543,8 +1547,8 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
         );
       })()}
 
-      {/* Zoom controls */}
-      <div style={{ position: "absolute", bottom: 16, right: 16, display: "flex", gap: 4, zIndex: 10 }}>
+      {/* Zoom controls - bottom left, above toolbar */}
+      <div style={{ position: "absolute", bottom: TOOLBAR_H + 24, left: 16, display: "flex", gap: 4, zIndex: 10 }}>
         <ZoomBtn label="-" onClick={() => setScale((s) => Math.max(MIN_ZOOM, s / 1.2))} />
         <ZoomBtn label="Reset" onClick={() => { setScale(1); setStagePos({ x: 0, y: 0 }); }} />
         <ZoomBtn label="+" onClick={() => setScale((s) => Math.min(MAX_ZOOM, s * 1.2))} />
@@ -1593,6 +1597,10 @@ function ToolIconBtn({ icon, title, active, onClick, disabled }: {
       {icon}
     </button>
   );
+}
+
+function ToolbarSep() {
+  return <div style={{ width: 1, height: 24, background: colors.border, margin: "0 4px", flexShrink: 0 }} />;
 }
 
 function IconSelect() {
