@@ -27,7 +27,13 @@ app.get("/api/boards", async (c) => {
   if (!user) return c.text("Unauthorized", 401);
 
   const { results } = await c.env.DB.prepare(
-    "SELECT id, name, created_by, created_at, updated_at FROM boards WHERE created_by = ? OR created_by = 'system' ORDER BY updated_at DESC"
+    `SELECT b.id, b.name, b.created_by, b.created_at, b.updated_at,
+       MAX(0, COALESCE(a.activity_count, 0) - COALESCE(s.seen_count, 0)) AS unseen_count
+     FROM boards b
+     LEFT JOIN board_activity a ON a.board_id = b.id
+     LEFT JOIN user_board_seen s ON s.board_id = b.id AND s.user_id = ?1
+     WHERE b.created_by = ?1 OR b.created_by = 'system'
+     ORDER BY b.updated_at DESC`
   ).bind(user.id).all();
   return c.json(results);
 });
@@ -148,10 +154,11 @@ app.get("/ws/board/:boardId", async (c) => {
   const doId = c.env.BOARD.idFromName(boardId);
   const stub = c.env.BOARD.get(doId);
 
-  // Forward with user info as query params (DO reads these)
+  // Forward with user info + boardId as query params (DO reads these)
   const url = new URL(c.req.url);
   url.searchParams.set("userId", user.id);
   url.searchParams.set("username", user.displayName);
+  url.searchParams.set("boardId", boardId);
 
   return stub.fetch(new Request(url.toString(), {
     headers: c.req.raw.headers,

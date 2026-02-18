@@ -10,6 +10,7 @@ import { createWorkersAI } from "workers-ai-provider";
 import { createAnthropic } from "@ai-sdk/anthropic";
 import { createSDKTools } from "./ai-tools-sdk";
 import type { Bindings } from "./env";
+import { recordBoardActivity } from "./env";
 import type { BoardObject } from "../shared/types";
 
 // ---------------------------------------------------------------------------
@@ -111,6 +112,13 @@ export class ChatAgent extends AIChatAgent<Bindings> {
 
   async onChatMessage(onFinish: any, options?: { abortSignal?: AbortSignal }) {
     // this.name = boardId (set by client connecting to /agents/ChatAgent/<boardId>)
+    // Record chat activity for async notifications (non-blocking)
+    this.ctx.waitUntil(
+      recordBoardActivity(this.env.DB, this.name).catch((err: unknown) => {
+        console.error(JSON.stringify({ event: "activity:record", trigger: "chat", error: String(err) }));
+      })
+    );
+
     const doId = this.env.BOARD.idFromName(this.name);
     const boardStub = this.env.BOARD.get(doId);
     const batchId = crypto.randomUUID();

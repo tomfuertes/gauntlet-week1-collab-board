@@ -1,7 +1,8 @@
 import { DurableObject } from "cloudflare:workers";
 import { AI_USER_ID, AI_USERNAME } from "../shared/types";
 import type { BoardObject, ReplayEvent, WSClientMessage, WSServerMessage } from "../shared/types";
-import type { MutateResult } from "./env";
+import type { Bindings, MutateResult } from "./env";
+import { recordBoardActivity, markBoardSeen } from "./env";
 
 interface ConnectionMeta {
   userId: string;
@@ -9,10 +10,24 @@ interface ConnectionMeta {
   editingObjectId?: string;
 }
 
-export class Board extends DurableObject {
+export class Board extends DurableObject<Bindings> {
   // Timestamp when AI presence expires. Class properties reset on DO hibernation,
   // which is correct - if the DO hibernated, the AI stream has already ended.
   private aiActiveUntil = 0;
+  // Cached boardId (lazy-loaded from DO Storage, set on first WS connect)
+  private _boardId: string | null = null;
+
+  private async getBoardId(): Promise<string | null> {
+    if (!this._boardId) {
+      this._boardId = await this.ctx.storage.get<string>("meta:boardId") ?? null;
+    }
+    return this._boardId;
+  }
+
+  private async setBoardId(id: string): Promise<void> {
+    this._boardId = id;
+    await this.ctx.storage.put("meta:boardId", id);
+  }
 
   // Event recording for scene replay
   private lastRecordedAt = new Map<string, number>(); // objId -> timestamp (debounce tracker)
@@ -43,6 +58,7 @@ export class Board extends DurableObject {
   async deleteBoard(): Promise<number> {
     const keys = await this.ctx.storage.list({ prefix: "obj:" });
     await this.ctx.storage.delete([...keys.keys()]);
+    await this.ctx.storage.delete("meta:boardId");
     this.broadcast({ type: "board:deleted" });
     for (const ws of this.getWebSockets()) {
       try { ws.close(1000, "board deleted"); } catch { /* already closed */ }
@@ -93,9 +109,13 @@ export class Board extends DurableObject {
     const url = new URL(request.url);
     const userId = url.searchParams.get("userId");
     const username = url.searchParams.get("username");
+    const boardId = url.searchParams.get("boardId");
     if (!userId || !username) {
       return new Response("Missing user info", { status: 400 });
     }
+
+    // Persist boardId for activity tracking (skips write if already stored)
+    if (boardId && !(await this.getBoardId())) await this.setBoardId(boardId);
 
     const pair = new WebSocketPair();
     const [client, server] = [pair[0], pair[1]];
@@ -108,6 +128,15 @@ export class Board extends DurableObject {
     server.send(JSON.stringify({ type: "init", objects } satisfies WSServerMessage));
     server.send(JSON.stringify({ type: "presence", users } satisfies WSServerMessage));
     this.broadcast({ type: "presence", users }, server);
+
+    // Mark board as seen for connecting user (non-blocking)
+    if (boardId) {
+      this.ctx.waitUntil(
+        markBoardSeen(this.env.DB, userId, boardId).catch((err: unknown) => {
+          console.error(JSON.stringify({ event: "activity:markSeen", trigger: "ws:connect", error: String(err) }));
+        })
+      );
+    }
 
     return new Response(null, { status: 101, webSocket: client });
   }
@@ -159,25 +188,29 @@ export class Board extends DurableObject {
 
   async webSocketClose(ws: WebSocket) {
     // ws is already closed when this handler fires - no need to call ws.close()
-    const meta = ws.deserializeAttachment() as ConnectionMeta | null;
-    if (meta?.editingObjectId) {
-      this.broadcast({ type: "text:blur", userId: meta.userId, objectId: meta.editingObjectId });
-    }
-    const users = this.getPresenceList();
-    this.broadcast({ type: "presence", users });
+    this.handleDisconnect(ws);
   }
 
   async webSocketError(ws: WebSocket) {
+    ws.close();
+    this.handleDisconnect(ws);
+  }
+
+  // --- Private helpers ---
+
+  private handleDisconnect(ws: WebSocket): void {
     const meta = ws.deserializeAttachment() as ConnectionMeta | null;
     if (meta?.editingObjectId) {
       this.broadcast({ type: "text:blur", userId: meta.userId, objectId: meta.editingObjectId });
     }
-    ws.close();
     const users = this.getPresenceList();
     this.broadcast({ type: "presence", users });
-  }
 
-  // --- Private helpers ---
+    // Mark board as seen on disconnect (catches activity created during the session)
+    if (meta) {
+      this.markSeenForUser(meta.userId);
+    }
+  }
 
   private getWebSockets(): WebSocket[] {
     return this.ctx.getWebSockets();
@@ -249,9 +282,12 @@ export class Board extends DurableObject {
         await this.ctx.storage.put(`obj:${obj.id}`, obj);
         this.broadcast({ type: "obj:create", obj }, excludeWs);
         await this.recordEvent({ type: "obj:create", ts: obj.updatedAt, obj });
+        this.trackActivity();
         return { ok: true };
       }
       case "obj:update": {
+        // No trackActivity() here - obj:update fires per drag pixel, would flood D1.
+        // Create/delete + chat messages capture meaningful activity for badges.
         const existing = await this.ctx.storage.get<BoardObject>(`obj:${msg.obj.id}`);
         if (!existing) return { ok: false, error: `Object ${msg.obj.id} not found` };
         if (msg.obj.updatedAt && msg.obj.updatedAt < existing.updatedAt) return { ok: false, error: "Stale update (LWW conflict)" };
@@ -270,9 +306,35 @@ export class Board extends DurableObject {
         await this.ctx.storage.delete(`obj:${msg.id}`);
         this.broadcast({ type: "obj:delete", id: msg.id }, excludeWs);
         await this.recordEvent({ type: "obj:delete", ts: Date.now(), id: msg.id });
+        this.trackActivity();
         return { ok: true };
       }
     }
     return { ok: false, error: `Unknown message type` };
+  }
+
+  /** Fire-and-forget D1 activity increment (non-blocking) */
+  private trackActivity(): void {
+    this.withBoardId("activity:record", (id) => recordBoardActivity(this.env.DB, id));
+  }
+
+  /** Fire-and-forget mark-seen for a user (non-blocking) */
+  private markSeenForUser(userId: string): void {
+    this.withBoardId("activity:markSeen", (id) => markBoardSeen(this.env.DB, userId, id));
+  }
+
+  /** Run a D1 operation with the cached boardId (fire-and-forget, errors logged) */
+  private withBoardId(event: string, fn: (boardId: string) => Promise<unknown>): void {
+    this.ctx.waitUntil(
+      this.getBoardId().then((boardId) => {
+        if (boardId) {
+          return fn(boardId).catch((err: unknown) => {
+            console.error(JSON.stringify({ event, error: String(err) }));
+          });
+        }
+      }).catch((err: unknown) => {
+        console.error(JSON.stringify({ event: "activity:getBoardId:error", error: String(err) }));
+      })
+    );
   }
 }
