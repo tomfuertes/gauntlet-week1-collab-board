@@ -3,6 +3,7 @@ import { useState, useCallback, useRef, useEffect } from "react";
 interface ToolCall {
   name: string;
   label: string;
+  args?: Record<string, unknown>;
 }
 
 export interface AIChatMessage {
@@ -85,7 +86,7 @@ export function useAIChat(boardId: string, selectedIds?: Set<string>) {
                 if (event.type === "status") {
                   setStatus(event.label);
                 } else if (event.type === "tool") {
-                  tools.push({ name: event.name, label: event.label });
+                  tools.push({ name: event.name, label: event.label, args: event.args });
                   setStatus(`${event.label}...`);
                 } else if (event.type === "done") {
                   responseText = event.response;

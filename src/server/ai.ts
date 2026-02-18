@@ -6,23 +6,19 @@ import { runWithTools } from "@cloudflare/ai-utils";
 import type { ChatMessage, BoardObject } from "../shared/types";
 import type { Bindings } from "./env";
 
-const SYSTEM_PROMPT = `You are a whiteboard assistant for CollabBoard. You help users by manipulating objects on a shared collaborative whiteboard.
+const SYSTEM_PROMPT = `You are a whiteboard assistant. Be concise and action-oriented. Never ask for confirmation - just do it.
 
-IMPORTANT RULES:
-- When the user asks to modify, move, recolor, or delete an EXISTING object, you MUST call read_board FIRST to get object IDs, then call update_object or delete_object with the correct ID. NEVER create a new object when the user wants to change an existing one.
-- Call each tool ONLY ONCE per action. After a tool returns a result, that action is DONE. Do not repeat the same tool call.
-- Be concise and action-oriented. Don't ask for confirmation - just do it.
+RULES:
+- To modify/delete EXISTING objects: call getBoardState first to get IDs, then use the specific tool (moveObject, resizeObject, updateText, changeColor, deleteObject).
+- To create multiple objects: call ALL create tools in a SINGLE response. Do NOT wait for results between creates.
+- Never duplicate a tool call that already succeeded.
+- Use getBoardState with filter/ids to minimize token usage on large boards.
 
-When creating multiple objects, spread them out so they don't overlap. Use a grid layout with ~220px spacing.
+LAYOUT: Space objects ~220px apart in a grid so they don't overlap. Canvas is roughly 1200x800.
 
-Available shapes: sticky notes (text), standalone text, rectangles (fill+stroke), circles (fill+stroke), lines (stroke only), connectors/arrows (stroke + arrowheads), and frames (labeled containers for grouping).
-Available colors for stickies: #fbbf24 (yellow, default), #f87171 (red), #4ade80 (green), #60a5fa (blue), #c084fc (purple), #fb923c (orange).
-Available colors for text: any hex color (default: #ffffff white).
-Available colors for rectangles and circles: fill any hex color, stroke should be a slightly darker variant.
-Available colors for lines and connectors: stroke any hex color (no fill). Default: #94a3b8.
-Available arrow styles for connectors: 'end' (default, arrow at endpoint), 'both' (arrows at both ends), 'none' (plain line).
+COLORS: Stickies: #fbbf24 yellow, #f87171 red, #4ade80 green, #60a5fa blue, #c084fc purple, #fb923c orange. Shapes: any hex fill, slightly darker stroke. Lines/connectors: #94a3b8 default.
 
-When describing the board, be brief. List objects by type and key content.`;
+Keep responses under 2 sentences.`;
 
 const MODEL = "@cf/meta/llama-3.3-70b-instruct-fp8-fast";
 
@@ -79,14 +75,17 @@ aiRoutes.post("/chat", async (c) => {
       const traced = <T extends (...args: any[]) => Promise<string>>(
         name: string, label: string, fn: T,
       ): T => (async (...args: any[]) => {
+        // Llama 3.3 sometimes omits arguments entirely - default to empty object
+        if (!args[0]) args[0] = {};
         console.debug(`[ai] tool:${name}`, JSON.stringify(args[0]));
         emit({ type: "tool", name, label, args: args[0] });
         return fn(...args);
       }) as T;
 
       const tools: any[] = [
+        // 1. createStickyNote
         {
-          name: "create_sticky",
+          name: "createStickyNote",
           description: "Create a sticky note on the whiteboard with text content",
           parameters: {
             type: "object" as const,
@@ -98,17 +97,17 @@ aiRoutes.post("/chat", async (c) => {
             },
             required: ["text"] as const,
           },
-          function: traced("create_sticky", "Creating sticky", async (args: { text: string; x?: number; y?: number; color?: string }) => {
+          function: traced("createStickyNote", "Creating sticky", async (args: { text?: string; x?: number; y?: number; color?: string }) => {
             const id = crypto.randomUUID();
             const obj = {
               id,
               type: "sticky" as const,
-              x: args.x ?? 100 + Math.random() * 700,
-              y: Math.max(60, args.y ?? 100 + Math.random() * 500),
+              x: Number(args.x) || 100 + Math.random() * 700,
+              y: Math.max(60, Number(args.y) || 100 + Math.random() * 500),
               width: 200,
               height: 200,
               rotation: 0,
-              props: { text: args.text, color: args.color || "#fbbf24" },
+              props: { text: args.text || "New note", color: args.color || "#fbbf24" },
               createdBy: "ai-agent",
               updatedAt: Date.now(),
             };
@@ -116,54 +115,66 @@ aiRoutes.post("/chat", async (c) => {
             return JSON.stringify({ created: id, type: "sticky", text: args.text });
           }),
         },
+
+        // 2. createShape (replaces create_rect + create_circle + create_line)
         {
-          name: "create_text",
-          description: "Create standalone text on the whiteboard (no background, just text)",
+          name: "createShape",
+          description: "Create a shape on the whiteboard. Use shape='rect' for rectangle, 'circle' for circle, 'line' for line.",
           parameters: {
             type: "object" as const,
             properties: {
-              text: { type: "string" as const, description: "The text content" },
-              x: { type: "number" as const, description: "X position on the canvas (default: random 100-800)" },
-              y: { type: "number" as const, description: "Y position on the canvas (default: random 100-600)" },
-              color: { type: "string" as const, description: "Text color hex (default: #ffffff white)" },
-            },
-            required: ["text"] as const,
-          },
-          function: traced("create_text", "Creating text", async (args: { text: string; x?: number; y?: number; color?: string }) => {
-            const id = crypto.randomUUID();
-            const obj = {
-              id,
-              type: "text" as const,
-              x: args.x ?? 100 + Math.random() * 700,
-              y: Math.max(60, args.y ?? 100 + Math.random() * 500),
-              width: 200,
-              height: 40,
-              rotation: 0,
-              props: { text: args.text, color: args.color || "#ffffff" },
-              createdBy: "ai-agent",
-              updatedAt: Date.now(),
-            };
-            await stub.mutate({ type: "obj:create", obj });
-            return JSON.stringify({ created: id, type: "text", text: args.text });
-          }),
-        },
-        {
-          name: "create_rect",
-          description: "Create a rectangle shape on the whiteboard",
-          parameters: {
-            type: "object" as const,
-            properties: {
-              x: { type: "number" as const, description: "X position (default: random 100-800)" },
-              y: { type: "number" as const, description: "Y position (default: random 100-600)" },
-              width: { type: "number" as const, description: "Width in pixels (default: 150)" },
-              height: { type: "number" as const, description: "Height in pixels (default: 100)" },
+              shape: { type: "string" as const, description: "Shape type: 'rect', 'circle', or 'line'" },
+              x: { type: "number" as const, description: "X position (default: random). For circle: center X. For line: start X." },
+              y: { type: "number" as const, description: "Y position (default: random). For circle: center Y. For line: start Y." },
+              width: { type: "number" as const, description: "Width (default: 150). For circle: diameter. For line: X delta to endpoint." },
+              height: { type: "number" as const, description: "Height (default: 100). For circle: same as width. For line: Y delta to endpoint." },
               fill: { type: "string" as const, description: "Fill color hex (default: #3b82f6)" },
               stroke: { type: "string" as const, description: "Stroke color hex (default: #2563eb)" },
             },
-            required: [] as const,
+            required: ["shape"] as const,
           },
-          function: traced("create_rect", "Creating rectangle", async (args: { x?: number; y?: number; width?: number; height?: number; fill?: string; stroke?: string }) => {
+          function: traced("createShape", "Creating shape", async (args: { shape?: string; x?: number; y?: number; width?: number; height?: number; fill?: string; stroke?: string }) => {
+            const shape = args.shape || "rect";
             const id = crypto.randomUUID();
+
+            if (shape === "circle") {
+              const diameter = args.width ?? 100;
+              const cx = args.x ?? 100 + Math.random() * 700;
+              const cy = Math.max(60, args.y ?? 100 + Math.random() * 500);
+              const obj = {
+                id,
+                type: "circle" as const,
+                x: cx - diameter / 2,
+                y: cy - diameter / 2,
+                width: diameter,
+                height: diameter,
+                rotation: 0,
+                props: { fill: args.fill || "#3b82f6", stroke: args.stroke || "#2563eb" },
+                createdBy: "ai-agent",
+                updatedAt: Date.now(),
+              };
+              await stub.mutate({ type: "obj:create", obj });
+              return JSON.stringify({ created: id, type: "circle", diameter });
+            }
+
+            if (shape === "line") {
+              const obj = {
+                id,
+                type: "line" as const,
+                x: args.x ?? 100 + Math.random() * 700,
+                y: Math.max(60, args.y ?? 100 + Math.random() * 500),
+                width: args.width ?? 200,
+                height: args.height ?? 0,
+                rotation: 0,
+                props: { stroke: args.stroke || "#94a3b8" },
+                createdBy: "ai-agent",
+                updatedAt: Date.now(),
+              };
+              await stub.mutate({ type: "obj:create", obj });
+              return JSON.stringify({ created: id, type: "line" });
+            }
+
+            // Default: rect
             const obj = {
               id,
               type: "rect" as const,
@@ -180,117 +191,10 @@ aiRoutes.post("/chat", async (c) => {
             return JSON.stringify({ created: id, type: "rect" });
           }),
         },
+
+        // 3. createFrame
         {
-          name: "create_circle",
-          description: "Create a circle shape on the whiteboard",
-          parameters: {
-            type: "object" as const,
-            properties: {
-              x: { type: "number" as const, description: "Center X position (default: random 100-800)" },
-              y: { type: "number" as const, description: "Center Y position (default: random 100-600)" },
-              radius: { type: "number" as const, description: "Radius in pixels (default: 50)" },
-              fill: { type: "string" as const, description: "Fill color hex (default: #3b82f6)" },
-              stroke: { type: "string" as const, description: "Stroke color hex (default: #2563eb)" },
-            },
-            required: [] as const,
-          },
-          function: traced("create_circle", "Creating circle", async (args: { x?: number; y?: number; radius?: number; fill?: string; stroke?: string }) => {
-            const id = crypto.randomUUID();
-            const r = args.radius ?? 50;
-            const cx = args.x ?? 100 + Math.random() * 700;
-            const cy = Math.max(60, args.y ?? 100 + Math.random() * 500);
-            const obj = {
-              id,
-              type: "circle" as const,
-              x: cx - r,
-              y: cy - r,
-              width: r * 2,
-              height: r * 2,
-              rotation: 0,
-              props: { fill: args.fill || "#3b82f6", stroke: args.stroke || "#2563eb" },
-              createdBy: "ai-agent",
-              updatedAt: Date.now(),
-            };
-            await stub.mutate({ type: "obj:create", obj });
-            return JSON.stringify({ created: id, type: "circle", radius: r });
-          }),
-        },
-        {
-          name: "create_line",
-          description: "Create a line on the whiteboard from point A to point B",
-          parameters: {
-            type: "object" as const,
-            properties: {
-              x1: { type: "number" as const, description: "Start X position" },
-              y1: { type: "number" as const, description: "Start Y position" },
-              x2: { type: "number" as const, description: "End X position" },
-              y2: { type: "number" as const, description: "End Y position" },
-              stroke: { type: "string" as const, description: "Stroke color hex (default: #94a3b8)" },
-            },
-            required: ["x1", "y1", "x2", "y2"] as const,
-          },
-          function: traced("create_line", "Creating line", async (args: { x1: number; y1: number; x2: number; y2: number; stroke?: string }) => {
-            const id = crypto.randomUUID();
-            const obj = {
-              id,
-              type: "line" as const,
-              x: args.x1,
-              y: args.y1,
-              width: args.x2 - args.x1,
-              height: args.y2 - args.y1,
-              rotation: 0,
-              props: { stroke: args.stroke || "#94a3b8" },
-              createdBy: "ai-agent",
-              updatedAt: Date.now(),
-            };
-            await stub.mutate({ type: "obj:create", obj });
-            return JSON.stringify({ created: id, type: "line" });
-          }),
-        },
-        {
-          name: "create_connector",
-          description: "Create a connector/arrow on the whiteboard from point A to point B with arrowhead(s)",
-          parameters: {
-            type: "object" as const,
-            properties: {
-              x1: { type: "number" as const, description: "Start X position" },
-              y1: { type: "number" as const, description: "Start Y position" },
-              x2: { type: "number" as const, description: "End X position (arrow points here)" },
-              y2: { type: "number" as const, description: "End Y position (arrow points here)" },
-              stroke: { type: "string" as const, description: "Stroke color hex (default: #94a3b8)" },
-              arrow: { type: "string" as const, description: "Arrow style: 'end' (default, arrow at endpoint), 'both' (arrows at both ends), 'none' (plain line)" },
-            },
-            required: ["x1", "y1", "x2", "y2"] as const,
-          },
-          function: traced("create_connector", "Creating connector", async (args: { x1: number; y1: number; x2: number; y2: number; stroke?: string; arrow?: string }) => {
-            const id = crypto.randomUUID();
-            const width = args.x2 - args.x1;
-            const height = args.y2 - args.y1;
-            if (width === 0 && height === 0) {
-              return JSON.stringify({ error: "Cannot create zero-length connector (start and end are the same point)" });
-            }
-            if (args.arrow !== undefined && args.arrow !== "end" && args.arrow !== "both" && args.arrow !== "none") {
-              console.warn(`[ai] create_connector: unrecognized arrow style "${args.arrow}", defaulting to "end"`);
-            }
-            const arrowStyle = args.arrow === "both" ? "both" : args.arrow === "none" ? "none" : "end";
-            const obj = {
-              id,
-              type: "line" as const,
-              x: args.x1,
-              y: args.y1,
-              width,
-              height,
-              rotation: 0,
-              props: { stroke: args.stroke || "#94a3b8", arrow: arrowStyle as "end" | "both" | "none" },
-              createdBy: "ai-agent",
-              updatedAt: Date.now(),
-            };
-            await stub.mutate({ type: "obj:create", obj });
-            return JSON.stringify({ created: id, type: "connector", arrow: arrowStyle });
-          }),
-        },
-        {
-          name: "create_frame",
+          name: "createFrame",
           description: "Create a frame (labeled container/region) on the whiteboard to group or organize objects. Frames render behind other objects.",
           parameters: {
             type: "object" as const,
@@ -303,7 +207,7 @@ aiRoutes.post("/chat", async (c) => {
             },
             required: ["title"] as const,
           },
-          function: traced("create_frame", "Creating frame", async (args: { title: string; x?: number; y?: number; width?: number; height?: number }) => {
+          function: traced("createFrame", "Creating frame", async (args: { title: string; x?: number; y?: number; width?: number; height?: number }) => {
             const id = crypto.randomUUID();
             const obj = {
               id,
@@ -321,56 +225,207 @@ aiRoutes.post("/chat", async (c) => {
             return JSON.stringify({ created: id, type: "frame", title: obj.props.text });
           }),
         },
+
+        // 4. createConnector (now uses object IDs, resolves centers server-side)
         {
-          name: "read_board",
-          description: "Read all objects currently on the whiteboard. Returns a list of objects with their id, type, text, position, and color.",
+          name: "createConnector",
+          description: "Create a connector/arrow between two objects on the whiteboard. Pass the IDs of the objects to connect.",
           parameters: {
             type: "object" as const,
-            properties: {},
-            required: [] as const,
+            properties: {
+              fromId: { type: "string" as const, description: "ID of the source object" },
+              toId: { type: "string" as const, description: "ID of the target object" },
+              stroke: { type: "string" as const, description: "Stroke color hex (default: #94a3b8)" },
+              arrow: { type: "string" as const, description: "Arrow style: 'end' (default), 'both', or 'none'" },
+            },
+            required: ["fromId", "toId"] as const,
           },
-          function: traced("read_board", "Reading board", async () => {
-            const objects = await stub.readObjects();
-            return JSON.stringify(objects);
+          function: traced("createConnector", "Connecting objects", async (args: { fromId: string; toId: string; stroke?: string; arrow?: string }) => {
+            const fromObj = await stub.readObject(args.fromId) as BoardObject | null;
+            const toObj = await stub.readObject(args.toId) as BoardObject | null;
+            if (!fromObj) return JSON.stringify({ error: `Source object ${args.fromId} not found` });
+            if (!toObj) return JSON.stringify({ error: `Target object ${args.toId} not found` });
+
+            const x1 = fromObj.x + fromObj.width / 2;
+            const y1 = fromObj.y + fromObj.height / 2;
+            const x2 = toObj.x + toObj.width / 2;
+            const y2 = toObj.y + toObj.height / 2;
+
+            const width = x2 - x1;
+            const height = y2 - y1;
+            if (width === 0 && height === 0) {
+              return JSON.stringify({ error: "Cannot create zero-length connector (objects overlap)" });
+            }
+
+            const arrowStyle = args.arrow === "both" ? "both" : args.arrow === "none" ? "none" : "end";
+            const id = crypto.randomUUID();
+            const obj = {
+              id,
+              type: "line" as const,
+              x: x1,
+              y: y1,
+              width,
+              height,
+              rotation: 0,
+              props: { stroke: args.stroke || "#94a3b8", arrow: arrowStyle as "end" | "both" | "none" },
+              createdBy: "ai-agent",
+              updatedAt: Date.now(),
+            };
+            await stub.mutate({ type: "obj:create", obj });
+            return JSON.stringify({ created: id, type: "connector", from: args.fromId, to: args.toId });
           }),
         },
+
+        // 5. moveObject
         {
-          name: "update_object",
-          description: "Update an existing object on the whiteboard. Can change text, position, size, or color.",
+          name: "moveObject",
+          description: "Move an existing object to a new position on the whiteboard",
+          parameters: {
+            type: "object" as const,
+            properties: {
+              id: { type: "string" as const, description: "The ID of the object to move" },
+              x: { type: "number" as const, description: "New X position" },
+              y: { type: "number" as const, description: "New Y position" },
+            },
+            required: ["id", "x", "y"] as const,
+          },
+          function: traced("moveObject", "Moving object", async (args: { id: string; x: number; y: number }) => {
+            const result = await stub.mutate({
+              type: "obj:update",
+              obj: { id: args.id, x: args.x, y: args.y, updatedAt: Date.now() },
+            });
+            if (!result.ok) return JSON.stringify({ error: result.error });
+            return JSON.stringify({ moved: args.id, x: args.x, y: args.y });
+          }),
+        },
+
+        // 6. resizeObject
+        {
+          name: "resizeObject",
+          description: "Resize an existing object on the whiteboard",
+          parameters: {
+            type: "object" as const,
+            properties: {
+              id: { type: "string" as const, description: "The ID of the object to resize" },
+              width: { type: "number" as const, description: "New width" },
+              height: { type: "number" as const, description: "New height" },
+            },
+            required: ["id", "width", "height"] as const,
+          },
+          function: traced("resizeObject", "Resizing object", async (args: { id: string; width: number; height: number }) => {
+            const result = await stub.mutate({
+              type: "obj:update",
+              obj: { id: args.id, width: args.width, height: args.height, updatedAt: Date.now() },
+            });
+            if (!result.ok) return JSON.stringify({ error: result.error });
+            return JSON.stringify({ resized: args.id, width: args.width, height: args.height });
+          }),
+        },
+
+        // 7. updateText
+        {
+          name: "updateText",
+          description: "Update the text content of a sticky note, text object, or frame title",
           parameters: {
             type: "object" as const,
             properties: {
               id: { type: "string" as const, description: "The ID of the object to update" },
-              text: { type: "string" as const, description: "New text content (for stickies and frame titles)" },
-              x: { type: "number" as const, description: "New X position" },
-              y: { type: "number" as const, description: "New Y position" },
-              width: { type: "number" as const, description: "New width" },
-              height: { type: "number" as const, description: "New height" },
-              color: { type: "string" as const, description: "New color (for stickies)" },
-              fill: { type: "string" as const, description: "New fill color (for rects)" },
+              text: { type: "string" as const, description: "New text content" },
             },
-            required: ["id"] as const,
+            required: ["id", "text"] as const,
           },
-          function: traced("update_object", "Updating object", async (args: { id: string; text?: string; x?: number; y?: number; width?: number; height?: number; color?: string; fill?: string }) => {
-            const partial: Partial<BoardObject> & { id: string } = { id: args.id };
-            if (args.x !== undefined) partial.x = args.x;
-            if (args.y !== undefined) partial.y = args.y;
-            if (args.width !== undefined) partial.width = args.width;
-            if (args.height !== undefined) partial.height = args.height;
-            const props: Record<string, string> = {};
-            if (args.text !== undefined) props.text = args.text;
-            if (args.color !== undefined) props.color = args.color;
-            if (args.fill !== undefined) props.fill = args.fill;
-            if (Object.keys(props).length > 0) partial.props = props;
-            partial.updatedAt = Date.now();
-
-            const result = await stub.mutate({ type: "obj:update", obj: partial });
+          function: traced("updateText", "Updating text", async (args: { id: string; text: string }) => {
+            const result = await stub.mutate({
+              type: "obj:update",
+              obj: { id: args.id, props: { text: args.text }, updatedAt: Date.now() },
+            });
             if (!result.ok) return JSON.stringify({ error: result.error });
-            return JSON.stringify({ updated: args.id });
+            return JSON.stringify({ updated: args.id, text: args.text });
           }),
         },
+
+        // 8. changeColor
         {
-          name: "delete_object",
+          name: "changeColor",
+          description: "Change the color of an object. Maps to props.color for stickies, props.fill for shapes.",
+          parameters: {
+            type: "object" as const,
+            properties: {
+              id: { type: "string" as const, description: "The ID of the object to recolor" },
+              color: { type: "string" as const, description: "New hex color" },
+            },
+            required: ["id", "color"] as const,
+          },
+          function: traced("changeColor", "Changing color", async (args: { id: string; color: string }) => {
+            // Need to read object type to decide which prop to set
+            const existing = await stub.readObject(args.id) as BoardObject | null;
+            if (!existing) return JSON.stringify({ error: `Object ${args.id} not found` });
+
+            const props: Record<string, string> = {};
+            if (existing.type === "sticky" || existing.type === "text") {
+              props.color = args.color;
+            } else {
+              props.fill = args.color;
+            }
+            const result = await stub.mutate({
+              type: "obj:update",
+              obj: { id: args.id, props, updatedAt: Date.now() },
+            });
+            if (!result.ok) return JSON.stringify({ error: result.error });
+            return JSON.stringify({ recolored: args.id, color: args.color });
+          }),
+        },
+
+        // 9. getBoardState (replaces read_board with filtering)
+        {
+          name: "getBoardState",
+          description: "Read objects on the whiteboard. Optionally filter by type or specific IDs. For large boards (20+), returns a summary unless filtered.",
+          parameters: {
+            type: "object" as const,
+            properties: {
+              filter: { type: "string" as const, description: "Filter by object type: 'sticky', 'rect', 'circle', 'line', 'text', 'frame'" },
+              ids: {
+                type: "array" as const,
+                items: { type: "string" as const },
+                description: "Array of specific object IDs to return",
+              },
+            },
+            required: [] as const,
+          },
+          function: traced("getBoardState", "Reading board", async (args: { filter?: string; ids?: string[] }) => {
+            const objects = await stub.readObjects() as BoardObject[];
+
+            // If specific IDs requested, return only those
+            if (args.ids && args.ids.length > 0) {
+              const matched = objects.filter((o: BoardObject) => args.ids!.includes(o.id));
+              return JSON.stringify(matched);
+            }
+
+            // If filter by type
+            if (args.filter) {
+              const matched = objects.filter((o: BoardObject) => o.type === args.filter);
+              return JSON.stringify(matched);
+            }
+
+            // Large board summary mode
+            if (objects.length >= 20) {
+              const counts: Record<string, number> = {};
+              for (const o of objects) counts[o.type] = (counts[o.type] || 0) + 1;
+              return JSON.stringify({
+                summary: true,
+                total: objects.length,
+                countsByType: counts,
+                hint: "Use filter or ids parameter to get specific objects",
+              });
+            }
+
+            return JSON.stringify(objects);
+          }),
+        },
+
+        // 10. deleteObject
+        {
+          name: "deleteObject",
           description: "Delete an object from the whiteboard by its ID",
           parameters: {
             type: "object" as const,
@@ -379,7 +434,7 @@ aiRoutes.post("/chat", async (c) => {
             },
             required: ["id"] as const,
           },
-          function: traced("delete_object", "Deleting object", async (args: { id: string }) => {
+          function: traced("deleteObject", "Deleting object", async (args: { id: string }) => {
             const result = await stub.mutate({ type: "obj:delete", id: args.id });
             if (!result.ok) return JSON.stringify({ error: result.error });
             return JSON.stringify({ deleted: args.id });
@@ -501,9 +556,10 @@ aiRoutes.post("/chat", async (c) => {
             { maxRecursiveToolRuns: 3, verbose: true },
           );
 
-          const text = typeof response === "string"
+          const raw = typeof response === "string"
             ? response
-            : (response as { response?: string }).response ?? "I performed the requested actions on the board.";
+            : (response as { response?: unknown }).response;
+          const text = typeof raw === "string" ? raw : "I performed the requested actions on the board.";
 
           console.debug("[ai] llama final:", text.slice(0, 200));
           emit({ type: "done", response: text });

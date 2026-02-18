@@ -8,16 +8,14 @@ import {
   getObjectCount,
 } from "./helpers";
 
+const baseURL = `http://localhost:${process.env.VITE_PORT || 5173}`;
+
 test.describe("Real-time sync", () => {
   test.setTimeout(45_000);
 
   test("2-user simultaneous editing", async ({ browser }) => {
-    const ctx1 = await browser.newContext({
-      baseURL: "http://localhost:5175",
-    });
-    const ctx2 = await browser.newContext({
-      baseURL: "http://localhost:5175",
-    });
+    const ctx1 = await browser.newContext({ baseURL });
+    const ctx2 = await browser.newContext({ baseURL });
 
     await signUp(ctx1);
     await signUp(ctx2);

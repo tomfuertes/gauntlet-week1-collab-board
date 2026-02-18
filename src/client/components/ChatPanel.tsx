@@ -11,17 +11,34 @@ interface ChatPanelProps {
 }
 
 const TOOL_ICONS: Record<string, string> = {
-  create_sticky: "+note",
-  create_text: "+text",
-  create_rect: "+rect",
-  create_circle: "+circle",
-  create_line: "+line",
-  create_connector: "+arrow",
-  create_frame: "+frame",
-  read_board: "read",
-  update_object: "edit",
-  delete_object: "del",
+  createStickyNote: "\u{1F4CC}",
+  createShape: "\u{1F7E6}",
+  createFrame: "\u{1F5BC}",
+  createConnector: "\u{27A1}",
+  moveObject: "\u{1F4CD}",
+  resizeObject: "\u{2194}",
+  updateText: "\u{270F}",
+  changeColor: "\u{1F3A8}",
+  getBoardState: "\u{1F440}",
+  deleteObject: "\u{1F5D1}",
 };
+
+function toolSummary(t: { name: string; label: string; args?: Record<string, unknown> }): string {
+  const a = t.args || {};
+  switch (t.name) {
+    case "createStickyNote": return `Created sticky: "${a.text || "..."}"`;
+    case "createShape": return `Drew ${a.shape || "shape"}${a.fill ? ` (${a.fill})` : ""}`;
+    case "createFrame": return `Created frame: "${a.title || "..."}"`;
+    case "createConnector": return "Connected objects";
+    case "moveObject": return `Moved object`;
+    case "resizeObject": return `Resized object`;
+    case "updateText": return `Updated text: "${a.text || "..."}"`;
+    case "changeColor": return `Changed color to ${a.color || "..."}`;
+    case "getBoardState": return `Read board${a.filter ? ` (${a.filter}s)` : ""}`;
+    case "deleteObject": return `Deleted object`;
+    default: return t.label;
+  }
+}
 
 const SUGGESTED_PROMPTS = [
   "What's on this board?",
@@ -38,7 +55,7 @@ const TEMPLATES: { label: string; prompt: string }[] = [
 ];
 
 function ToolHistory({ tools }: { tools: NonNullable<AIChatMessage["tools"]> }) {
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(true);
   return (
     <div style={{ marginBottom: 4 }}>
       <button
@@ -51,13 +68,13 @@ function ToolHistory({ tools }: { tools: NonNullable<AIChatMessage["tools"]> }) 
         <span style={{ fontSize: "0.625rem", transition: "transform 0.15s", transform: open ? "rotate(90deg)" : "none" }}>
           ▶
         </span>
-        {tools.length} tool call{tools.length > 1 ? "s" : ""}
+        {tools.length} action{tools.length > 1 ? "s" : ""}
       </button>
       {open && (
-        <div style={{ marginTop: 4, paddingLeft: 10, display: "flex", flexDirection: "column", gap: 2 }}>
+        <div style={{ marginTop: 4, paddingLeft: 10, display: "flex", flexDirection: "column", gap: 3 }}>
           {tools.map((t, i) => (
-            <span key={i} style={{ fontSize: "0.625rem", color: "#64748b", fontFamily: "monospace" }}>
-              {TOOL_ICONS[t.name] || t.name} {t.label.toLowerCase()}
+            <span key={i} style={{ fontSize: "0.6875rem", color: "#94a3b8" }}>
+              {TOOL_ICONS[t.name] || "\u{1F527}"} {toolSummary(t)}
             </span>
           ))}
         </div>
@@ -124,14 +141,16 @@ export function ChatPanel({ boardId, onClose, initialPrompt, selectedIds }: Chat
       .chat-pulse-text { animation: chat-pulse 2s ease-in-out infinite; }
     `}</style>
     <div style={{
-      position: "absolute", top: 0, right: 0, bottom: 0, width: 380, zIndex: 30,
-      background: "rgba(15, 23, 42, 0.97)", borderLeft: "1px solid #334155",
+      position: "absolute", bottom: 72, right: 16, width: 360, maxHeight: "min(520px, calc(100vh - 140px))",
+      zIndex: 30, background: "rgba(15, 23, 42, 0.97)", border: "1px solid #334155",
+      borderRadius: 12, boxShadow: "0 8px 32px rgba(0,0,0,0.4)",
       display: "flex", flexDirection: "column",
     }}>
       {/* Header */}
       <div style={{
         height: 48, display: "flex", alignItems: "center", justifyContent: "space-between",
         padding: "0 1rem", borderBottom: "1px solid #334155", flexShrink: 0,
+        borderRadius: "12px 12px 0 0",
       }}>
         <span style={{ color: "#e2e8f0", fontWeight: 600, fontSize: "0.875rem" }}>AI Assistant</span>
         <button onClick={onClose} style={{
@@ -240,7 +259,7 @@ export function ChatPanel({ boardId, onClose, initialPrompt, selectedIds }: Chat
       {/* Input */}
       <div style={{
         padding: "0.75rem", borderTop: "1px solid #334155", flexShrink: 0,
-        display: "flex", gap: "0.5rem",
+        display: "flex", gap: "0.5rem", borderRadius: "0 0 12px 12px",
       }}>
         <textarea
           ref={inputRef}

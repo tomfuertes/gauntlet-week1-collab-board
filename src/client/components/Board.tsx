@@ -153,7 +153,7 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
   const [size, setSize] = useState({ width: window.innerWidth, height: window.innerHeight });
   const lastCursorSend = useRef(0);
   const [toolMode, setToolMode] = useState<ToolMode>("select");
-  const [chatOpen, setChatOpen] = useState(false);
+  const [chatOpen, setChatOpen] = useState(true);
   const [chatInitialPrompt, setChatInitialPrompt] = useState<string | undefined>();
   const [showShortcuts, setShowShortcuts] = useState(false);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; objId: string } | null>(null);
