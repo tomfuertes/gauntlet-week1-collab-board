@@ -13,7 +13,7 @@ CollabBoard - real-time collaborative whiteboard with AI agent integration. Gaun
 - **Real-time:** Durable Objects + WebSockets (one DO per board, LWW conflict resolution)
 - **Auth:** Custom (username/password, PBKDF2 hash, D1 sessions, cookie-based)
 - **Database:** DO Storage (board objects as KV) + D1 (users/sessions/board metadata)
-- **AI:** Workers AI binding (`env.AI.run()` + `runWithTools()`) - Llama 3.3 70B (free tier, weak tool-use). 10 tools: `createStickyNote`, `createShape`, `createFrame`, `createConnector`, `moveObject`, `resizeObject`, `updateText`, `changeColor`, `getBoardState`, `deleteObject`. Haiku via AI Gateway is the upgrade path ($0.001/req, much better tool discipline).
+- **AI:** Workers AI binding (`env.AI.run()` + `runWithTools()`) - GLM-4.7-Flash (free tier, 131K context, multi-turn tool calling). 10 tools defined in `src/server/ai-tools.ts` (shared registry), display metadata in `src/shared/ai-tool-meta.ts`. Haiku via AI Gateway is the upgrade path ($0.001/req, much better tool discipline).
 - **Deploy:** CF git integration auto-deploys on push to main
 
 ## Commands
@@ -130,9 +130,11 @@ src/
   server/               # CF Worker
     index.ts            # Hono app - routes, board CRUD, DO export, WebSocket upgrade
     auth.ts             # Auth routes + PBKDF2 hashing + session helpers
-    ai.ts               # AI route - runWithTools + board manipulation tools
+    ai.ts               # AI route - SSE stream, Haiku/GLM dispatch
+    ai-tools.ts         # Tool registry - 10 tool definitions (single source of truth)
   shared/               # Types shared between client and server
     types.ts            # BoardObject, WSMessage, ChatMessage, User, etc.
+    ai-tool-meta.ts     # Tool display metadata (icons, labels, summaries) for ChatPanel
 migrations/             # D1 SQL migrations (tracked via d1_migrations table, npm run migrate)
 ```
 
@@ -144,7 +146,7 @@ migrations/             # D1 SQL migrations (tracked via d1_migrations table, np
 4. Worker routes WebSocket to Board Durable Object
 5. DO manages all board state: objects in DO Storage (`obj:{uuid}`), cursors in memory
 6. Mutations flow: client applies optimistically -> sends to DO -> DO persists + broadcasts to other clients
-7. AI commands: client POSTs to `/api/ai/chat` -> Worker runs `runWithTools()` with Llama 3.3 70B -> tool callbacks HTTP to Board DO `/read` and `/mutate` -> DO persists + broadcasts to all WebSocket clients
+7. AI commands: client POSTs to `/api/ai/chat` -> Worker runs `runWithTools()` with GLM-4.7-Flash -> tool callbacks via Board DO RPC (`readObject`/`mutate`) -> DO persists + broadcasts to all WebSocket clients
 
 ### WebSocket Protocol
 
@@ -172,7 +174,7 @@ Each object stored as separate DO Storage key (`obj:{uuid}`, ~200 bytes). LWW vi
 - Auth is custom (no Better Auth) - PBKDF2 hashing (Web Crypto, zero deps), D1 sessions, cookie-based. No email, no OAuth, no password reset.
 - Deploy via `git push` to main (CF git integration). Do NOT run `wrangler deploy` manually.
 - All AI calls are server-side in Worker - never expose API keys to client bundle
-- AI uses `@cloudflare/ai-utils` `runWithTools()` with `maxRecursiveToolRuns: 3` (counts LLM round-trips, not tool calls). Llama 3.3 needs explicit system prompt guardrails for tool discipline.
+- AI uses `@cloudflare/ai-utils` `runWithTools()` with `maxRecursiveToolRuns: 3` (counts LLM round-trips, not tool calls). Tool definitions in `src/server/ai-tools.ts` (single source of truth), display metadata in `src/shared/ai-tool-meta.ts`.
 - D1 migrations tracked via `d1_migrations` table. Use `npm run migrate` (not raw `wrangler d1 execute`). Create new: `wrangler d1 migrations create collabboard-db "name"`
 - WebSocket reconnect with exponential backoff (1s-10s cap), `disconnected` after 5 initial failures
 - Performance targets: 60fps canvas, <100ms object sync, <50ms cursor sync, 500+ objects, 5+ users

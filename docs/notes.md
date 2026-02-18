@@ -2,20 +2,16 @@
 
 *Internal project management scratch. Not a deliverable.*
 
-## Session 11 Context (Feb 17, 2026)
+## Session 12 Context (Feb 17, 2026)
 
 ### What Was Done
-- AI tool refactor: 10 tools redesigned from overlapping to orthogonal (createShape consolidates rect/circle/line, update_object split into moveObject/resizeObject/updateText/changeColor, createConnector uses object IDs, getBoardState has filter/summary)
-- Props deep-merge fix in board.ts (changeColor no longer clobbers text)
-- readObject(id) RPC for single-object lookup
-- Demo script rewritten with AI chat commands (Alice + Bob parallel)
-- ChatPanel updated for new tool names/icons
+- DRY tool registry: extracted 10 tool definitions from inline ai.ts (583 -> 190 lines) into `src/server/ai-tools.ts`
+- Shared tool display metadata: `src/shared/ai-tool-meta.ts` (icons, labels, summaries) consumed by both ChatPanel and ai.ts
+- GLM-4.7-Flash model swap: replaced Llama 3.3 70B as free-tier fallback (131K context, native multi-turn tool calling)
+- CLAUDE.md updated with new architecture (ai-tools.ts, ai-tool-meta.ts, GLM model)
 
 ### What's Next
-- [ ] Demo video (3-5 min)
-- [ ] AI dev log (fill TODO sections)
-- [ ] README polish + screenshot
-- [ ] Prod smoke test (2-browser sync of AI actions)
+- [ ] Evaluate Cloudflare Agents SDK migration (post-submission)
 
 ---
 
@@ -84,12 +80,14 @@
 | Feb 16 | AI priority over more shapes | Gauntlet AI exercise - AI is differentiator |
 | Feb 16 | HTML overlay for text editing | Konva doesn't support multiline |
 | Feb 16 | Hash routing over React Router | Zero deps, shareable links |
-| Feb 16 | Llama 3.3 + Haiku upgrade path | Free tier for demo, Haiku for quality |
+| Feb 16 | Llama 3.3 + Haiku upgrade path | Free tier for demo, Haiku for quality (replaced by GLM Feb 17) |
 | Feb 16 | No freehand drawing | Spec doesn't require it |
 | Feb 17 | DO RPC over fetch routing | Type-safe, TS-checked stubs |
 | Feb 17 | Generated types over workers-types | `wrangler types` full runtime types |
 | Feb 17 | Scroll-to-pan, ctrl+scroll-to-zoom | Matches Figma/Miro convention |
 | Feb 17 | AI tools: orthogonal over monolithic | One tool = one responsibility for LLM accuracy |
+| Feb 17 | DRY tool registry over inline defs | Single source of truth, ai.ts 583->190 lines |
+| Feb 17 | GLM-4.7-Flash over Llama 3.3 | 131K context, native multi-turn tool calling, still free |
 
 ---
 
@@ -97,7 +95,8 @@
 
 | Model | Input/1M | Output/1M | Tool-use | Notes |
 |-------|----------|-----------|----------|-------|
-| Llama 3.3 70B (Workers AI) | $0.29 | $2.25 | Poor | Free tier. Skips read-before-update. |
+| GLM-4.7-Flash (Workers AI) | Free | Free | Good | 131K context, multi-turn tool calling. Replaced Llama 3.3. |
+| Llama 3.3 70B (Workers AI) | $0.29 | $2.25 | Poor | Previous fallback. Skipped read-before-update. |
 | Claude Haiku 4.5 (Anthropic) | $1.00 | $5.00 | Excellent | Deployed to prod. |
 
 `runWithTools`: `maxRecursiveToolRuns` counts LLM round-trips, not tool calls. We use 3 (was 10, caused triple-creation).
