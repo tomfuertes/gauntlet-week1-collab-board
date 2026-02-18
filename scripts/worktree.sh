@@ -153,17 +153,9 @@ cmd_remove() {
     exit 1
   fi
 
-  # Check for uncommitted changes to tracked files
-  if git -C "$wt_dir" diff --quiet 2>/dev/null && git -C "$wt_dir" diff --cached --quiet 2>/dev/null; then
-    : # clean
-  else
-    echo "Warning: ${wt_dir} has uncommitted changes to tracked files:"
-    git -C "$wt_dir" diff --stat
-    read -rp "Force remove anyway? [y/N] " confirm
-    [[ "$confirm" != [yY]* ]] && { echo "Aborted."; exit 1; }
-  fi
-
   echo "Removing worktree at ${wt_dir}..."
+  # --force handles gitignored/untracked files (node_modules, .dev.vars, worktree.ports).
+  # Dirty tracked files still error out - commit or stash first.
   git worktree remove --force "$wt_dir"
 
   if git show-ref --verify --quiet "refs/heads/${feat_branch}"; then
