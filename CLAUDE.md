@@ -102,7 +102,7 @@ npx playwright test --reporter=dot     # minimal output (default 'list' floods c
 
 ### Worktree Agent Conventions
 
-Worktree agent lifecycle: **implement -> PR review -> fix review issues -> UAT -> done**. PR review gates UAT - never run UAT before review, because review fixes could introduce regressions that UAT would miss.
+Worktree agent lifecycle: **implement -> PR review -> fix review issues -> UAT -> commit**. PR review gates UAT. After UAT passes, commit all changes to the feature branch (no PR - the orchestrator merges from main). The branch must be clean-committed when the agent finishes so `git merge feat/<branch>` works from main.
 
 Worktree prompts must explicitly mention:
 - `npm run dev` (auto-loads worktree.ports if present, never hardcode ports)
@@ -110,6 +110,7 @@ Worktree prompts must explicitly mention:
 - **Namespace `playwright-cli` sessions in worktrees** - use `-s=<branch-name>` (e.g., `playwright-cli -s=feat-frames open ...`) to avoid conflicts with other worktrees running simultaneously. Without `-s`, all worktrees share the default session.
 - "Read CLAUDE.md and relevant source files before implementing" (not "Enter plan mode first")
 - "After implementation, run `/pr-review-toolkit:review-pr` and fix all issues before starting UAT"
+- "After UAT passes, commit all changes to the feature branch. Do not open a PR."
 
 ## Architecture
 
