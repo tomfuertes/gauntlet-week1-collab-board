@@ -159,7 +159,7 @@ migrations/             # D1 SQL migrations (tracked via d1_migrations table, np
 ### WebSocket Protocol
 
 ```
-Client -> DO: cursor | obj:create | obj:update | obj:delete
+Client -> DO: cursor | obj:create | obj:update | obj:delete | batch:undo
 DO -> Client: cursor | obj:create | obj:update | obj:delete | presence | init
 ```
 
@@ -174,10 +174,10 @@ DO echoes mutations to OTHER clients only (sender already applied optimistically
 ### Board Object Shape
 
 ```typescript
-{ id, type, x, y, width, height, rotation, props: { text?, color?, fill?, stroke?, arrow? }, createdBy, updatedAt }
+{ id, type, x, y, width, height, rotation, props: { text?, color?, fill?, stroke?, arrow? }, createdBy, updatedAt, batchId? }
 ```
 
-Each object stored as separate DO Storage key (`obj:{uuid}`, ~200 bytes). LWW via `updatedAt`.
+Each object stored as separate DO Storage key (`obj:{uuid}`, ~200 bytes). LWW via `updatedAt`. `batchId` groups AI-created objects from a single `streamText` call for batch undo.
 
 ## Key Constraints
 

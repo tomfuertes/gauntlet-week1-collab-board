@@ -1,6 +1,8 @@
 import { useRef, useEffect } from "react";
-import { Group, Line, Text } from "react-konva";
+import { Circle, Group, Line, Text } from "react-konva";
 import type Konva from "konva";
+import { colors } from "../theme";
+import { AI_USER_ID } from "@shared/types";
 
 // Distinct colors for up to 10 users
 const CURSOR_COLORS = [
@@ -37,6 +39,7 @@ interface LerpPos {
 export function Cursors({ cursors }: { cursors: Map<string, CursorState> }) {
   const groupRefs = useRef<Map<string, Konva.Group>>(new Map());
   const trailRefs = useRef<Map<string, Konva.Line>>(new Map());
+  const aiDotRef = useRef<Konva.Circle | null>(null);
   const positions = useRef<Map<string, LerpPos>>(new Map());
   const trails = useRef<Map<string, number[]>>(new Map());
 
@@ -82,6 +85,15 @@ export function Cursors({ cursors }: { cursors: Map<string, CursorState> }) {
           group.y(pos.y);
         }
 
+        // AI cursor: animate pulse radius instead of trails
+        if (userId === AI_USER_ID) {
+          const dot = aiDotRef.current;
+          if (dot) {
+            dot.radius(6 + Math.sin(frameCount * 0.08) * 1.5);
+          }
+          continue;
+        }
+
         // Sample trail position periodically
         if (frameCount % TRAIL_SAMPLE_INTERVAL === 0) {
           let trail = trails.current.get(userId);
@@ -108,8 +120,8 @@ export function Cursors({ cursors }: { cursors: Map<string, CursorState> }) {
 
   return (
     <>
-      {/* Trail lines (rendered behind cursor shapes) */}
-      {[...cursors.values()].map((cursor) => {
+      {/* Trail lines (rendered behind cursor shapes) - skip AI cursor */}
+      {[...cursors.values()].filter(c => c.userId !== AI_USER_ID).map((cursor) => {
         const color = getUserColor(cursor.userId);
         return (
           <Line
@@ -131,7 +143,8 @@ export function Cursors({ cursors }: { cursors: Map<string, CursorState> }) {
       })}
       {/* Cursor shapes */}
       {[...cursors.values()].map((cursor) => {
-        const color = getUserColor(cursor.userId);
+        const isAi = cursor.userId === AI_USER_ID;
+        const color = isAi ? colors.aiCursor : getUserColor(cursor.userId);
         return (
           <Group
             key={cursor.userId}
@@ -146,17 +159,27 @@ export function Cursors({ cursors }: { cursors: Map<string, CursorState> }) {
               }
             }}
           >
-            {/* Arrow cursor shape */}
-            <Line
-              points={[0, 0, 0, 16, 4, 12, 8, 20, 11, 19, 7, 11, 12, 11]}
-              fill={color}
-              closed
-              stroke={color}
-              strokeWidth={0.5}
-            />
+            {isAi ? (
+              /* AI cursor: pulsing filled dot */
+              <Circle
+                ref={(node: Konva.Circle | null) => { aiDotRef.current = node; }}
+                radius={6}
+                fill={colors.aiCursor}
+                opacity={0.85}
+              />
+            ) : (
+              /* Arrow cursor shape */
+              <Line
+                points={[0, 0, 0, 16, 4, 12, 8, 20, 11, 19, 7, 11, 12, 11]}
+                fill={color}
+                closed
+                stroke={color}
+                strokeWidth={0.5}
+              />
+            )}
             {/* Name label */}
             <Text
-              x={14}
+              x={isAi ? 10 : 14}
               y={10}
               text={cursor.username}
               fontSize={11}

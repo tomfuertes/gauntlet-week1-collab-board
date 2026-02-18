@@ -1,5 +1,6 @@
 import { tool } from "ai";
 import { z } from "zod";
+import { AI_USER_ID } from "../shared/types";
 import type { BoardObject } from "../shared/types";
 import type { MutateResult } from "./env";
 
@@ -14,6 +15,7 @@ interface BoardStub {
   readObjects(): Promise<BoardObject[]>;
   readObject(id: string): Promise<BoardObject | null>;
   mutate(msg: BoardMutation): Promise<MutateResult>;
+  injectCursor(x: number, y: number): Promise<void>;
 }
 
 // ---------------------------------------------------------------------------
@@ -35,6 +37,7 @@ function makeObject(
   width: number,
   height: number,
   props: BoardObject["props"],
+  batchId?: string,
 ): BoardObject {
   return {
     id: crypto.randomUUID(),
@@ -44,8 +47,9 @@ function makeObject(
     height,
     rotation: 0,
     props,
-    createdBy: "ai-agent",
+    createdBy: AI_USER_ID,
     updatedAt: Date.now(),
+    ...(batchId ? { batchId } : {}),
   };
 }
 
@@ -77,6 +81,7 @@ async function createAndMutate(stub: BoardStub, obj: BoardObject) {
       h: obj.height,
     }),
   );
+  cursorToCenter(stub, obj);
   return {
     created: obj.id,
     type: obj.type,
@@ -111,6 +116,13 @@ async function updateAndMutate(
   return { [resultKey]: id, ...extra };
 }
 
+/** Fire-and-forget: move AI cursor to object center. Never blocks tool execution. */
+function cursorToCenter(stub: BoardStub, obj: { x: number; y: number; width: number; height: number }) {
+  stub.injectCursor(obj.x + obj.width / 2, obj.y + obj.height / 2).catch((err: unknown) => {
+    console.debug(JSON.stringify({ event: "ai:cursor:error", error: String(err) }));
+  });
+}
+
 /** Check if two board objects overlap (axis-aligned bounding boxes) */
 function rectsOverlap(a: BoardObject, b: BoardObject): boolean {
   return (
@@ -135,7 +147,7 @@ function computeOverlapScore(objects: BoardObject[]): number {
 // ---------------------------------------------------------------------------
 
 /** Create the full AI SDK tool registry bound to a specific Board DO stub */
-export function createSDKTools(stub: BoardStub) {
+export function createSDKTools(stub: BoardStub, batchId?: string) {
   return {
     // 1. createStickyNote
     createStickyNote: tool({
@@ -162,7 +174,7 @@ export function createSDKTools(stub: BoardStub) {
         const obj = makeObject("sticky", randomPos(x, y), 200, 200, {
           text: text || "New note",
           color: color || "#fbbf24",
-        });
+        }, batchId);
         return createAndMutate(stub, obj);
       },
     }),
@@ -228,6 +240,7 @@ export function createSDKTools(stub: BoardStub) {
             diameter,
             diameter,
             { fill: fill || "#3b82f6", stroke: stroke || "#2563eb" },
+            batchId,
           );
           return createAndMutate(stub, obj);
         }
@@ -239,6 +252,7 @@ export function createSDKTools(stub: BoardStub) {
             width ?? 200,
             height ?? 0,
             { stroke: stroke || "#94a3b8" },
+            batchId,
           );
           return createAndMutate(stub, obj);
         }
@@ -250,6 +264,7 @@ export function createSDKTools(stub: BoardStub) {
           width ?? 150,
           height ?? 100,
           { fill: fill || "#3b82f6", stroke: stroke || "#2563eb" },
+          batchId,
         );
         return createAndMutate(stub, obj);
       },
@@ -290,6 +305,7 @@ export function createSDKTools(stub: BoardStub) {
                 ? title.trim()
                 : "Frame",
           },
+          batchId,
         );
         return createAndMutate(stub, obj);
       },
@@ -335,7 +351,7 @@ export function createSDKTools(stub: BoardStub) {
         const obj = makeObject("line", { x: x1, y: y1 }, w, h, {
           stroke: stroke || "#94a3b8",
           arrow: arrowStyle as "end" | "both" | "none",
-        });
+        }, batchId);
         const result = await createAndMutate(stub, obj);
         if ("error" in result) return result;
         return { ...result, from: fromId, to: toId };
@@ -352,6 +368,8 @@ export function createSDKTools(stub: BoardStub) {
         y: z.number().describe("New Y position"),
       }),
       execute: async ({ id, x, y }) => {
+        const existing = await stub.readObject(id);
+        if (existing) cursorToCenter(stub, { x, y, width: existing.width, height: existing.height });
         return updateAndMutate(stub, id, { x, y }, "moved", { x, y });
       },
     }),
@@ -365,6 +383,8 @@ export function createSDKTools(stub: BoardStub) {
         height: z.number().describe("New height"),
       }),
       execute: async ({ id, width, height }) => {
+        const existing = await stub.readObject(id);
+        if (existing) cursorToCenter(stub, { x: existing.x, y: existing.y, width, height });
         return updateAndMutate(stub, id, { width, height }, "resized", { width, height });
       },
     }),
@@ -378,6 +398,8 @@ export function createSDKTools(stub: BoardStub) {
         text: z.string().describe("New text content"),
       }),
       execute: async ({ id, text }) => {
+        const existing = await stub.readObject(id);
+        if (existing) cursorToCenter(stub, existing);
         return updateAndMutate(stub, id, { props: { text } }, "updated", { text });
       },
     }),
@@ -394,6 +416,7 @@ export function createSDKTools(stub: BoardStub) {
         const existing = await stub.readObject(id);
         if (!existing) return { error: `Object ${id} not found` };
 
+        cursorToCenter(stub, existing);
         const props: BoardObject["props"] =
           existing.type === "sticky" || existing.type === "text"
             ? { color }

@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from "react";
+import { AI_USER_ID } from "@shared/types";
 import type { BoardObject } from "@shared/types";
 
 const AI_GLOW_DURATION_MS = 10_000;
@@ -69,7 +70,7 @@ export function useAiObjectEffects(
     for (const id of currentIds) {
       if (!prevIds.has(id)) {
         const obj = objects.get(id);
-        if (obj && obj.createdBy === "ai-agent") {
+        if (obj && obj.createdBy === AI_USER_ID) {
           newAiObjects.push({
             id,
             x: obj.x + obj.width / 2,
