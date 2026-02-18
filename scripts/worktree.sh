@@ -69,13 +69,13 @@ cmd_create() {
   key_path="$(git -C "$REPO_ROOT" rev-parse --path-format=absolute --git-common-dir)/git-crypt/keys/default"
   (cd "$wt_dir" && git-crypt unlock "$key_path")
 
-  # Clone node_modules from main repo via APFS copy-on-write (instant, zero extra disk)
+  # Seed node_modules: CoW copy for speed, then npm install for correctness
   if [[ -d "${REPO_ROOT}/node_modules" ]]; then
-    echo "Cloning node_modules (APFS copy-on-write)..."
+    echo "Seeding node_modules (APFS copy-on-write)..."
     cp -ca "${REPO_ROOT}/node_modules" "${wt_dir}/node_modules"
-  else
-    echo "Warning: no node_modules in main repo, run npm install in worktree"
   fi
+  echo "Installing dependencies..."
+  (cd "$wt_dir" && npm install --prefer-offline 2>&1 | tail -1)
 
   # Copy local secrets (.dev.vars) so worktrees can run wrangler dev with API keys
   [[ -f "${REPO_ROOT}/.dev.vars" ]] && cp "${REPO_ROOT}/.dev.vars" "${wt_dir}/.dev.vars"
