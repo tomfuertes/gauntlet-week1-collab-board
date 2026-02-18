@@ -56,19 +56,19 @@ export function BoardList({ user, onSelectBoard, onLogout }: {
   };
 
   return (
-    <div style={{ minHeight: "100vh", background: "#1a1a2e", color: "#eee" }}>
+    <div style={{ minHeight: "100vh", background: colors.bg, color: colors.text }}>
       {/* Header */}
       <div style={{
         height: 48, display: "flex", alignItems: "center", justifyContent: "space-between",
-        padding: "0 1rem", background: "rgba(22, 33, 62, 0.9)", borderBottom: "1px solid #334155",
+        padding: "0 1rem", background: colors.overlayHeader, borderBottom: `1px solid ${colors.border}`,
         fontSize: "0.875rem",
       }}>
         <span style={{ fontWeight: 600 }}>CollabBoard</span>
         <div style={{ display: "flex", alignItems: "center", gap: "1rem" }}>
           <span>{user.displayName}</span>
           <button onClick={handleLogout} style={{
-            background: "none", border: "1px solid #475569", borderRadius: 4,
-            color: "#94a3b8", padding: "0.25rem 0.5rem", cursor: "pointer", fontSize: "0.75rem",
+            background: "none", border: `1px solid ${colors.borderLight}`, borderRadius: 4,
+            color: colors.textMuted, padding: "0.25rem 0.5rem", cursor: "pointer", fontSize: "0.75rem",
           }}>
             Logout
           </button>
@@ -80,7 +80,7 @@ export function BoardList({ user, onSelectBoard, onLogout }: {
         <h2 style={{ fontSize: "1.25rem", fontWeight: 600, marginBottom: "1rem" }}>Your Boards</h2>
 
         {loading ? (
-          <p style={{ color: "#888" }}>Loading boards...</p>
+          <p style={{ color: colors.textDim }}>Loading boards...</p>
         ) : (
           <div style={{
             display: "grid",
@@ -91,9 +91,9 @@ export function BoardList({ user, onSelectBoard, onLogout }: {
             <div
               onClick={handleCreate}
               style={{
-                border: "2px dashed #475569", borderRadius: 8, padding: "1.5rem",
+                border: `2px dashed ${colors.borderLight}`, borderRadius: 8, padding: "1.5rem",
                 display: "flex", alignItems: "center", justifyContent: "center",
-                cursor: "pointer", minHeight: 120, color: "#94a3b8",
+                cursor: "pointer", minHeight: 120, color: colors.textMuted,
                 fontSize: "1rem", transition: "border-color 0.15s",
               }}
               onMouseEnter={(e) => (e.currentTarget.style.borderColor = colors.accentLight)}
@@ -108,7 +108,7 @@ export function BoardList({ user, onSelectBoard, onLogout }: {
                 key={board.id}
                 onClick={() => onSelectBoard(board.id)}
                 style={{
-                  background: "#16213e", border: "1px solid #334155", borderRadius: 8,
+                  background: colors.surface, border: `1px solid ${colors.border}`, borderRadius: 8,
                   padding: "1.5rem", cursor: "pointer", minHeight: 120,
                   display: "flex", flexDirection: "column", justifyContent: "space-between",
                   transition: "border-color 0.15s",
@@ -118,7 +118,7 @@ export function BoardList({ user, onSelectBoard, onLogout }: {
               >
                 <div>
                   <div style={{ fontWeight: 600, marginBottom: 4 }}>{board.name}</div>
-                  <div style={{ fontSize: "0.75rem", color: "#888" }}>
+                  <div style={{ fontSize: "0.75rem", color: colors.textDim }}>
                     {new Date(board.updated_at + "Z").toLocaleDateString()}
                   </div>
                 </div>
@@ -126,8 +126,8 @@ export function BoardList({ user, onSelectBoard, onLogout }: {
                   <button
                     onClick={(e) => handleDelete(e, board.id)}
                     style={{
-                      alignSelf: "flex-end", background: "none", border: "1px solid #475569",
-                      borderRadius: 4, color: "#f87171", padding: "0.2rem 0.5rem",
+                      alignSelf: "flex-end", background: "none", border: `1px solid ${colors.borderLight}`,
+                      borderRadius: 4, color: colors.error, padding: "0.2rem 0.5rem",
                       cursor: "pointer", fontSize: "0.7rem", marginTop: 8,
                     }}
                   >

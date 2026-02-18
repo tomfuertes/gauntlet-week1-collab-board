@@ -8,7 +8,7 @@ import type { BoardObject } from "@shared/types";
 import { useWebSocket, type ConnectionState } from "../hooks/useWebSocket";
 import { useUndoRedo } from "../hooks/useUndoRedo";
 import { useAiObjectEffects } from "../hooks/useAiObjectEffects";
-import { colors, toolCursors } from "../theme";
+import { colors, toolCursors, getUserColor } from "../theme";
 import { Cursors } from "./Cursors";
 import { ChatPanel } from "./ChatPanel";
 import { ConfettiBurst } from "./ConfettiBurst";
@@ -34,16 +34,6 @@ const COLOR_PRESETS = [
 ];
 
 const SIDEBAR_W = 48;
-
-// Consistent color per userId (same palette as Cursors.tsx)
-const CURSOR_COLORS = [
-  "#f87171", "#60a5fa", "#4ade80", "#fbbf24", "#a78bfa",
-  "#f472b6", "#34d399", "#fb923c", "#818cf8", "#22d3ee",
-];
-function getUserColor(userId: string): string {
-  const hash = userId.split("").reduce((h, c) => (h * 31 + c.charCodeAt(0)) | 0, 0);
-  return CURSOR_COLORS[Math.abs(hash) % CURSOR_COLORS.length];
-}
 
 // Mirror-div technique: find pixel coords of character at `position` inside a textarea
 function getCaretPixelPos(textarea: HTMLTextAreaElement, position: number): { x: number; y: number } {
