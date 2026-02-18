@@ -18,11 +18,11 @@ open board -> play scene -> share replay link -> recruit new player
                                  +--- bring them back --+
 ```
 
-## In Progress
+## Also Shipped
 
-| Worktree | Branch | What |
-|----------|--------|------|
-| ai-audit | `feat/ai-audit` | First-principles audit of agent architecture. Observability, prompt versioning, tool call optimization. |
+| Feature | What shipped |
+|---------|--------------|
+| ~~AI Architecture Audit~~ | Extracted prompts to `src/server/prompts.ts` with version constants, structured tool call logging in `ai-tools-sdk.ts`, architecture docs in `docs/ai-architecture.md`. |
 
 ## Roadmap
 
