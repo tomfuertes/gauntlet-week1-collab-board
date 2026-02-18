@@ -19,7 +19,8 @@
     "test:e2e": "npx playwright test",
     "test:e2e:ui": "npx playwright test --ui",
     "demo": "scripts/demo.sh",
-    "demo:e2e": "scripts/demo.sh e2e"
+    "demo:e2e": "scripts/demo.sh e2e",
+    "health": "node scripts/health.js"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^3.0.45",

@@ -2,6 +2,48 @@
 
 *Internal project management scratch. Not a deliverable.*
 
+## Session 15 Context (Feb 18, 2026)
+
+### What Was Done
+- **Live text sync + multi-cursor typing:** Text changes broadcast on every keypress; remote users see typing in real-time with in-text caret indicators
+  - New WS messages: `text:cursor` (objectId + position) and `text:blur` (cleanup). Both are ephemeral - not stored, just broadcast.
+  - DO stores `editingObjectId` in WS attachment (survives hibernation). Broadcasts `text:blur` on disconnect.
+  - `useWebSocket`: added `textCursors: Map<string, TextCursorState>` state
+  - `Board.tsx`: textarea/frame input get `onChange` (live sync + text:cursor send), `onSelect` (cursor position), `text:blur` on all exit paths
+  - Remote editing indicators: colored dashed Konva border + username label for objects edited by others on canvas
+  - In-textarea remote carets: mirror-div technique computes pixel-accurate caret position; colored vertical bar + name badge HTML overlay
+- **Files changed:** `src/shared/types.ts`, `src/server/board.ts`, `src/client/hooks/useWebSocket.ts`, `src/client/components/Board.tsx`
+- Zero TS errors, zero lint errors
+
+### What's Next
+- [ ] UAT: two-browser sync - verify live text + remote caret
+- [ ] Verify chat history persistence across page refreshes
+- [ ] Test 2-browser sync for AI actions
+- [ ] Production deploy verification
+
+---
+
+## Session 14 Context (Feb 17, 2026)
+
+### What Was Done
+- **Architecture audit + AI quality roadmap implementation:**
+  - A1: DRY `ai-tools-sdk.ts` - extracted `randomPos`, `makeObject`, `createAndMutate` helpers. 5 create tools collapsed from ~15 lines each to ~5.
+  - A2: All create tools now return `{x, y, width, height}` so LLM can chain layout ops without `getBoardState` round-trips.
+  - B1: Observability - structured `console.debug` logging in create tools, `computeOverlapScore` in `getBoardState`. Visible in `wrangler tail`.
+  - B2: System prompt geometry tables - replaced vague "~220px apart" with concrete canvas bounds, grid slot tables, frame inset rules.
+  - B3: Template coordinate injection - SWOT/Kanban/Retro/Brainstorm templates now have pre-computed pixel coordinates. LLM is content generator, not geometry solver.
+  - A3: Board.tsx extractions (1616->1435 lines): `ConfettiBurst.tsx`, `BoardGrid.tsx`, `useAiObjectEffects` hook, `animations.css`. CONNECTION_COLORS replaced with theme.ts values.
+- Typecheck + lint: zero errors, only pre-existing unused-var warnings
+
+### What's Next
+- [ ] Verify chat history persistence across page refreshes
+- [ ] Test 2-browser sync for AI actions
+- [ ] Production deploy verification
+- [ ] Run SWOT template 3x, measure overlap score (target: 0)
+- [ ] B5: Server-side collision nudging (if overlap score still >0 after B2+B3)
+
+---
+
 ## Session 13 Context (Feb 17, 2026)
 
 ### What Was Done
@@ -13,11 +55,6 @@
   - New deps: agents, @cloudflare/ai-chat, ai (v6), @ai-sdk/anthropic, workers-ai-provider, zod (v4)
 - Gains: server-side chat persistence (DO SQLite), WebSocket streaming, automatic tool loop, provider abstraction
 - UAT passed: auth, board creation, single-tool (sticky), multi-tool (SWOT analysis)
-
-### What's Next
-- [ ] Verify chat history persistence across page refreshes (new capability)
-- [ ] Test 2-browser sync for AI actions (UAT covered single browser)
-- [ ] Production deploy verification (CF git integration)
 
 ---
 
@@ -69,10 +106,8 @@
 **AI Agent:**
 - SWOT/arrange-in-grid: Haiku deployed, needs prod verification
 - Board mutation via WS has no board-level auth (intentional)
-- `createShape` in `ai-tools-sdk.ts` has 3-branch duplication (~30 lines recoverable with config object)
 
 **Won't Fix (Week 1):**
-- Board.tsx ~1200 lines god component
 - `send()` silently drops messages during reconnect window
 
 ---
@@ -97,6 +132,8 @@
 | Feb 17 | GLM-4.7-Flash over Llama 3.3 | 131K context, native multi-turn tool calling, still free |
 | Feb 17 | Agents SDK over manual SSE | Server-side persistence, WS streaming, provider abstraction, automatic tool loop |
 | Feb 17 | useAIChat adapter over ChatPanel rewrite | Zero UI changes, preserves AIChatMessage interface |
+| Feb 17 | Template coord injection over LLM geometry | LLM as content generator, not geometry solver. Near-perfect layouts. |
+| Feb 17 | Overlap score metric over visual QA | Single number for AI layout quality. Enables prompt tuning loop. |
 
 ---
 

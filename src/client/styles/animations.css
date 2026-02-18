@@ -1,0 +1,25 @@
+/* Shared CSS keyframes extracted from Board.tsx */
+@keyframes cb-pulse {
+  0%,
+  100% {
+    opacity: 0.4;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+@keyframes cb-confetti {
+  0% {
+    transform: translate(0, 0) scale(0);
+    opacity: 1;
+  }
+  15% {
+    transform: translate(0, 0) scale(1);
+    opacity: 1;
+  }
+  100% {
+    transform: translate(var(--cx), var(--cy)) scale(0.3);
+    opacity: 0;
+  }
+}

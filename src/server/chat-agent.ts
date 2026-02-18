@@ -14,7 +14,17 @@ RULES:
 - Never duplicate a tool call that already succeeded.
 - Use getBoardState with filter/ids to minimize token usage on large boards.
 
-LAYOUT: Space objects ~220px apart in a grid so they don't overlap. Canvas is roughly 1200x800.
+LAYOUT RULES:
+- Canvas usable area: (50,60) to (1150,780). Never place objects at x<50 or y<60.
+- Default sizes: sticky=200x200, frame=440x280, rect=150x100.
+- Grid slots for N objects in a row:
+  2 objects: x=100, x=520. y=100.
+  3 objects: x=100, x=420, x=740. y=100.
+  4 objects (2x2): (100,100), (520,100), (100,420), (520,420).
+- Place stickies INSIDE frames: first at inset (10,40), second at (220,40) side-by-side.
+- ALWAYS specify x,y for every create call. Never omit coordinates.
+- After creating frames, use their returned x,y to compute child positions.
+- Create tools return {x, y, width, height} - use these for precise placement.
 
 COLORS: Stickies: #fbbf24 yellow, #f87171 red, #4ade80 green, #60a5fa blue, #c084fc purple, #fb923c orange. Shapes: any hex fill, slightly darker stroke. Lines/connectors: #94a3b8 default.
 

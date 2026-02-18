@@ -1,21 +1,18 @@
 import React, { useState, useRef, useCallback, useEffect } from "react";
-import { Stage, Layer, Rect, Text, Group, Transformer, Ellipse, Line as KonvaLine, Arrow, Shape } from "react-konva";
+import { Stage, Layer, Rect, Text, Group, Transformer, Ellipse, Line as KonvaLine, Arrow } from "react-konva";
 import type { KonvaEventObject } from "konva/lib/Node";
 import Konva from "konva";
 import type { AuthUser } from "../App";
 import type { BoardObject } from "@shared/types";
 import { useWebSocket, type ConnectionState } from "../hooks/useWebSocket";
 import { useUndoRedo } from "../hooks/useUndoRedo";
+import { useAiObjectEffects } from "../hooks/useAiObjectEffects";
 import { colors, toolCursors } from "../theme";
-
-const CONNECTION_COLORS: Record<ConnectionState, string> = {
-  connected: "#4ade80",
-  reconnecting: "#facc15",
-  connecting: "#94a3b8",
-  disconnected: "#f87171",
-};
 import { Cursors } from "./Cursors";
 import { ChatPanel } from "./ChatPanel";
+import { ConfettiBurst } from "./ConfettiBurst";
+import { BoardGrid } from "./BoardGrid";
+import "../styles/animations.css";
 
 const MIN_ZOOM = 0.1;
 const MAX_ZOOM = 5;
@@ -35,6 +32,47 @@ const COLOR_PRESETS = [
 ];
 
 const SIDEBAR_W = 48;
+
+// Consistent color per userId (same palette as Cursors.tsx)
+const CURSOR_COLORS = [
+  "#f87171", "#60a5fa", "#4ade80", "#fbbf24", "#a78bfa",
+  "#f472b6", "#34d399", "#fb923c", "#818cf8", "#22d3ee",
+];
+function getUserColor(userId: string): string {
+  const hash = userId.split("").reduce((h, c) => (h * 31 + c.charCodeAt(0)) | 0, 0);
+  return CURSOR_COLORS[Math.abs(hash) % CURSOR_COLORS.length];
+}
+
+// Mirror-div technique: find pixel coords of character at `position` inside a textarea
+function getCaretPixelPos(textarea: HTMLTextAreaElement, position: number): { x: number; y: number } {
+  const div = document.createElement("div");
+  const style = window.getComputedStyle(textarea);
+  (["fontSize", "fontFamily", "fontWeight", "letterSpacing", "lineHeight",
+    "paddingTop", "paddingRight", "paddingBottom", "paddingLeft",
+    "borderTopWidth", "borderRightWidth", "borderBottomWidth", "borderLeftWidth",
+    "boxSizing"] as const).forEach((p) => { div.style[p] = style[p]; });
+  div.style.position = "absolute";
+  div.style.top = "-9999px";
+  div.style.left = "0";
+  div.style.width = textarea.offsetWidth + "px";
+  div.style.whiteSpace = "pre-wrap";
+  div.style.wordWrap = "break-word";
+  div.style.overflow = "hidden";
+  div.style.visibility = "hidden";
+  const clampedPos = Math.min(position, textarea.value.length);
+  div.textContent = textarea.value.substring(0, clampedPos);
+  const span = document.createElement("span");
+  span.textContent = "\u200b";
+  div.appendChild(span);
+  document.body.appendChild(div);
+  try {
+    const divRect = div.getBoundingClientRect();
+    const spanRect = span.getBoundingClientRect();
+    return { x: spanRect.left - divRect.left, y: spanRect.top - divRect.top - textarea.scrollTop };
+  } finally {
+    document.body.removeChild(div);
+  }
+}
 
 /** Check if two axis-aligned bounding boxes intersect */
 function rectsIntersect(
@@ -165,17 +203,6 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
   useEffect(() => { wasInitializedRef.current = initialized; });
   const animatedIdsRef = useRef(new Set<string>());
 
-  // Confetti (re-triggerable via key counter)
-  const [confettiPos, setConfettiPos] = useState<{ x: number; y: number } | null>(null);
-  const [confettiKey, setConfettiKey] = useState(0);
-  const initObjectCount = useRef<number | null>(null);
-  const firstConfettiFired = useRef(false);
-
-  // AI object tracking for confetti + glow
-  const prevObjectIdsRef = useRef<Set<string>>(new Set());
-  const aiCreateTimestamps = useRef<{ ts: number; x: number; y: number }[]>([]);
-  const [aiGlowIds, setAiGlowIds] = useState<Set<string>>(new Set());
-
   // Marquee selection state
   const [marquee, setMarquee] = useState<{ x: number; y: number; w: number; h: number } | null>(null);
   const marqueeRef = useRef(marquee);
@@ -194,8 +221,9 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
   // Bulk drag state
   const dragStartPositionsRef = useRef<Map<string, { x: number; y: number }>>(new Map());
 
-  const { connectionState, initialized, cursors, objects, presence, send, createObject: wsCreate, updateObject: wsUpdate, deleteObject: wsDelete } = useWebSocket(boardId);
+  const { connectionState, initialized, cursors, textCursors, objects, presence, send, createObject: wsCreate, updateObject: wsUpdate, deleteObject: wsDelete } = useWebSocket(boardId);
   const { createObject, updateObject, deleteObject, startBatch, commitBatch, undo, redo } = useUndoRedo(objects, wsCreate, wsUpdate, wsDelete);
+  const { aiGlowIds, confettiPos, confettiKey, clearConfetti } = useAiObjectEffects(objects, initialized, scale, stagePos, size);
 
   // Stable refs to avoid recreating callbacks on every state change
   const objectsRef = useRef(objects);
@@ -205,6 +233,7 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
   const scaleRef = useRef(scale);
   scaleRef.current = scale;
   const [editingId, setEditingId] = useState<string | null>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const selectedIdsRef = useRef(selectedIds);
   selectedIdsRef.current = selectedIds;
@@ -291,76 +320,6 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
       return next.size === prev.size ? prev : next;
     });
   }, [objects]);
-
-  // Confetti trigger: first object on an empty board
-  if (initialized && initObjectCount.current === null) {
-    initObjectCount.current = objects.size;
-  }
-  useEffect(() => {
-    if (initObjectCount.current !== 0 || firstConfettiFired.current) return;
-    if (objects.size > 0) {
-      firstConfettiFired.current = true;
-      setConfettiPos({ x: size.width / 2, y: size.height / 2 });
-      setConfettiKey(k => k + 1);
-    }
-  }, [objects.size, size.width, size.height]);
-
-  // Detect new AI-created objects for confetti + glow
-  useEffect(() => {
-    if (!initialized) return;
-    const currentIds = new Set(objects.keys());
-    const prevIds = prevObjectIdsRef.current;
-
-    // Find new object IDs
-    const newAiObjects: { id: string; x: number; y: number }[] = [];
-    for (const id of currentIds) {
-      if (!prevIds.has(id)) {
-        const obj = objects.get(id);
-        if (obj && obj.createdBy === "ai-agent") {
-          newAiObjects.push({ id, x: obj.x + obj.width / 2, y: obj.y + obj.height / 2 });
-        }
-      }
-    }
-    prevObjectIdsRef.current = currentIds;
-
-    if (newAiObjects.length === 0) return;
-
-    // Add glow to new AI objects (fades after 10s)
-    const newGlowIds = newAiObjects.map(o => o.id);
-    setAiGlowIds(prev => {
-      const next = new Set(prev);
-      for (const id of newGlowIds) next.add(id);
-      return next;
-    });
-    setTimeout(() => {
-      setAiGlowIds(prev => {
-        const next = new Set(prev);
-        for (const id of newGlowIds) next.delete(id);
-        return next;
-      });
-    }, 10000);
-
-    // Track timestamps for multi-create confetti
-    const now = Date.now();
-    for (const o of newAiObjects) {
-      aiCreateTimestamps.current.push({ ts: now, x: o.x, y: o.y });
-    }
-    // Prune entries older than 2s
-    aiCreateTimestamps.current = aiCreateTimestamps.current.filter(e => now - e.ts < 2000);
-
-    // Fire confetti if 3+ AI objects within 2s
-    if (aiCreateTimestamps.current.length >= 3) {
-      const entries = aiCreateTimestamps.current;
-      const cx = entries.reduce((s, e) => s + e.x, 0) / entries.length;
-      const cy = entries.reduce((s, e) => s + e.y, 0) / entries.length;
-      // Convert world coords to screen coords
-      const screenX = cx * scale + stagePos.x;
-      const screenY = cy * scale + stagePos.y;
-      setConfettiPos({ x: screenX, y: screenY });
-      setConfettiKey(k => k + 1);
-      aiCreateTimestamps.current = [];
-    }
-  }, [objects, initialized, scale, stagePos]);
 
   // Clear selection when switching away from select mode
   useEffect(() => {
@@ -845,7 +804,7 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
           <span style={{ fontWeight: 600 }}>CollabBoard</span>
           <span style={{
             width: 8, height: 8, borderRadius: "50%", display: "inline-block",
-            background: CONNECTION_COLORS[connectionState],
+            background: { connected: colors.success, reconnecting: colors.warning, connecting: colors.info, disconnected: colors.error }[connectionState],
           }} title={connectionState} />
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: "1rem" }}>
@@ -871,11 +830,6 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
 
       {/* Connection status toast */}
       <ConnectionToast connectionState={connectionState} />
-      <style>{`
-        @keyframes cb-pulse { 0%,100% { opacity: 0.4 } 50% { opacity: 1 } }
-        @keyframes cb-confetti { 0% { transform: translate(0,0) scale(0); opacity: 1 } 15% { transform: translate(0,0) scale(1); opacity: 1 } 100% { transform: translate(var(--cx),var(--cy)) scale(0.3); opacity: 0 } }
-      `}</style>
-
       {/* Loading skeleton while WebSocket connects */}
       {!initialized && connectionState !== "disconnected" && (
         <div style={{
@@ -940,7 +894,7 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
         onDblClick={handleStageDblClick}
       >
         <Layer>
-          {renderGrid(stagePos, scale, size)}
+          <BoardGrid stagePos={stagePos} scale={scale} size={size} />
 
           {/* Pass 1: frames (behind everything) */}
           {[...objects.values()].filter(o => o.type === "frame").map((obj) => (
@@ -989,6 +943,35 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
               onDblClickEdit={handleShapeDblClick}
             />
           ))}
+
+          {/* Remote editing indicators - colored border + username on objects being edited by others */}
+          {[...textCursors.values()].map(tc => {
+            if (tc.objectId === editingId) return null; // local user editing same object - caret shown in textarea overlay
+            const obj = objects.get(tc.objectId);
+            if (!obj) return null;
+            const color = getUserColor(tc.userId);
+            return (
+              <React.Fragment key={tc.userId}>
+                <Rect
+                  x={obj.x} y={obj.y}
+                  width={obj.width} height={obj.height}
+                  stroke={color} strokeWidth={2 / scale}
+                  fill="transparent"
+                  dash={[6 / scale, 3 / scale]}
+                  listening={false}
+                  rotation={obj.rotation || 0}
+                />
+                <Text
+                  x={obj.x} y={obj.y - 18 / scale}
+                  text={tc.username}
+                  fontSize={11 / scale}
+                  fill="#fff"
+                  padding={2 / scale}
+                  listening={false}
+                />
+              </React.Fragment>
+            );
+          })}
 
           {/* Marquee selection visualization */}
           {marquee && (
@@ -1054,13 +1037,19 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
                 transform: `rotate(${obj.rotation || 0}deg)`,
                 transformOrigin: "0 0",
               }}
+              onChange={(e) => {
+                updateObject({ id: editingId, props: { ...obj.props, text: e.target.value } });
+                send({ type: "text:cursor", objectId: editingId, position: e.target.selectionStart ?? 0 });
+              }}
               onBlur={(e) => {
                 updateObject({ id: editingId, props: { ...obj.props, text: e.target.value } });
+                send({ type: "text:blur", objectId: editingId });
                 setEditingId(null);
               }}
               onKeyDown={(e) => {
                 if (e.key === "Enter" || e.key === "Escape") {
                   updateObject({ id: editingId, props: { ...obj.props, text: (e.target as HTMLInputElement).value } });
+                  send({ type: "text:blur", objectId: editingId });
                   setEditingId(null);
                 }
               }}
@@ -1068,41 +1057,87 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
           );
         }
         const isText = obj.type === "text";
+        const remoteCarets = [...textCursors.values()].filter(tc => tc.objectId === editingId);
         return (
-          <textarea
-            autoFocus
-            defaultValue={obj.props.text || ""}
-            style={{
-              position: "absolute",
-              left: obj.x * scale + stagePos.x,
-              top: obj.y * scale + stagePos.y,
-              width: obj.width * scale,
-              height: obj.height * scale,
-              background: isText ? "transparent" : (obj.props.color || "#fbbf24"),
-              border: isText ? "2px solid #60a5fa" : "2px solid #f59e0b",
-              borderRadius: isText ? 4 * scale : 8 * scale,
-              padding: isText ? 4 * scale : 10 * scale,
-              fontSize: isText ? 16 * scale : 14 * scale,
-              color: isText ? (obj.props.color || "#ffffff") : "#1a1a2e",
-              resize: "none",
-              outline: "none",
-              zIndex: 20,
-              boxSizing: "border-box" as const,
-              fontFamily: "inherit",
-              transform: `rotate(${obj.rotation || 0}deg)`,
-              transformOrigin: "0 0",
-            }}
-            onBlur={(e) => {
-              updateObject({ id: editingId, props: { ...obj.props, text: e.target.value } });
-              setEditingId(null);
-            }}
-            onKeyDown={(e) => {
-              if (e.key === "Escape") {
-                updateObject({ id: editingId, props: { ...obj.props, text: (e.target as HTMLTextAreaElement).value } });
+          <>
+            <textarea
+              ref={textareaRef}
+              autoFocus
+              defaultValue={obj.props.text || ""}
+              style={{
+                position: "absolute",
+                left: obj.x * scale + stagePos.x,
+                top: obj.y * scale + stagePos.y,
+                width: obj.width * scale,
+                height: obj.height * scale,
+                background: isText ? "transparent" : (obj.props.color || "#fbbf24"),
+                border: isText ? "2px solid #60a5fa" : "2px solid #f59e0b",
+                borderRadius: isText ? 4 * scale : 8 * scale,
+                padding: isText ? 4 * scale : 10 * scale,
+                fontSize: isText ? 16 * scale : 14 * scale,
+                color: isText ? (obj.props.color || "#ffffff") : "#1a1a2e",
+                resize: "none",
+                outline: "none",
+                zIndex: 20,
+                boxSizing: "border-box" as const,
+                fontFamily: "inherit",
+                transform: `rotate(${obj.rotation || 0}deg)`,
+                transformOrigin: "0 0",
+              }}
+              onChange={(e) => {
+                updateObject({ id: editingId, props: { ...obj.props, text: e.target.value } });
+                send({ type: "text:cursor", objectId: editingId, position: e.target.selectionStart ?? 0 });
+              }}
+              onSelect={(e) => {
+                send({ type: "text:cursor", objectId: editingId, position: (e.target as HTMLTextAreaElement).selectionStart ?? 0 });
+              }}
+              onBlur={(e) => {
+                updateObject({ id: editingId, props: { ...obj.props, text: e.target.value } });
+                send({ type: "text:blur", objectId: editingId });
                 setEditingId(null);
-              }
-            }}
-          />
+              }}
+              onKeyDown={(e) => {
+                if (e.key === "Escape") {
+                  updateObject({ id: editingId, props: { ...obj.props, text: (e.target as HTMLTextAreaElement).value } });
+                  send({ type: "text:blur", objectId: editingId });
+                  setEditingId(null);
+                }
+              }}
+            />
+            {/* Remote user carets inside this textarea */}
+            {remoteCarets.map(tc => {
+              const ta = textareaRef.current;
+              if (!ta) return null;
+              const pos = getCaretPixelPos(ta, tc.position);
+              const color = getUserColor(tc.userId);
+              const lineH = parseInt(window.getComputedStyle(ta).lineHeight) || Math.round((isText ? 16 : 14) * scale * 1.4);
+              return (
+                <div key={tc.userId} style={{
+                  position: "absolute",
+                  left: obj.x * scale + stagePos.x + pos.x,
+                  top: obj.y * scale + stagePos.y + pos.y,
+                  width: 2,
+                  height: lineH,
+                  background: color,
+                  pointerEvents: "none",
+                  zIndex: 21,
+                }}>
+                  <div style={{
+                    position: "absolute",
+                    bottom: "100%",
+                    left: 0,
+                    background: color,
+                    color: "#fff",
+                    fontSize: 10,
+                    padding: "1px 4px",
+                    borderRadius: 3,
+                    whiteSpace: "nowrap",
+                    fontFamily: "inherit",
+                  }}>{tc.username}</div>
+                </div>
+              );
+            })}
+          </>
         );
       })()}
 
@@ -1283,7 +1318,7 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
       {showShortcuts && <ShortcutOverlay onClose={() => setShowShortcuts(false)} />}
 
       {/* Confetti burst (first object + AI multi-create) */}
-      {confettiPos && <ConfettiBurst key={confettiKey} x={confettiPos.x} y={confettiPos.y} onDone={() => setConfettiPos(null)} />}
+      {confettiPos && <ConfettiBurst key={confettiKey} x={confettiPos.x} y={confettiPos.y} onDone={clearConfetti} />}
     </div>
   );
 }
@@ -1451,55 +1486,6 @@ function ConnectionToast({ connectionState }: { connectionState: ConnectionState
   );
 }
 
-function renderGrid(pos: { x: number; y: number }, scale: number, size: { width: number; height: number }) {
-  const gridSize = 50;
-
-  // Subtle radial glow for canvas depth
-  const viewCenterX = (-pos.x + size.width / 2) / scale;
-  const viewCenterY = (-pos.y + size.height / 2) / scale;
-  const glowRadius = Math.max(size.width, size.height) / scale * 0.7;
-
-  // Grid dot bounds
-  const startX = Math.floor(-pos.x / scale / gridSize) * gridSize - gridSize;
-  const startY = Math.floor(-pos.y / scale / gridSize) * gridSize - gridSize;
-  const endX = startX + size.width / scale + gridSize * 2;
-  const endY = startY + size.height / scale + gridSize * 2;
-
-  return (
-    <>
-      <Rect
-        key="glow"
-        x={viewCenterX - glowRadius}
-        y={viewCenterY - glowRadius}
-        width={glowRadius * 2}
-        height={glowRadius * 2}
-        fillRadialGradientStartPoint={{ x: glowRadius, y: glowRadius }}
-        fillRadialGradientEndPoint={{ x: glowRadius, y: glowRadius }}
-        fillRadialGradientStartRadius={0}
-        fillRadialGradientEndRadius={glowRadius}
-        fillRadialGradientColorStops={[0, "rgba(99,102,241,0.06)", 0.5, "rgba(99,102,241,0.02)", 1, "transparent"]}
-        listening={false}
-      />
-      <Shape
-        sceneFunc={(ctx, shape) => {
-          ctx.beginPath();
-          let count = 0;
-          for (let x = startX; x < endX; x += gridSize) {
-            for (let y = startY; y < endY; y += gridSize) {
-              if (count++ >= 2000) break;
-              ctx.rect(x - 1, y - 1, 2, 2);
-            }
-            if (count >= 2000) break;
-          }
-          ctx.fillStrokeShape(shape);
-        }}
-        fill="rgba(255,255,255,0.1)"
-        listening={false}
-      />
-    </>
-  );
-}
-
 const SHORTCUTS = [
   ["V", "Select"],
   ["S", "Sticky note"],
@@ -1570,46 +1556,3 @@ function ShortcutOverlay({ onClose }: { onClose: () => void }) {
   );
 }
 
-const CONFETTI_COLORS = ["#6366f1", "#818cf8", "#f472b6", "#fbbf24", "#4ade80", "#60a5fa", "#f87171", "#a78bfa"];
-
-function ConfettiBurst({ x, y, onDone }: { x: number; y: number; onDone: () => void }) {
-  const particles = useRef(
-    Array.from({ length: 40 }, () => {
-      const angle = -Math.PI / 2 + (Math.random() - 0.5) * Math.PI * 1.8;
-      const dist = 50 + Math.random() * 120;
-      return {
-        cx: `${Math.cos(angle) * dist}px`,
-        cy: `${Math.sin(angle) * dist + 80}px`, // gravity pull
-        color: CONFETTI_COLORS[Math.floor(Math.random() * CONFETTI_COLORS.length)],
-        size: 4 + Math.random() * 6,
-        delay: Math.random() * 0.15,
-      };
-    })
-  ).current;
-
-  useEffect(() => {
-    const t = setTimeout(onDone, 1800);
-    return () => clearTimeout(t);
-  }, [onDone]);
-
-  return (
-    <div style={{ position: "absolute", left: x, top: y, pointerEvents: "none", zIndex: 45 }}>
-      {particles.map((p, i) => (
-        <div
-          key={i}
-          style={{
-            position: "absolute",
-            width: p.size,
-            height: p.size,
-            background: p.color,
-            borderRadius: p.size > 7 ? "50%" : "1px",
-            "--cx": p.cx,
-            "--cy": p.cy,
-            animation: `cb-confetti 1.4s ${p.delay}s cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards`,
-            opacity: 0,
-          } as React.CSSProperties}
-        />
-      ))}
-    </div>
-  );
-}

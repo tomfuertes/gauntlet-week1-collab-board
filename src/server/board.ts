@@ -5,6 +5,7 @@ import type { MutateResult } from "./env";
 interface ConnectionMeta {
   userId: string;
   username: string;
+  editingObjectId?: string;
 }
 
 export class Board extends DurableObject {
@@ -79,7 +80,8 @@ export class Board extends DurableObject {
     try {
       msg = JSON.parse(raw as string) as WSClientMessage;
     } catch {
-      return; // Ignore malformed messages
+      console.warn("[WS] malformed message, ignoring");
+      return;
     }
 
     if (msg.type === "cursor") {
@@ -90,16 +92,39 @@ export class Board extends DurableObject {
       return;
     }
 
+    if (msg.type === "text:cursor") {
+      ws.serializeAttachment({ ...meta, editingObjectId: msg.objectId } satisfies ConnectionMeta);
+      this.broadcast(
+        { type: "text:cursor", userId: meta.userId, username: meta.username, objectId: msg.objectId, position: msg.position },
+        ws
+      );
+      return;
+    }
+
+    if (msg.type === "text:blur") {
+      ws.serializeAttachment({ ...meta, editingObjectId: undefined } satisfies ConnectionMeta);
+      this.broadcast({ type: "text:blur", userId: meta.userId, objectId: msg.objectId }, ws);
+      return;
+    }
+
     await this.handleMutation(msg, meta.userId, ws);
   }
 
-  async webSocketClose(_ws: WebSocket) {
+  async webSocketClose(ws: WebSocket) {
     // ws is already closed when this handler fires - no need to call ws.close()
+    const meta = ws.deserializeAttachment() as ConnectionMeta | null;
+    if (meta?.editingObjectId) {
+      this.broadcast({ type: "text:blur", userId: meta.userId, objectId: meta.editingObjectId });
+    }
     const users = this.getPresenceList();
     this.broadcast({ type: "presence", users });
   }
 
   async webSocketError(ws: WebSocket) {
+    const meta = ws.deserializeAttachment() as ConnectionMeta | null;
+    if (meta?.editingObjectId) {
+      this.broadcast({ type: "text:blur", userId: meta.userId, objectId: meta.editingObjectId });
+    }
     ws.close();
     const users = this.getPresenceList();
     this.broadcast({ type: "presence", users });
