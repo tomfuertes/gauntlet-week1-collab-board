@@ -34,7 +34,33 @@ open board -> play scene -> share replay link -> recruit new player
 
 ## Roadmap Status
 
-**Shipped:** Pre-search, scaffold, auth, infinite canvas, cursor sync, presence, sticky notes, rectangles, circles, lines, connectors/arrows, standalone text, frames, move/resize/rotate, multi-select, copy/paste/duplicate, undo/redo, delete, AI agent (10 tools, DRY helpers, overlap scoring, updateAndMutate, type-linked ToolName), chat panel (chips, templates, typing indicator, server-side history persistence), multi-board CRUD, hash routing, color picker, toolbar, connection toasts, loading skeleton, empty state hint, cursor smoothing, entrance animations, confetti, gradient background, cursor trails, keyboard shortcuts, privacy policy, data deletion endpoint, context menu, selection-aware AI, AI object glow, live text sync, remote carets, stale cursor TTL, AI batch undo (batchId, Undo AI button, Cmd+Z batch), AI presence lite (cursor dot, presence bar), AI board generation (empty state overlay, suggestion chips, board-templates.ts), multiplayer chat attribution ([username] prefix, color-coded sender names), improv mode ("yes, and" prompt, 7 scene templates), UI consistency (theme dedup, animations.css extraction), AI Director proactive mode (scene phases, 60s inactivity nudge, DO schedule alarms, generateText non-streaming), scene playback (event recording in DO, public replay endpoint, ReplayViewer with play/pause, share scene button), scene gallery (public #gallery route, GET /api/boards/public, scene cards with gradient thumbnails + play button), perf overlay (FPS, msg age, nodes, connection state), dynamic intent chips, AI architecture audit (prompt versioning, tool observability, structured logging).
+### Shipped
+- Pre-search, scaffold, auth
+- Infinite canvas, cursor sync, presence
+- Sticky notes, rectangles, circles, lines, connectors/arrows, standalone text, frames
+- Move/resize/rotate, multi-select, copy/paste/duplicate, undo/redo, delete
+- AI agent (10 tools, DRY helpers, overlap scoring, updateAndMutate, type-linked ToolName)
+- Chat panel (chips, templates, typing indicator, server-side history persistence)
+- Multi-board CRUD, hash routing, color picker, toolbar
+- Connection toasts, loading skeleton, empty state hint
+- Cursor smoothing, entrance animations, confetti, gradient background, cursor trails
+- Keyboard shortcuts, privacy policy, data deletion endpoint, context menu
+- Selection-aware AI, AI object glow, live text sync, remote carets, stale cursor TTL
+- AI batch undo (batchId, Undo AI button, Cmd+Z batch)
+- AI presence lite (cursor dot, presence bar)
+- AI board generation (empty state overlay, suggestion chips, board-templates.ts)
+- Multiplayer chat attribution ([username] prefix, color-coded sender names)
+- Improv mode ("yes, and" prompt, 7 scene templates)
+- UI consistency (theme dedup, animations.css extraction)
+- AI Director proactive mode (scene phases, 60s inactivity nudge, DO schedule alarms)
+- Scene playback (event recording in DO, public replay endpoint, ReplayViewer, share button)
+- Scene gallery (public #gallery route, GET /api/boards/public, gradient thumbnails)
+- Perf overlay (FPS, msg age, nodes, connection state)
+- Dynamic intent chips
+- AI architecture audit (prompt versioning, tool observability, structured logging)
+- Defensive AI tool input validation (sanitizeMessages, instrumentExecute guard)
+- Smooth drag replay (throttled 100ms WS sends, spatial debounce in DO, RAF lerp interpolation in ReplayViewer)
+- Floating toolbar (bottom-center pill, redesigned from left sidebar)
 
 **Killed (PM eval):** Contextual AI Actions (clustering unreliable on free-tier LLM), Intent Preview (problem overlap with batch undo at 3x cost).
 

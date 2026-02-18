@@ -3,6 +3,7 @@ set -euo pipefail
 
 # Usage: scripts/merge.sh <branch>
 # Merges feat/<branch> into current branch with --no-ff, runs typecheck.
+# Auto-stashes dirty working tree so uncommitted docs/notes edits don't block.
 
 if [[ $# -lt 1 ]]; then
   echo "Usage: $0 <branch>"
@@ -19,6 +20,25 @@ if ! git show-ref --verify --quiet "refs/heads/${FEAT_BRANCH}"; then
   exit 1
 fi
 
+# Auto-stash dirty state (tracked + untracked, not gitignored)
+STASHED=false
+if ! git diff --quiet || ! git diff --cached --quiet || [[ -n "$(git ls-files --others --exclude-standard)" ]]; then
+  echo "=== Stashing uncommitted changes ==="
+  git stash push -u -m "merge.sh auto-stash before merging ${FEAT_BRANCH}"
+  STASHED=true
+fi
+
+# Restore stash on any failure so uncommitted work isn't silently lost
+cleanup() {
+  local exit_code=$?
+  if [[ "$STASHED" == true ]]; then
+    echo ""
+    echo "=== Restoring stashed changes (script exited with code ${exit_code}) ==="
+    git stash pop || echo "WARNING: stash pop failed - run 'git stash pop' manually"
+  fi
+}
+trap cleanup EXIT
+
 # Show what we're merging
 echo "=== Commits on ${FEAT_BRANCH} ==="
 git log --oneline "main..${FEAT_BRANCH}"
@@ -29,7 +49,7 @@ git diff "main..${FEAT_BRANCH}" --stat
 
 echo ""
 echo "=== Merging ${FEAT_BRANCH} ==="
-git merge "${FEAT_BRANCH}" --no-edit --no-ff
+git -c commit.gpgsign=false merge "${FEAT_BRANCH}" --no-edit --no-ff
 
 echo ""
 echo "=== Typecheck ==="

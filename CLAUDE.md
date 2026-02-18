@@ -113,6 +113,7 @@ Worktree prompts must explicitly mention:
 - "Read CLAUDE.md and relevant source files before implementing" (not "Enter plan mode first")
 - "After implementation, run `/pr-review-toolkit:review-pr` and fix all issues before starting UAT"
 - "After UAT passes, commit all changes to the feature branch. Do not open a PR."
+- **Do NOT edit the "Shipped" list in `docs/notes.md`** - the orchestrator updates it at merge time to avoid conflicts between concurrent worktrees.
 
 ## Architecture
 
