@@ -1,6 +1,6 @@
 import { DurableObject } from "cloudflare:workers";
 import { AI_USER_ID, AI_USERNAME } from "../shared/types";
-import type { BoardObject, WSClientMessage, WSServerMessage } from "../shared/types";
+import type { BoardObject, ReplayEvent, WSClientMessage, WSServerMessage } from "../shared/types";
 import type { MutateResult } from "./env";
 
 interface ConnectionMeta {
@@ -14,10 +14,19 @@ export class Board extends DurableObject {
   // which is correct - if the DO hibernated, the AI stream has already ended.
   private aiActiveUntil = 0;
 
+  // Event recording for scene replay
+  private lastRecordedAt = new Map<string, number>(); // objId -> timestamp (debounce tracker)
+  private eventCount = -1; // -1 = not yet loaded
+
   // --- RPC methods (called by Worker via stub) ---
 
   async readObjects(): Promise<BoardObject[]> {
     return this.getAllObjects();
+  }
+
+  async readEvents(): Promise<ReplayEvent[]> {
+    const entries = await this.ctx.storage.list<ReplayEvent>({ prefix: "evt:" });
+    return [...entries.values()];
   }
 
   async readObject(id: string): Promise<BoardObject | null> {
@@ -208,12 +217,38 @@ export class Board extends DurableObject {
     return users;
   }
 
+  private async recordEvent(event: ReplayEvent): Promise<void> {
+    const MAX_EVENTS = 2000;
+
+    // Debounce obj:update - skip if <500ms since last recorded for this object
+    if (event.type === "obj:update" && event.obj) {
+      const last = this.lastRecordedAt.get(event.obj.id);
+      if (last && event.ts - last < 500) return;
+      this.lastRecordedAt.set(event.obj.id, event.ts);
+    }
+
+    // Lazy-load event count on first call (resets on hibernation, re-counted on next mutation)
+    if (this.eventCount < 0) {
+      const all = await this.ctx.storage.list({ prefix: "evt:", limit: MAX_EVENTS + 1 });
+      this.eventCount = all.size;
+    }
+
+    if (this.eventCount >= MAX_EVENTS) return;
+
+    // Key: evt:{16-digit-padded-ts}:{4-char-random} for lexicographic chronological order
+    const ts = String(event.ts).padStart(16, "0");
+    const rand = crypto.randomUUID().slice(0, 4);
+    await this.ctx.storage.put(`evt:${ts}:${rand}`, event);
+    this.eventCount++;
+  }
+
   private async handleMutation(msg: WSClientMessage, userId: string, excludeWs?: WebSocket): Promise<MutateResult> {
     switch (msg.type) {
       case "obj:create": {
         const obj = { ...msg.obj, createdBy: userId, updatedAt: Date.now() };
         await this.ctx.storage.put(`obj:${obj.id}`, obj);
         this.broadcast({ type: "obj:create", obj }, excludeWs);
+        await this.recordEvent({ type: "obj:create", ts: obj.updatedAt, obj });
         return { ok: true };
       }
       case "obj:update": {
@@ -228,11 +263,13 @@ export class Board extends DurableObject {
         };
         await this.ctx.storage.put(`obj:${updated.id}`, updated);
         this.broadcast({ type: "obj:update", obj: updated }, excludeWs);
+        await this.recordEvent({ type: "obj:update", ts: updated.updatedAt, obj: updated });
         return { ok: true };
       }
       case "obj:delete": {
         await this.ctx.storage.delete(`obj:${msg.id}`);
         this.broadcast({ type: "obj:delete", id: msg.id }, excludeWs);
+        await this.recordEvent({ type: "obj:delete", ts: Date.now(), id: msg.id });
         return { ok: true };
       }
     }

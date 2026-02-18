@@ -54,6 +54,13 @@ export type WSServerMessage =
 export const AI_USER_ID = "ai-agent" as const;
 export const AI_USERNAME = "AI Assistant" as const;
 
+export interface ReplayEvent {
+  type: "obj:create" | "obj:update" | "obj:delete";
+  ts: number;
+  obj?: BoardObject; // present for create/update
+  id?: string; // present for delete
+}
+
 export interface ChatMessage {
   id: string;
   role: "user" | "assistant";
