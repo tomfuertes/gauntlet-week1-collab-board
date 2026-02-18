@@ -13,7 +13,7 @@ CollabBoard - real-time collaborative whiteboard with AI agent integration. Gaun
 - **Real-time:** Durable Objects + WebSockets (one DO per board, LWW conflict resolution)
 - **Auth:** Custom (username/password, PBKDF2 hash, D1 sessions, cookie-based)
 - **Database:** DO Storage (board objects as KV) + D1 (users/sessions/board metadata)
-- **AI:** Cloudflare Agents SDK (`AIChatAgent` DO) + Vercel AI SDK v6 (`streamText`, `generateText`, `tool()`). `ChatAgent` DO per board (instance name = boardId), WebSocket streaming, server-side chat persistence (DO SQLite). 10 tools in `src/server/ai-tools-sdk.ts` (Zod schemas), display metadata in `src/shared/ai-tool-meta.ts`. Models: GLM-4.7-Flash (free tier) or Claude Haiku 4.5 (if `ANTHROPIC_API_KEY` set) via `@ai-sdk/anthropic`. **AI Director:** proactive mode - after 60s inactivity, `onDirectorNudge` fires via DO schedule alarm, uses `generateText` (non-streaming) with scene-phase-specific prompts, builds `UIMessage` manually and broadcasts via `persistMessages()`.
+- **AI:** Cloudflare Agents SDK (`AIChatAgent` DO) + Vercel AI SDK v6 (`streamText`, `generateText`, `tool()`). `ChatAgent` DO per board (instance name = boardId), WebSocket streaming, server-side chat persistence (DO SQLite). 10 tools in `src/server/ai-tools-sdk.ts` (Zod schemas, `instrumentExecute` wrapper for timing/success logs), display metadata in `src/shared/ai-tool-meta.ts`, prompts in `src/server/prompts.ts` (versioned via `PROMPT_VERSION`). Models: GLM-4.7-Flash (free tier) or Claude Haiku 4.5 (if `ANTHROPIC_API_KEY` set) via `@ai-sdk/anthropic`. **AI Director:** proactive mode - after 60s inactivity, `onDirectorNudge` fires via DO schedule alarm, uses `generateText` (non-streaming) with scene-phase-specific prompts, builds `UIMessage` manually and broadcasts via `persistMessages()`. See `docs/ai-architecture.md` for full request lifecycle.
 - **Deploy:** CF git integration auto-deploys on push to main
 
 ## Commands
@@ -141,8 +141,9 @@ src/
   server/               # CF Worker
     index.ts            # Hono app - routes, board CRUD, DO exports, agent routing, WS upgrade, public replay + gallery API
     auth.ts             # Auth routes + PBKDF2 hashing + session helpers
-    chat-agent.ts       # AIChatAgent DO - WebSocket AI chat, model selection, geometry system prompt
-    ai-tools-sdk.ts     # 10 tools as AI SDK tool() with Zod schemas + DRY helpers + overlap scoring
+    prompts.ts          # All LLM prompt content + scene phases + PROMPT_VERSION constant
+    chat-agent.ts       # AIChatAgent DO - WebSocket AI chat, model selection, request metrics
+    ai-tools-sdk.ts     # 10 tools as AI SDK tool() with Zod schemas + instrumentExecute wrapper + DRY helpers
   shared/               # Types shared between client and server
     types.ts            # BoardObject, WSMessage, ChatMessage, ReplayEvent, User, etc.
     ai-tool-meta.ts     # Tool display metadata (icons, labels, summaries) for ChatPanel
