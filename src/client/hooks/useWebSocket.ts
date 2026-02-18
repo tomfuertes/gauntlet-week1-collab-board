@@ -32,6 +32,7 @@ interface UseWebSocketReturn {
   updateObject: (partial: Partial<BoardObject> & { id: string }) => void;
   deleteObject: (id: string) => void;
   batchUndo: (batchId: string) => void;
+  lastServerMessageAt: React.RefObject<number>;
 }
 
 const BACKOFF_BASE_MS = 1000;
@@ -39,6 +40,7 @@ const BACKOFF_CAP_MS = 8000;
 
 export function useWebSocket(boardId: string): UseWebSocketReturn {
   const wsRef = useRef<WebSocket | null>(null);
+  const lastServerMessageAt = useRef(0);
   const [connectionState, setConnectionState] = useState<ConnectionState>("connecting");
   const [initialized, setInitialized] = useState(false);
   const [cursors, setCursors] = useState<Map<string, CursorState>>(new Map());
@@ -83,6 +85,7 @@ export function useWebSocket(boardId: string): UseWebSocketReturn {
       };
 
       ws.onmessage = (event) => {
+        lastServerMessageAt.current = performance.now();
         let msg: WSServerMessage;
         try {
           msg = JSON.parse(event.data) as WSServerMessage;
@@ -236,5 +239,5 @@ export function useWebSocket(boardId: string): UseWebSocketReturn {
     send({ type: "batch:undo", batchId });
   }, [send]);
 
-  return { connectionState, initialized, cursors, textCursors, objects, presence, send, createObject, updateObject, deleteObject, batchUndo };
+  return { connectionState, initialized, cursors, textCursors, objects, presence, send, createObject, updateObject, deleteObject, batchUndo, lastServerMessageAt };
 }
