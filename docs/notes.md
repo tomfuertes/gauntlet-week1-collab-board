@@ -63,6 +63,9 @@
 **AI Agent:**
 - SWOT/arrange-in-grid: Haiku deployed, needs prod verification
 - Board mutation via WS has no board-level auth (intentional)
+- `useAIChat.ts` SSE JSON parse catch silently discards all errors (not just partial chunks)
+- `createShape` in `ai-tools.ts` has 3-branch duplication (~30 lines recoverable with config object)
+- Workers AI fallback silently returns hardcoded success string on empty/null model response
 
 **Won't Fix (Week 1):**
 - Board.tsx ~1200 lines god component
