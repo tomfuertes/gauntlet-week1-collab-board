@@ -47,8 +47,10 @@ function rectsIntersect(
 // Memoized object renderer - prevents re-rendering unchanged objects when Board state changes
 interface BoardObjectRendererProps {
   obj: BoardObject;
+  hasAiGlow: boolean;
   setShapeRef: (id: string) => (node: Konva.Group | null) => void;
   onShapeClick: (e: KonvaEventObject<MouseEvent>, id: string) => void;
+  onContextMenu: (e: KonvaEventObject<PointerEvent>, id: string) => void;
   onDragStart: (e: KonvaEventObject<DragEvent>, id: string) => void;
   onDragMove: (e: KonvaEventObject<DragEvent>, id: string) => void;
   onDragEnd: (e: KonvaEventObject<DragEvent>, id: string) => void;
@@ -57,8 +59,10 @@ interface BoardObjectRendererProps {
 }
 
 const BoardObjectRenderer = React.memo(function BoardObjectRenderer({
-  obj, setShapeRef, onShapeClick, onDragStart, onDragMove, onDragEnd, onTransformEnd, onDblClickEdit,
+  obj, hasAiGlow, setShapeRef, onShapeClick, onContextMenu, onDragStart, onDragMove, onDragEnd, onTransformEnd, onDblClickEdit,
 }: BoardObjectRendererProps) {
+  const aiGlowProps = hasAiGlow ? { shadowBlur: 12, shadowColor: "rgba(99,102,241,0.5)" } : {};
+  const aiGlowLineProps = hasAiGlow ? { shadowBlur: 8, shadowColor: "rgba(99,102,241,0.4)" } : {};
   const editable = obj.type === "sticky" || obj.type === "text" || obj.type === "frame";
 
   const groupProps = {
@@ -68,6 +72,7 @@ const BoardObjectRenderer = React.memo(function BoardObjectRenderer({
     rotation: obj.rotation,
     draggable: true as const,
     onClick: (e: KonvaEventObject<MouseEvent>) => onShapeClick(e, obj.id),
+    onContextMenu: (e: KonvaEventObject<PointerEvent>) => onContextMenu(e, obj.id),
     onDragStart: (e: KonvaEventObject<DragEvent>) => onDragStart(e, obj.id),
     onDragMove: (e: KonvaEventObject<DragEvent>) => onDragMove(e, obj.id),
     onDragEnd: (e: KonvaEventObject<DragEvent>) => onDragEnd(e, obj.id),
@@ -83,7 +88,7 @@ const BoardObjectRenderer = React.memo(function BoardObjectRenderer({
   if (obj.type === "frame") {
     return (
       <Group {...groupProps}>
-        <Rect width={obj.width} height={obj.height} fill="rgba(99,102,241,0.06)" stroke="#6366f1" strokeWidth={2} dash={[10, 5]} cornerRadius={4} />
+        <Rect width={obj.width} height={obj.height} fill="rgba(99,102,241,0.06)" stroke="#6366f1" strokeWidth={2} dash={[10, 5]} cornerRadius={4} {...aiGlowProps} />
         <Text x={8} y={-20} text={obj.props.text || "Frame"} fontSize={13} fill="#6366f1" fontStyle="600" />
       </Group>
     );
@@ -91,7 +96,7 @@ const BoardObjectRenderer = React.memo(function BoardObjectRenderer({
   if (obj.type === "sticky") {
     return (
       <Group {...groupProps}>
-        <Rect width={obj.width} height={obj.height} fill={obj.props.color || "#fbbf24"} cornerRadius={8} shadowBlur={5} shadowColor="rgba(0,0,0,0.3)" />
+        <Rect width={obj.width} height={obj.height} fill={obj.props.color || "#fbbf24"} cornerRadius={8} shadowBlur={hasAiGlow ? 12 : 5} shadowColor={hasAiGlow ? "rgba(99,102,241,0.5)" : "rgba(0,0,0,0.3)"} />
         <Text x={10} y={10} text={obj.props.text || ""} fontSize={14} fill="#1a1a2e" width={obj.width - 20} />
       </Group>
     );
@@ -99,14 +104,14 @@ const BoardObjectRenderer = React.memo(function BoardObjectRenderer({
   if (obj.type === "rect") {
     return (
       <Group {...groupProps}>
-        <Rect width={obj.width} height={obj.height} fill={obj.props.fill || "#3b82f6"} stroke={obj.props.stroke || "#2563eb"} strokeWidth={2} cornerRadius={4} />
+        <Rect width={obj.width} height={obj.height} fill={obj.props.fill || "#3b82f6"} stroke={obj.props.stroke || "#2563eb"} strokeWidth={2} cornerRadius={4} {...aiGlowProps} />
       </Group>
     );
   }
   if (obj.type === "circle") {
     return (
       <Group {...groupProps}>
-        <Ellipse x={obj.width / 2} y={obj.height / 2} radiusX={obj.width / 2} radiusY={obj.height / 2} fill={obj.props.fill || "#8b5cf6"} stroke={obj.props.stroke || "#7c3aed"} strokeWidth={2} />
+        <Ellipse x={obj.width / 2} y={obj.height / 2} radiusX={obj.width / 2} radiusY={obj.height / 2} fill={obj.props.fill || "#8b5cf6"} stroke={obj.props.stroke || "#7c3aed"} strokeWidth={2} {...aiGlowProps} />
       </Group>
     );
   }
@@ -126,6 +131,7 @@ const BoardObjectRenderer = React.memo(function BoardObjectRenderer({
             pointerWidth: 10,
             ...(obj.props.arrow === "both" ? { pointerAtBeginning: true } : {}),
           } : {})}
+          {...aiGlowLineProps}
         />
       </Group>
     );
@@ -147,8 +153,10 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
   const [size, setSize] = useState({ width: window.innerWidth, height: window.innerHeight });
   const lastCursorSend = useRef(0);
   const [toolMode, setToolMode] = useState<ToolMode>("select");
-  const [chatOpen, setChatOpen] = useState(false);
+  const [chatOpen, setChatOpen] = useState(true);
+  const [chatInitialPrompt, setChatInitialPrompt] = useState<string | undefined>();
   const [showShortcuts, setShowShortcuts] = useState(false);
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; objId: string } | null>(null);
   const trRef = useRef<Konva.Transformer>(null);
   const shapeRefs = useRef<Map<string, Konva.Group>>(new Map());
 
@@ -157,10 +165,16 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
   useEffect(() => { wasInitializedRef.current = initialized; });
   const animatedIdsRef = useRef(new Set<string>());
 
-  // Confetti on first object
+  // Confetti (re-triggerable via key counter)
   const [confettiPos, setConfettiPos] = useState<{ x: number; y: number } | null>(null);
+  const [confettiKey, setConfettiKey] = useState(0);
   const initObjectCount = useRef<number | null>(null);
-  const confettiDone = useRef(false);
+  const firstConfettiFired = useRef(false);
+
+  // AI object tracking for confetti + glow
+  const prevObjectIdsRef = useRef<Set<string>>(new Set());
+  const aiCreateTimestamps = useRef<{ ts: number; x: number; y: number }[]>([]);
+  const [aiGlowIds, setAiGlowIds] = useState<Set<string>>(new Set());
 
   // Marquee selection state
   const [marquee, setMarquee] = useState<{ x: number; y: number; w: number; h: number } | null>(null);
@@ -283,12 +297,70 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
     initObjectCount.current = objects.size;
   }
   useEffect(() => {
-    if (initObjectCount.current !== 0 || confettiDone.current) return;
+    if (initObjectCount.current !== 0 || firstConfettiFired.current) return;
     if (objects.size > 0) {
-      confettiDone.current = true;
+      firstConfettiFired.current = true;
       setConfettiPos({ x: size.width / 2, y: size.height / 2 });
+      setConfettiKey(k => k + 1);
     }
   }, [objects.size, size.width, size.height]);
+
+  // Detect new AI-created objects for confetti + glow
+  useEffect(() => {
+    if (!initialized) return;
+    const currentIds = new Set(objects.keys());
+    const prevIds = prevObjectIdsRef.current;
+
+    // Find new object IDs
+    const newAiObjects: { id: string; x: number; y: number }[] = [];
+    for (const id of currentIds) {
+      if (!prevIds.has(id)) {
+        const obj = objects.get(id);
+        if (obj && obj.createdBy === "ai-agent") {
+          newAiObjects.push({ id, x: obj.x + obj.width / 2, y: obj.y + obj.height / 2 });
+        }
+      }
+    }
+    prevObjectIdsRef.current = currentIds;
+
+    if (newAiObjects.length === 0) return;
+
+    // Add glow to new AI objects (fades after 10s)
+    const newGlowIds = newAiObjects.map(o => o.id);
+    setAiGlowIds(prev => {
+      const next = new Set(prev);
+      for (const id of newGlowIds) next.add(id);
+      return next;
+    });
+    setTimeout(() => {
+      setAiGlowIds(prev => {
+        const next = new Set(prev);
+        for (const id of newGlowIds) next.delete(id);
+        return next;
+      });
+    }, 10000);
+
+    // Track timestamps for multi-create confetti
+    const now = Date.now();
+    for (const o of newAiObjects) {
+      aiCreateTimestamps.current.push({ ts: now, x: o.x, y: o.y });
+    }
+    // Prune entries older than 2s
+    aiCreateTimestamps.current = aiCreateTimestamps.current.filter(e => now - e.ts < 2000);
+
+    // Fire confetti if 3+ AI objects within 2s
+    if (aiCreateTimestamps.current.length >= 3) {
+      const entries = aiCreateTimestamps.current;
+      const cx = entries.reduce((s, e) => s + e.x, 0) / entries.length;
+      const cy = entries.reduce((s, e) => s + e.y, 0) / entries.length;
+      // Convert world coords to screen coords
+      const screenX = cx * scale + stagePos.x;
+      const screenY = cy * scale + stagePos.y;
+      setConfettiPos({ x: screenX, y: screenY });
+      setConfettiKey(k => k + 1);
+      aiCreateTimestamps.current = [];
+    }
+  }, [objects, initialized, scale, stagePos]);
 
   // Clear selection when switching away from select mode
   useEffect(() => {
@@ -350,6 +422,20 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
     tr.nodes([]);
     tr.getLayer()?.batchDraw();
   }, [selectedIds, editingId, objects]);
+
+  // Right-click context menu handler
+  const handleShapeContextMenu = useCallback((e: KonvaEventObject<PointerEvent>, id: string) => {
+    e.evt.preventDefault();
+    e.cancelBubble = true;
+    setContextMenu({ x: e.evt.clientX, y: e.evt.clientY, objId: id });
+  }, []);
+
+  // Open chat with a prefilled prompt (from context menu)
+  const openChatWithPrompt = useCallback((prompt: string) => {
+    setContextMenu(null);
+    setChatInitialPrompt(prompt);
+    setChatOpen(true);
+  }, []);
 
   // Shared click handler for all shapes (supports shift+click multi-select)
   const handleShapeClick = useCallback((e: KonvaEventObject<MouseEvent>, id: string) => {
@@ -842,6 +928,7 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
         onMouseDown={handleStageMouseDown}
         onMouseUp={handleStageMouseUp}
         onClick={(e: KonvaEventObject<MouseEvent>) => {
+          setContextMenu(null);
           if (e.target === stageRef.current) {
             if (justFinishedMarqueeRef.current) {
               justFinishedMarqueeRef.current = false;
@@ -860,8 +947,10 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
             <BoardObjectRenderer
               key={obj.id}
               obj={obj}
+              hasAiGlow={aiGlowIds.has(obj.id)}
               setShapeRef={setShapeRef}
               onShapeClick={handleShapeClick}
+              onContextMenu={handleShapeContextMenu}
               onDragStart={handleShapeDragStart}
               onDragMove={handleShapeDragMove}
               onDragEnd={handleShapeDragEnd}
@@ -889,8 +978,10 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
             <BoardObjectRenderer
               key={obj.id}
               obj={obj}
+              hasAiGlow={aiGlowIds.has(obj.id)}
               setShapeRef={setShapeRef}
               onShapeClick={handleShapeClick}
+              onContextMenu={handleShapeContextMenu}
               onDragStart={handleShapeDragStart}
               onDragMove={handleShapeDragMove}
               onDragEnd={handleShapeDragEnd}
@@ -1081,7 +1172,59 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
       </div>
 
       {/* AI Chat Panel */}
-      {chatOpen && <ChatPanel boardId={boardId} onClose={() => setChatOpen(false)} />}
+      {chatOpen && (
+        <ChatPanel
+          boardId={boardId}
+          onClose={() => { setChatOpen(false); setChatInitialPrompt(undefined); }}
+          initialPrompt={chatInitialPrompt}
+          selectedIds={selectedIds}
+        />
+      )}
+
+      {/* Right-click context menu */}
+      {contextMenu && (() => {
+        const obj = objects.get(contextMenu.objId);
+        if (!obj) return null;
+        const items: { label: string; prompt: string }[] = [
+          { label: "Ask AI about this", prompt: `What is this ${obj.type}${obj.props.text ? ` that says "${obj.props.text}"` : ""} about?` },
+          { label: "Recolor with AI", prompt: `Change the color of this ${obj.type} (id: ${obj.id}) to a random vibrant color.` },
+        ];
+        if (obj.type === "sticky" || obj.type === "text") {
+          items.push({ label: "Expand on this", prompt: `Create more sticky notes related to: "${obj.props.text || ""}"` });
+        }
+        return (
+          <div
+            onClick={() => setContextMenu(null)}
+            style={{ position: "absolute", inset: 0, zIndex: 40 }}
+          >
+            <div
+              onClick={(e) => e.stopPropagation()}
+              style={{
+                position: "absolute", left: contextMenu.x, top: contextMenu.y,
+                background: colors.surface, border: `1px solid ${colors.border}`,
+                borderRadius: 8, padding: 4, minWidth: 180, zIndex: 41,
+              }}
+            >
+              {items.map((item) => (
+                <button
+                  key={item.label}
+                  onClick={() => { setSelectedIds(new Set([contextMenu.objId])); openChatWithPrompt(item.prompt); }}
+                  style={{
+                    display: "block", width: "100%", textAlign: "left",
+                    background: "none", border: "none", color: colors.text,
+                    padding: "8px 12px", cursor: "pointer", fontSize: "0.8125rem",
+                    borderRadius: 4,
+                  }}
+                  onMouseEnter={(e) => { e.currentTarget.style.background = colors.accentSubtle; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.background = "none"; }}
+                >
+                  {item.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Color picker - shown when objects are selected */}
       {selectedIds.size > 0 && (() => {
@@ -1139,8 +1282,8 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
       {/* Keyboard shortcut overlay */}
       {showShortcuts && <ShortcutOverlay onClose={() => setShowShortcuts(false)} />}
 
-      {/* Confetti burst on first object */}
-      {confettiPos && <ConfettiBurst x={confettiPos.x} y={confettiPos.y} onDone={() => setConfettiPos(null)} />}
+      {/* Confetti burst (first object + AI multi-create) */}
+      {confettiPos && <ConfettiBurst key={confettiKey} x={confettiPos.x} y={confettiPos.y} onDone={() => setConfettiPos(null)} />}
     </div>
   );
 }

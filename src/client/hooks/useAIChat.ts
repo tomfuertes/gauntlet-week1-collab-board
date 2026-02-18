@@ -3,6 +3,7 @@ import { useState, useCallback, useRef, useEffect } from "react";
 interface ToolCall {
   name: string;
   label: string;
+  args?: Record<string, unknown>;
 }
 
 export interface AIChatMessage {
@@ -12,7 +13,7 @@ export interface AIChatMessage {
   tools?: ToolCall[];
 }
 
-export function useAIChat(boardId: string) {
+export function useAIChat(boardId: string, selectedIds?: Set<string>) {
   const [messages, setMessages] = useState<AIChatMessage[]>([]);
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState("");
@@ -51,6 +52,7 @@ export function useAIChat(boardId: string) {
             message: text,
             boardId,
             history: messages.map((m) => ({ id: m.id, role: m.role, content: m.content })),
+            selectedIds: selectedIds?.size ? [...selectedIds] : undefined,
           }),
           signal: controller.signal,
         });
@@ -84,7 +86,7 @@ export function useAIChat(boardId: string) {
                 if (event.type === "status") {
                   setStatus(event.label);
                 } else if (event.type === "tool") {
-                  tools.push({ name: event.name, label: event.label });
+                  tools.push({ name: event.name, label: event.label, args: event.args });
                   setStatus(`${event.label}...`);
                 } else if (event.type === "done") {
                   responseText = event.response;
@@ -126,7 +128,7 @@ export function useAIChat(boardId: string) {
         setStatus("");
       }
     },
-    [boardId, messages],
+    [boardId, messages, selectedIds],
   );
 
   return { messages, loading, status, sendMessage };

@@ -9,6 +9,7 @@ dist/
 *.local.*
 .playwright-cli/
 test-results/
+test-results-demo/
 playwright-report/
 .playwright/
 .claude-prompt

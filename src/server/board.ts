@@ -15,6 +15,10 @@ export class Board extends DurableObject {
     return this.getAllObjects();
   }
 
+  async readObject(id: string): Promise<BoardObject | null> {
+    return await this.ctx.storage.get<BoardObject>(`obj:${id}`) ?? null;
+  }
+
   async clearBoard(): Promise<number> {
     const keys = await this.ctx.storage.list({ prefix: "obj:" });
     await this.ctx.storage.delete([...keys.keys()]);
@@ -150,7 +154,12 @@ export class Board extends DurableObject {
         const existing = await this.ctx.storage.get<BoardObject>(`obj:${msg.obj.id}`);
         if (!existing) return { ok: false, error: `Object ${msg.obj.id} not found` };
         if (msg.obj.updatedAt && msg.obj.updatedAt < existing.updatedAt) return { ok: false, error: "Stale update (LWW conflict)" };
-        const updated = { ...existing, ...msg.obj, updatedAt: Date.now() };
+        const updated = {
+          ...existing,
+          ...msg.obj,
+          props: { ...existing.props, ...(msg.obj.props || {}) },
+          updatedAt: Date.now(),
+        };
         await this.ctx.storage.put(`obj:${updated.id}`, updated);
         this.broadcast({ type: "obj:update", obj: updated }, excludeWs);
         return { ok: true };

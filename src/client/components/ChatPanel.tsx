@@ -6,18 +6,56 @@ import { colors } from "../theme";
 interface ChatPanelProps {
   boardId: string;
   onClose: () => void;
+  initialPrompt?: string;
+  selectedIds?: Set<string>;
 }
 
 const TOOL_ICONS: Record<string, string> = {
-  create_sticky: "+note",
-  create_rect: "+rect",
-  read_board: "read",
-  update_object: "edit",
-  delete_object: "del",
+  createStickyNote: "\u{1F4CC}",
+  createShape: "\u{1F7E6}",
+  createFrame: "\u{1F5BC}",
+  createConnector: "\u{27A1}",
+  moveObject: "\u{1F4CD}",
+  resizeObject: "\u{2194}",
+  updateText: "\u{270F}",
+  changeColor: "\u{1F3A8}",
+  getBoardState: "\u{1F440}",
+  deleteObject: "\u{1F5D1}",
 };
 
+function toolSummary(t: { name: string; label: string; args?: Record<string, unknown> }): string {
+  const a = t.args || {};
+  switch (t.name) {
+    case "createStickyNote": return `Created sticky: "${a.text || "..."}"`;
+    case "createShape": return `Drew ${a.shape || "shape"}${a.fill ? ` (${a.fill})` : ""}`;
+    case "createFrame": return `Created frame: "${a.title || "..."}"`;
+    case "createConnector": return "Connected objects";
+    case "moveObject": return `Moved object`;
+    case "resizeObject": return `Resized object`;
+    case "updateText": return `Updated text: "${a.text || "..."}"`;
+    case "changeColor": return `Changed color to ${a.color || "..."}`;
+    case "getBoardState": return `Read board${a.filter ? ` (${a.filter}s)` : ""}`;
+    case "deleteObject": return `Deleted object`;
+    default: return t.label;
+  }
+}
+
+const SUGGESTED_PROMPTS = [
+  "What's on this board?",
+  "Create a SWOT analysis",
+  "Organize stickies by color",
+  "Add 5 brainstorm ideas about AI",
+];
+
+const TEMPLATES: { label: string; prompt: string }[] = [
+  { label: "SWOT", prompt: "Create a SWOT analysis: make a 2x2 grid of 4 frames labeled Strengths, Weaknesses, Opportunities, Threats. Add 2 example stickies in each quadrant." },
+  { label: "Kanban", prompt: "Create a kanban board: make 3 frames side by side labeled To Do, In Progress, and Done. Add 3 example sticky notes in the To Do column." },
+  { label: "Retro", prompt: "Create a sprint retrospective: make 3 frames labeled What Went Well, What Didn't Go Well, and Action Items. Add 2 stickies in each." },
+  { label: "Brainstorm", prompt: "Create a brainstorm session: make a central sticky note labeled 'Topic' and surround it with 8 sticky notes in a circle pattern with creative ideas." },
+];
+
 function ToolHistory({ tools }: { tools: NonNullable<AIChatMessage["tools"]> }) {
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(true);
   return (
     <div style={{ marginBottom: 4 }}>
       <button
@@ -30,13 +68,13 @@ function ToolHistory({ tools }: { tools: NonNullable<AIChatMessage["tools"]> }) 
         <span style={{ fontSize: "0.625rem", transition: "transform 0.15s", transform: open ? "rotate(90deg)" : "none" }}>
           ▶
         </span>
-        {tools.length} tool call{tools.length > 1 ? "s" : ""}
+        {tools.length} action{tools.length > 1 ? "s" : ""}
       </button>
       {open && (
-        <div style={{ marginTop: 4, paddingLeft: 10, display: "flex", flexDirection: "column", gap: 2 }}>
+        <div style={{ marginTop: 4, paddingLeft: 10, display: "flex", flexDirection: "column", gap: 3 }}>
           {tools.map((t, i) => (
-            <span key={i} style={{ fontSize: "0.625rem", color: "#64748b", fontFamily: "monospace" }}>
-              {TOOL_ICONS[t.name] || t.name} {t.label.toLowerCase()}
+            <span key={i} style={{ fontSize: "0.6875rem", color: "#94a3b8" }}>
+              {TOOL_ICONS[t.name] || "\u{1F527}"} {toolSummary(t)}
             </span>
           ))}
         </div>
@@ -45,10 +83,11 @@ function ToolHistory({ tools }: { tools: NonNullable<AIChatMessage["tools"]> }) 
   );
 }
 
-export function ChatPanel({ boardId, onClose }: ChatPanelProps) {
-  const { messages, loading, status, sendMessage } = useAIChat(boardId);
+export function ChatPanel({ boardId, onClose, initialPrompt, selectedIds }: ChatPanelProps) {
+  const { messages, loading, status, sendMessage } = useAIChat(boardId, selectedIds);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const initialPromptHandled = useRef(false);
 
   // Auto-scroll to bottom on new messages
   useEffect(() => {
@@ -57,10 +96,15 @@ export function ChatPanel({ boardId, onClose }: ChatPanelProps) {
     }
   }, [messages, loading, status]);
 
-  // Focus input on mount
+  // Focus input on mount; auto-send initialPrompt if provided
   useEffect(() => {
-    inputRef.current?.focus();
-  }, []);
+    if (initialPrompt && !initialPromptHandled.current) {
+      initialPromptHandled.current = true;
+      sendMessage(initialPrompt);
+    } else {
+      inputRef.current?.focus();
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleSubmit = () => {
     const text = inputRef.current?.value.trim();
@@ -77,15 +121,36 @@ export function ChatPanel({ boardId, onClose }: ChatPanelProps) {
   };
 
   return (
+    <>
+    <style>{`
+      @keyframes chat-bounce {
+        0%, 80%, 100% { transform: translateY(0); }
+        40% { transform: translateY(-6px); }
+      }
+      .chat-bounce-dots { display: inline-flex; gap: 3px; align-items: center; height: 16px; }
+      .chat-dot {
+        width: 6px; height: 6px; border-radius: 50%; background: #94a3b8;
+        animation: chat-bounce 1.4s ease-in-out infinite;
+      }
+      .chat-dot:nth-child(2) { animation-delay: 0.16s; }
+      .chat-dot:nth-child(3) { animation-delay: 0.32s; }
+      @keyframes chat-pulse {
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0.5; }
+      }
+      .chat-pulse-text { animation: chat-pulse 2s ease-in-out infinite; }
+    `}</style>
     <div style={{
-      position: "absolute", top: 0, right: 0, bottom: 0, width: 380, zIndex: 30,
-      background: "rgba(15, 23, 42, 0.97)", borderLeft: "1px solid #334155",
+      position: "absolute", bottom: 72, right: 16, width: 360, maxHeight: "min(520px, calc(100vh - 140px))",
+      zIndex: 30, background: "rgba(15, 23, 42, 0.97)", border: "1px solid #334155",
+      borderRadius: 12, boxShadow: "0 8px 32px rgba(0,0,0,0.4)",
       display: "flex", flexDirection: "column",
     }}>
       {/* Header */}
       <div style={{
         height: 48, display: "flex", alignItems: "center", justifyContent: "space-between",
         padding: "0 1rem", borderBottom: "1px solid #334155", flexShrink: 0,
+        borderRadius: "12px 12px 0 0",
       }}>
         <span style={{ color: "#e2e8f0", fontWeight: 600, fontSize: "0.875rem" }}>AI Assistant</span>
         <button onClick={onClose} style={{
@@ -102,8 +167,27 @@ export function ChatPanel({ boardId, onClose }: ChatPanelProps) {
         display: "flex", flexDirection: "column", gap: "0.75rem",
       }}>
         {messages.length === 0 && !loading && (
-          <div style={{ color: "#64748b", fontSize: "0.8125rem", textAlign: "center", marginTop: "2rem" }}>
-            Ask me to create stickies, organize the board, or answer questions about what's on it.
+          <div style={{ textAlign: "center", marginTop: "2rem" }}>
+            <div style={{ color: "#64748b", fontSize: "0.8125rem", marginBottom: "1rem" }}>
+              Try a suggestion to get started:
+            </div>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 8, justifyContent: "center" }}>
+              {SUGGESTED_PROMPTS.map((prompt) => (
+                <button
+                  key={prompt}
+                  onClick={() => sendMessage(prompt)}
+                  style={{
+                    background: "#1e293b", border: "1px solid #334155", borderRadius: 16,
+                    padding: "6px 12px", cursor: "pointer", color: "#e2e8f0",
+                    fontSize: "0.75rem", transition: "border-color 0.15s",
+                  }}
+                  onMouseEnter={(e) => { e.currentTarget.style.borderColor = colors.accent; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.borderColor = "#334155"; }}
+                >
+                  {prompt}
+                </button>
+              ))}
+            </div>
           </div>
         )}
         {messages.map((msg) => (
@@ -133,16 +217,49 @@ export function ChatPanel({ boardId, onClose }: ChatPanelProps) {
             alignSelf: "flex-start", padding: "0.5rem 0.75rem",
             borderRadius: "12px 12px 12px 4px", background: "#1e293b",
             color: "#94a3b8", fontSize: "0.8125rem",
+            display: "flex", alignItems: "center", gap: 4, minHeight: 24,
           }}>
-            {status || "Thinking..."}
+            {!status || status === "Thinking..." ? (
+              <span className="chat-bounce-dots">
+                <span className="chat-dot" />
+                <span className="chat-dot" />
+                <span className="chat-dot" />
+              </span>
+            ) : (
+              <span className="chat-pulse-text">{status}</span>
+            )}
           </div>
         )}
+      </div>
+
+      {/* Templates */}
+      <div style={{
+        padding: "0.375rem 0.75rem", borderTop: "1px solid #1e293b", flexShrink: 0,
+        display: "flex", gap: 6, overflowX: "auto",
+      }}>
+        {TEMPLATES.map((t) => (
+          <button
+            key={t.label}
+            onClick={() => sendMessage(t.prompt)}
+            disabled={loading}
+            style={{
+              background: "none", border: "1px solid #334155", borderRadius: 6,
+              padding: "3px 8px", cursor: loading ? "not-allowed" : "pointer",
+              color: "#94a3b8", fontSize: "0.6875rem", whiteSpace: "nowrap",
+              transition: "border-color 0.15s, color 0.15s", flexShrink: 0,
+            }}
+            onMouseEnter={(e) => { if (!loading) { e.currentTarget.style.borderColor = colors.accent; e.currentTarget.style.color = "#e2e8f0"; } }}
+            onMouseLeave={(e) => { e.currentTarget.style.borderColor = "#334155"; e.currentTarget.style.color = "#94a3b8"; }}
+          >
+            {t.label}
+          </button>
+        ))}
       </div>
 
       {/* Input */}
       <div style={{
         padding: "0.75rem", borderTop: "1px solid #334155", flexShrink: 0,
-        display: "flex", gap: "0.5rem",
+        display: "flex", gap: "0.5rem", borderRadius: "0 0 12px 12px",
       }}>
         <textarea
           ref={inputRef}
@@ -170,5 +287,6 @@ export function ChatPanel({ boardId, onClose }: ChatPanelProps) {
         </button>
       </div>
     </div>
+    </>
   );
 }

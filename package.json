@@ -17,7 +17,9 @@
     "migrate:remote": "wrangler d1 migrations apply collabboard-db --remote",
     "migrate": "npm run migrate:local && npm run migrate:remote",
     "test:e2e": "npx playwright test",
-    "test:e2e:ui": "npx playwright test --ui"
+    "test:e2e:ui": "npx playwright test --ui",
+    "demo": "scripts/demo.sh",
+    "demo:e2e": "scripts/demo.sh e2e"
   },
   "dependencies": {
     "@cloudflare/ai-utils": "^1.0.1",
