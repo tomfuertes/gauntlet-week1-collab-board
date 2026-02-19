@@ -27,6 +27,10 @@ new_sqlite_classes = ["Board"]
 tag = "v2"
 new_sqlite_classes = ["ChatAgent"]
 
+[observability.logs]
+enabled = false
+invocation_logs = true
+
 [ai]
 binding = "AI"
 
