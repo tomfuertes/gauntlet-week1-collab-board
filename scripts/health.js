@@ -12,10 +12,14 @@ const args = Object.fromEntries(
 );
 
 // Auto-detect port from worktree.ports if no --port specified
-let detectedPort = 5173;
+// Prefer WRANGLER_PORT (npm run dev = build+serve via wrangler), fall back to VITE_PORT (dev:hmr)
+let detectedPort = 8787;
 if (!args.port && fs.existsSync("worktree.ports")) {
-  const match = fs.readFileSync("worktree.ports", "utf8").match(/VITE_PORT=(\d+)/);
-  if (match) detectedPort = Number(match[1]);
+  const ports = fs.readFileSync("worktree.ports", "utf8");
+  const wrangler = ports.match(/WRANGLER_PORT=(\d+)/);
+  const vite = ports.match(/VITE_PORT=(\d+)/);
+  if (wrangler) detectedPort = Number(wrangler[1]);
+  else if (vite) detectedPort = Number(vite[1]);
 }
 const port = Number(args.port ?? detectedPort);
 const timeout = Number(args.timeout ?? 30) * 1000;
