@@ -93,6 +93,7 @@ open board -> play scene -> share replay link -> recruit new player
 - Build perf (vendor chunk splitting: react/canvas/ai, ulimit in dev.sh, chokidar ignore patterns)
 - Code health quick wins (kill useAIChat shim, co-locate tool metadata, DRY server helpers, auth middleware, OBJECT_DEFAULTS, useThrottledCallback, observability skill)
 - Onboard modal (centered "What's the scene?" modal on empty boards, sidebar reveal on submit, template chips)
+- Spectator mode (live #watch/{id} route, read-only WS, emoji reactions, spectator count in presence)
 
 **Killed (PM eval):** Contextual AI Actions (clustering unreliable on free-tier LLM), Intent Preview (problem overlap with batch undo at 3x cost).
 
