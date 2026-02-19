@@ -111,7 +111,7 @@ Coworker's prompts: demon face -> unicorn -> GOOSE ATTACKING -> penguin fleeing 
 
 ## Planned Refactors
 
-- **Board.tsx decomposition** (~1800 lines, worktree in flight): extract Toolbar.tsx, useKeyboardShortcuts.ts, useDragSelection.ts. Reduces merge conflicts across worktrees.
+- ~~**Board.tsx decomposition**~~ Done (1837 -> ~1500 lines). Extracted Toolbar.tsx, useKeyboardShortcuts.ts, useDragSelection.ts. Further reduction possible: BoardObjectRenderer (~100L), EmptyBoardOverlay (~127L), ConnectionToast (~36L).
 
 ---
 
