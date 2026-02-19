@@ -10,11 +10,7 @@ const TARGETS = {
 // Always visible by default (Shift+P or backtick to toggle off)
 const SHOW_BY_DEFAULT = true;
 
-function statusColor(
-  value: number,
-  thresholds: { green: number; yellow: number },
-  lowerIsBetter = false,
-): string {
+function statusColor(value: number, thresholds: { green: number; yellow: number }, lowerIsBetter = false): string {
   if (lowerIsBetter) {
     if (value <= thresholds.green) return colors.success;
     if (value <= thresholds.yellow) return colors.warning;
@@ -64,11 +60,7 @@ export function PerfOverlay({
   // Toggle with Shift+P or backtick
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
-      if (
-        e.target instanceof HTMLInputElement ||
-        e.target instanceof HTMLTextAreaElement
-      )
-        return;
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
       if ((e.key === "P" && e.shiftKey) || e.key === "`") {
         e.preventDefault();
         setVisible((prev) => !prev);
@@ -94,9 +86,7 @@ export function PerfOverlay({
         if (Number.isFinite(instantFps)) {
           fpsBuffer.current.push(instantFps);
           if (fpsBuffer.current.length > 60) fpsBuffer.current.shift();
-          fpsRef.current =
-            fpsBuffer.current.reduce((a, b) => a + b, 0) /
-            fpsBuffer.current.length;
+          fpsRef.current = fpsBuffer.current.reduce((a, b) => a + b, 0) / fpsBuffer.current.length;
         }
       }
       rafId.current = requestAnimationFrame(tick);
@@ -141,18 +131,12 @@ export function PerfOverlay({
   if (!visible) return null;
 
   const rows: [string, string | number, string][] = [
-    [
-      "FPS",
-      fps !== null ? fps : "--",
-      fps !== null ? statusColor(fps, TARGETS.fps) : colors.textDim,
-    ],
+    ["FPS", fps !== null ? fps : "--", fps !== null ? statusColor(fps, TARGETS.fps) : colors.textDim],
     ["Objects", objectCount, colors.text],
     [
       "Msg age",
       msgAge !== null ? `${msgAge}ms` : "--",
-      msgAge !== null
-        ? statusColor(msgAge, TARGETS.msgAge, true)
-        : colors.textDim,
+      msgAge !== null ? statusColor(msgAge, TARGETS.msgAge, true) : colors.textDim,
     ],
     ["Users", cursorCount, colors.text],
     ["Nodes", konvaNodes, colors.textMuted],

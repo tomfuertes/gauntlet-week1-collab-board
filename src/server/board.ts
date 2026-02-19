@@ -10,7 +10,12 @@ type ConnectionMeta =
 
 // Allowed emoji set for spectator reactions (must match client REACTION_EMOJIS)
 const ALLOWED_REACTION_EMOJIS = new Set([
-  "\uD83D\uDC4F", "\uD83D\uDE02", "\uD83D\uDD25", "\u2764\uFE0F", "\uD83D\uDE2E", "\uD83C\uDFAD",
+  "\uD83D\uDC4F",
+  "\uD83D\uDE02",
+  "\uD83D\uDD25",
+  "\u2764\uFE0F",
+  "\uD83D\uDE2E",
+  "\uD83C\uDFAD",
 ]);
 
 export class Board extends DurableObject<Bindings> {
@@ -24,7 +29,7 @@ export class Board extends DurableObject<Bindings> {
 
   private async getBoardId(): Promise<string | null> {
     if (!this._boardId) {
-      this._boardId = await this.ctx.storage.get<string>("meta:boardId") ?? null;
+      this._boardId = (await this.ctx.storage.get<string>("meta:boardId")) ?? null;
     }
     return this._boardId;
   }
@@ -59,7 +64,7 @@ export class Board extends DurableObject<Bindings> {
   }
 
   async readObject(id: string): Promise<BoardObject | null> {
-    return await this.ctx.storage.get<BoardObject>(`obj:${id}`) ?? null;
+    return (await this.ctx.storage.get<BoardObject>(`obj:${id}`)) ?? null;
   }
 
   async clearBoard(): Promise<number> {
@@ -75,7 +80,11 @@ export class Board extends DurableObject<Bindings> {
     await this.ctx.storage.delete("meta:boardId");
     this.broadcast({ type: "board:deleted" });
     for (const ws of this.getWebSockets()) {
-      try { ws.close(1000, "board deleted"); } catch { /* already closed */ }
+      try {
+        ws.close(1000, "board deleted");
+      } catch {
+        /* already closed */
+      }
     }
     return keys.size;
   }
@@ -87,7 +96,11 @@ export class Board extends DurableObject<Bindings> {
   /** Broadcast AI cursor position to all WS clients (virtual user - no real WS connection) */
   async injectCursor(x: number, y: number): Promise<void> {
     this.broadcast({
-      type: "cursor", userId: AI_USER_ID, username: AI_USERNAME, x, y,
+      type: "cursor",
+      userId: AI_USER_ID,
+      username: AI_USERNAME,
+      x,
+      y,
     });
   }
 
@@ -124,7 +137,7 @@ export class Board extends DurableObject<Bindings> {
     const userId = url.searchParams.get("userId");
     const username = url.searchParams.get("username");
     const boardId = url.searchParams.get("boardId");
-    const role = url.searchParams.get("role") === "spectator" ? "spectator" as const : "player" as const;
+    const role = url.searchParams.get("role") === "spectator" ? ("spectator" as const) : ("player" as const);
     if (!userId || !username) {
       return new Response("Missing user info", { status: 400 });
     }
@@ -149,7 +162,7 @@ export class Board extends DurableObject<Bindings> {
       this.ctx.waitUntil(
         markBoardSeen(this.env.DB, userId, boardId).catch((err: unknown) => {
           console.error(JSON.stringify({ event: "activity:markSeen", trigger: "ws:connect", error: String(err) }));
-        })
+        }),
       );
     }
 
@@ -165,7 +178,8 @@ export class Board extends DurableObject<Bindings> {
     let msg: WSClientMessage;
     try {
       msg = JSON.parse(raw as string) as WSClientMessage;
-    } catch { // intentional: malformed client messages are non-recoverable
+    } catch {
+      // intentional: malformed client messages are non-recoverable
       console.warn("[WS] malformed message, ignoring");
       return;
     }
@@ -177,10 +191,7 @@ export class Board extends DurableObject<Bindings> {
     }
 
     if (msg.type === "cursor") {
-      this.broadcast(
-        { type: "cursor", userId: meta.userId, username: meta.username, x: msg.x, y: msg.y },
-        ws
-      );
+      this.broadcast({ type: "cursor", userId: meta.userId, username: meta.username, x: msg.x, y: msg.y }, ws);
       return;
     }
 
@@ -191,20 +202,29 @@ export class Board extends DurableObject<Bindings> {
       const last = this.lastReactionAt.get(meta.userId) ?? 0;
       if (now - last < 1000) return;
       this.lastReactionAt.set(meta.userId, now);
-      this.broadcast(
-        { type: "reaction", userId: meta.userId, emoji: msg.emoji, x: msg.x, y: msg.y }
-      );
+      this.broadcast({ type: "reaction", userId: meta.userId, emoji: msg.emoji, x: msg.x, y: msg.y });
       // Only spectator reactions count toward the challenge leaderboard
       if (meta.role === "spectator") this.trackReaction();
       return;
     }
 
     if (msg.type === "text:cursor" && meta.role === "player") {
-      const updated: ConnectionMeta = { role: "player", userId: meta.userId, username: meta.username, editingObjectId: msg.objectId };
+      const updated: ConnectionMeta = {
+        role: "player",
+        userId: meta.userId,
+        username: meta.username,
+        editingObjectId: msg.objectId,
+      };
       ws.serializeAttachment(updated);
       this.broadcast(
-        { type: "text:cursor", userId: meta.userId, username: meta.username, objectId: msg.objectId, position: msg.position },
-        ws
+        {
+          type: "text:cursor",
+          userId: meta.userId,
+          username: meta.username,
+          objectId: msg.objectId,
+          position: msg.position,
+        },
+        ws,
       );
       return;
     }
@@ -337,7 +357,8 @@ export class Board extends DurableObject<Bindings> {
         // Create/delete + chat messages capture meaningful activity for badges.
         const existing = await this.ctx.storage.get<BoardObject>(`obj:${msg.obj.id}`);
         if (!existing) return { ok: false, error: `Object ${msg.obj.id} not found` };
-        if (msg.obj.updatedAt && msg.obj.updatedAt < existing.updatedAt) return { ok: false, error: "Stale update (LWW conflict)" };
+        if (msg.obj.updatedAt && msg.obj.updatedAt < existing.updatedAt)
+          return { ok: false, error: "Stale update (LWW conflict)" };
         const updated = {
           ...existing,
           ...msg.obj,
@@ -346,7 +367,8 @@ export class Board extends DurableObject<Bindings> {
         } as BoardObject;
         await this.ctx.storage.put(`obj:${updated.id}`, updated);
         this.broadcast({ type: "obj:update", obj: updated }, excludeWs);
-        const isSpatial = (msg.obj.x !== undefined && msg.obj.x !== existing.x) ||
+        const isSpatial =
+          (msg.obj.x !== undefined && msg.obj.x !== existing.x) ||
           (msg.obj.y !== undefined && msg.obj.y !== existing.y) ||
           (msg.obj.width !== undefined && msg.obj.width !== existing.width) ||
           (msg.obj.height !== undefined && msg.obj.height !== existing.height) ||
@@ -373,9 +395,9 @@ export class Board extends DurableObject<Bindings> {
   /** Fire-and-forget challenge reaction count increment (no-op if board not linked to a challenge) */
   private trackReaction(): void {
     this.withBoardId("challenge:reaction", (boardId) =>
-      this.env.DB.prepare(
-        "UPDATE challenge_entries SET reaction_count = reaction_count + 1 WHERE board_id = ?"
-      ).bind(boardId).run()
+      this.env.DB.prepare("UPDATE challenge_entries SET reaction_count = reaction_count + 1 WHERE board_id = ?")
+        .bind(boardId)
+        .run(),
     );
   }
 
@@ -387,15 +409,17 @@ export class Board extends DurableObject<Bindings> {
   /** Run a D1 operation with the cached boardId (fire-and-forget, errors logged) */
   private withBoardId(event: string, fn: (boardId: string) => Promise<unknown>): void {
     this.ctx.waitUntil(
-      this.getBoardId().then((boardId) => {
-        if (boardId) {
-          return fn(boardId).catch((err: unknown) => {
-            console.error(JSON.stringify({ event, error: String(err) }));
-          });
-        }
-      }).catch((err: unknown) => {
-        console.error(JSON.stringify({ event: "activity:getBoardId:error", error: String(err) }));
-      })
+      this.getBoardId()
+        .then((boardId) => {
+          if (boardId) {
+            return fn(boardId).catch((err: unknown) => {
+              console.error(JSON.stringify({ event, error: String(err) }));
+            });
+          }
+        })
+        .catch((err: unknown) => {
+          console.error(JSON.stringify({ event: "activity:getBoardId:error", error: String(err) }));
+        }),
     );
   }
 }

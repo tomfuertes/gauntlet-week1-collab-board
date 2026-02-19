@@ -92,20 +92,14 @@ export const DIRECTOR_PROMPTS_YESAND: Record<string, string> = {
   active:
     "The yes-and chain needs momentum. Add the next beat that builds on the previous one. " +
     "Start with 'Yes, and...' and escalate by one notch.",
-  wrapup:
-    "The chain is at 10+ beats. Bring it full circle - reference beat 1 with a twist.",
+  wrapup: "The chain is at 10+ beats. Bring it full circle - reference beat 1 with a twist.",
 };
 
 // ---------------------------------------------------------------------------
 // Scene phase system - dramatic arc for proactive AI director
 // ---------------------------------------------------------------------------
 
-export type ScenePhase =
-  | "setup"
-  | "escalation"
-  | "complication"
-  | "climax"
-  | "callback";
+export type ScenePhase = "setup" | "escalation" | "complication" | "climax" | "callback";
 
 export function computeScenePhase(userMessageCount: number): ScenePhase {
   if (userMessageCount <= 2) return "setup";
@@ -144,7 +138,7 @@ export function computeBudgetPhase(humanTurns: number, budget: number): BudgetPh
 }
 
 export const BUDGET_PROMPTS: Record<Exclude<BudgetPhase, "normal">, string> = {
-  "act3":
+  act3:
     `[SCENE BUDGET: ACT 3] The scene is entering its final act. ` +
     `Pull threads together. Callback to earlier moments. Begin resolving tensions. ` +
     `The audience can feel the ending approaching.`,
@@ -157,6 +151,11 @@ export const BUDGET_PROMPTS: Record<Exclude<BudgetPhase, "normal">, string> = {
     `Then deliver a brief scene summary (2-3 sentences) of the whole arc. Take a bow.`,
 };
 
+// KEY-DECISION 2026-02-19: Earlier LLM prompt rules dominate later ones. "batchExecute (preferred)"
+// must appear in the first TOOL RULES bullet, not just in a later rule. Without this, "call ALL
+// creates in SINGLE response" overrode "prefer batchExecute".
+// KEY-DECISION 2026-02-19: CHARACTER COMPOSITION + structured SCENE SETUP prompt replaced open-ended
+// "create objects" instructions. Quality over quantity - 3 composed objects beat 10 scattered cards.
 export const SYSTEM_PROMPT = `You are an improv scene partner on a shared canvas. This is multiplayer - messages come from different users (their name appears before their message). Address players by name when responding.
 
 YOUR IMPROV RULES:

@@ -16,11 +16,7 @@ function getClientIp(req: Request): string {
   // X-Forwarded-For fallback is only reached in local dev / non-CF environments.
   // "unknown" is a shared bucket - multiple users without IP headers share one limit
   // (acceptable: only happens in misconfigured/local deployments, not production).
-  return (
-    req.headers.get("CF-Connecting-IP") ||
-    req.headers.get("X-Forwarded-For")?.split(",")[0]?.trim() ||
-    "unknown"
-  );
+  return req.headers.get("CF-Connecting-IP") || req.headers.get("X-Forwarded-For")?.split(",")[0]?.trim() || "unknown";
 }
 
 function checkRateLimit(key: string, limit: number): { limited: boolean; retryAfter: number } {
@@ -59,10 +55,7 @@ async function hashPassword(password: string): Promise<string> {
   return `${saltHex}:${hashHex}`;
 }
 
-async function verifyPassword(
-  password: string,
-  stored: string
-): Promise<boolean> {
+async function verifyPassword(password: string, stored: string): Promise<boolean> {
   const [saltHex, hashHex] = stored.split(":");
   const salt = hexToBuf(saltHex);
   const key = await deriveKey(password, salt);
@@ -70,24 +63,18 @@ async function verifyPassword(
   return bufToHex(new Uint8Array(hash)) === hashHex;
 }
 
-async function deriveKey(
-  password: string,
-  salt: Uint8Array
-): Promise<CryptoKey> {
+async function deriveKey(password: string, salt: Uint8Array): Promise<CryptoKey> {
   const enc = new TextEncoder();
-  const keyMaterial = await crypto.subtle.importKey(
-    "raw",
-    enc.encode(password),
-    "PBKDF2",
-    false,
-    ["deriveBits", "deriveKey"]
-  );
+  const keyMaterial = await crypto.subtle.importKey("raw", enc.encode(password), "PBKDF2", false, [
+    "deriveBits",
+    "deriveKey",
+  ]);
   return crypto.subtle.deriveKey(
     { name: "PBKDF2", salt: salt as BufferSource, iterations: 100_000, hash: "SHA-256" },
     keyMaterial,
     { name: "AES-GCM", length: 256 },
     true,
-    ["encrypt"]
+    ["encrypt"],
   );
 }
 
@@ -110,10 +97,7 @@ function sessionExpiry(): string {
   return new Date(Date.now() + SESSION_TTL_MS).toISOString();
 }
 
-function setSessionCookie(
-  c: Parameters<typeof setCookie>[0],
-  sessionId: string
-) {
+function setSessionCookie(c: Parameters<typeof setCookie>[0], sessionId: string) {
   setCookie(c, "session", sessionId, {
     httpOnly: true,
     secure: true,
@@ -123,14 +107,9 @@ function setSessionCookie(
   });
 }
 
-async function createAndSetSession(
-  c: Context<{ Bindings: Bindings }>,
-  userId: string
-): Promise<void> {
+async function createAndSetSession(c: Context<{ Bindings: Bindings }>, userId: string): Promise<void> {
   const sessionId = createSessionId();
-  await c.env.DB.prepare(
-    "INSERT INTO sessions (id, user_id, expires_at) VALUES (?, ?, ?)"
-  )
+  await c.env.DB.prepare("INSERT INTO sessions (id, user_id, expires_at) VALUES (?, ?, ?)")
     .bind(sessionId, userId, sessionExpiry())
     .run();
   setSessionCookie(c, sessionId);
@@ -165,9 +144,7 @@ auth.post("/auth/signup", async (c) => {
   }
 
   // Check if username taken
-  const existing = await c.env.DB.prepare(
-    "SELECT id FROM users WHERE username = ?"
-  )
+  const existing = await c.env.DB.prepare("SELECT id FROM users WHERE username = ?")
     .bind(body.username.toLowerCase())
     .first();
 
@@ -179,9 +156,7 @@ auth.post("/auth/signup", async (c) => {
   const passwordHash = await hashPassword(body.password);
   const displayName = body.displayName || body.username;
 
-  await c.env.DB.prepare(
-    "INSERT INTO users (id, username, password_hash, display_name) VALUES (?, ?, ?, ?)"
-  )
+  await c.env.DB.prepare("INSERT INTO users (id, username, password_hash, display_name) VALUES (?, ?, ?, ?)")
     .bind(userId, body.username.toLowerCase(), passwordHash, displayName)
     .run();
 
@@ -206,9 +181,7 @@ auth.post("/auth/login", async (c) => {
     return c.json({ error: "Username and password required" }, 400);
   }
 
-  const user = await c.env.DB.prepare(
-    "SELECT id, username, password_hash, display_name FROM users WHERE username = ?"
-  )
+  const user = await c.env.DB.prepare("SELECT id, username, password_hash, display_name FROM users WHERE username = ?")
     .bind(body.username.toLowerCase())
     .first<{
       id: string;
@@ -235,9 +208,7 @@ auth.post("/auth/login", async (c) => {
 auth.post("/auth/logout", async (c) => {
   const sessionId = getCookie(c, "session");
   if (sessionId) {
-    await c.env.DB.prepare("DELETE FROM sessions WHERE id = ?")
-      .bind(sessionId)
-      .run();
+    await c.env.DB.prepare("DELETE FROM sessions WHERE id = ?").bind(sessionId).run();
   }
   deleteCookie(c, "session", { path: "/" });
   return c.json({ ok: true });
@@ -252,7 +223,7 @@ auth.get("/auth/me", async (c) => {
   const row = await c.env.DB.prepare(
     `SELECT u.id, u.username, u.display_name
      FROM sessions s JOIN users u ON s.user_id = u.id
-     WHERE s.id = ? AND s.expires_at > datetime('now')`
+     WHERE s.id = ? AND s.expires_at > datetime('now')`,
   )
     .bind(sessionId)
     .first<{ id: string; username: string; display_name: string }>();
@@ -271,7 +242,7 @@ auth.get("/auth/me", async (c) => {
 
 export async function getSessionUser(
   db: D1Database,
-  sessionId: string | undefined
+  sessionId: string | undefined,
 ): Promise<{ id: string; username: string; displayName: string } | null> {
   if (!sessionId) return null;
 
@@ -279,7 +250,7 @@ export async function getSessionUser(
     .prepare(
       `SELECT u.id, u.username, u.display_name
        FROM sessions s JOIN users u ON s.user_id = u.id
-       WHERE s.id = ? AND s.expires_at > datetime('now')`
+       WHERE s.id = ? AND s.expires_at > datetime('now')`,
     )
     .bind(sessionId)
     .first<{ id: string; username: string; display_name: string }>();

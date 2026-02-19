@@ -10,7 +10,7 @@ type UndoableAction =
 const MAX_UNDO = 50;
 
 /** Deep-clone a BoardObject (one level into props). Cast safe: spread preserves structure. */
-const snapshot = (obj: BoardObject): BoardObject => ({ ...obj, props: { ...obj.props } } as BoardObject);
+const snapshot = (obj: BoardObject): BoardObject => ({ ...obj, props: { ...obj.props } }) as BoardObject;
 
 export function useUndoRedo(
   objects: Map<string, BoardObject>,
@@ -27,33 +27,36 @@ export function useUndoRedo(
   objectsRef.current = objects;
 
   /** Replay an action (or batch of actions) for undo or redo */
-  const replayAction = useCallback((action: UndoableAction, direction: "undo" | "redo") => {
-    if (action.type === "batch") {
-      const items = direction === "undo" ? [...action.actions].reverse() : action.actions;
-      for (const sub of items) {
-        try {
-          replayAction(sub, direction);
-        } catch (err) {
-          console.error(`[useUndoRedo] batch ${direction} failed on sub-action type=${sub.type}:`, err);
-          throw err;
+  const replayAction = useCallback(
+    (action: UndoableAction, direction: "undo" | "redo") => {
+      if (action.type === "batch") {
+        const items = direction === "undo" ? [...action.actions].reverse() : action.actions;
+        for (const sub of items) {
+          try {
+            replayAction(sub, direction);
+          } catch (err) {
+            console.error(`[useUndoRedo] batch ${direction} failed on sub-action type=${sub.type}:`, err);
+            throw err;
+          }
         }
+        return;
       }
-      return;
-    }
-    switch (action.type) {
-      case "create":
-        if (direction === "undo") wsDelete(action.obj.id);
-        else wsCreate(action.obj);
-        break;
-      case "update":
-        wsUpdate(direction === "undo" ? action.before : action.after);
-        break;
-      case "delete":
-        if (direction === "undo") wsCreate(action.obj);
-        else wsDelete(action.obj.id);
-        break;
-    }
-  }, [wsCreate, wsUpdate, wsDelete]);
+      switch (action.type) {
+        case "create":
+          if (direction === "undo") wsDelete(action.obj.id);
+          else wsCreate(action.obj);
+          break;
+        case "update":
+          wsUpdate(direction === "undo" ? action.before : action.after);
+          break;
+        case "delete":
+          if (direction === "undo") wsCreate(action.obj);
+          else wsDelete(action.obj.id);
+          break;
+      }
+    },
+    [wsCreate, wsUpdate, wsDelete],
+  );
 
   const push = useCallback((action: UndoableAction) => {
     if (batchRef.current) {
@@ -155,15 +158,18 @@ export function useUndoRedo(
   }, [replayAction]);
 
   /** Push externally-created objects (e.g. from AI via WS) to the undo stack without re-creating them */
-  const pushExternalBatch = useCallback((objs: BoardObject[], tag?: string) => {
-    if (objs.length === 0) return;
-    const actions: UndoableAction[] = objs.map(obj => ({ type: "create" as const, obj: snapshot(obj) }));
-    if (actions.length === 1) {
-      push(actions[0]);
-    } else {
-      push({ type: "batch", actions, tag });
-    }
-  }, [push]);
+  const pushExternalBatch = useCallback(
+    (objs: BoardObject[], tag?: string) => {
+      if (objs.length === 0) return;
+      const actions: UndoableAction[] = objs.map((obj) => ({ type: "create" as const, obj: snapshot(obj) }));
+      if (actions.length === 1) {
+        push(actions[0]);
+      } else {
+        push({ type: "batch", actions, tag });
+      }
+    },
+    [push],
+  );
 
   /** Check if the top of the undo stack has a matching tag (for targeted undo) */
   const topTag = useCallback((): string | undefined => {

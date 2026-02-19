@@ -11,15 +11,45 @@ import { colors } from "./theme";
 
 class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
   state: { error: Error | null } = { error: null };
-  static getDerivedStateFromError(error: Error) { return { error }; }
-  componentDidCatch(error: Error, info: ErrorInfo) { console.error("ErrorBoundary caught:", error, info.componentStack); }
+  static getDerivedStateFromError(error: Error) {
+    return { error };
+  }
+  componentDidCatch(error: Error, info: ErrorInfo) {
+    console.error("ErrorBoundary caught:", error, info.componentStack);
+  }
   render() {
     if (!this.state.error) return this.props.children;
     return (
-      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", height: "100vh", background: colors.bg, color: colors.text, gap: 16 }}>
+      <div
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          justifyContent: "center",
+          height: "100vh",
+          background: colors.bg,
+          color: colors.text,
+          gap: 16,
+        }}
+      >
         <h2>Something went wrong</h2>
-        <pre style={{ color: colors.textMuted, fontSize: "0.875rem", maxWidth: 600, overflow: "auto" }}>{this.state.error.message}</pre>
-        <button onClick={() => { this.setState({ error: null }); location.hash = ""; }} style={{ padding: "8px 16px", background: colors.accent, color: "#fff", border: "none", borderRadius: 6, cursor: "pointer" }}>
+        <pre style={{ color: colors.textMuted, fontSize: "0.875rem", maxWidth: 600, overflow: "auto" }}>
+          {this.state.error.message}
+        </pre>
+        <button
+          onClick={() => {
+            this.setState({ error: null });
+            location.hash = "";
+          }}
+          style={{
+            padding: "8px 16px",
+            background: colors.accent,
+            color: "#fff",
+            border: "none",
+            borderRadius: 6,
+            cursor: "pointer",
+          }}
+        >
           Back to home
         </button>
       </div>
@@ -60,12 +90,14 @@ function PrivacyPolicy() {
   return (
     <div style={{ minHeight: "100vh", background: colors.bg, color: colors.text, padding: "2rem" }}>
       <div style={{ maxWidth: 640, margin: "0 auto" }}>
-        <a href="#" style={{ color: colors.accentLight, fontSize: "0.875rem" }}>&larr; Back</a>
+        <a href="#" style={{ color: colors.accentLight, fontSize: "0.875rem" }}>
+          &larr; Back
+        </a>
         <h1 style={{ fontSize: "1.5rem", marginTop: "1rem" }}>Privacy Policy</h1>
         <p style={{ color: colors.textMuted, lineHeight: 1.8 }}>
-          CollabBoard stores only the data you provide: username, display name, and a hashed password.
-          Board content (objects, positions, text) is stored in Cloudflare Durable Objects tied to each board.
-          Session cookies are used for authentication and expire after 7 days.
+          CollabBoard stores only the data you provide: username, display name, and a hashed password. Board content
+          (objects, positions, text) is stored in Cloudflare Durable Objects tied to each board. Session cookies are
+          used for authentication and expire after 7 days.
         </p>
         <h2 style={{ fontSize: "1.125rem", marginTop: "1.5rem" }}>Data Collection</h2>
         <p style={{ color: colors.textMuted, lineHeight: 1.8 }}>
@@ -74,9 +106,9 @@ function PrivacyPolicy() {
         </p>
         <h2 style={{ fontSize: "1.125rem", marginTop: "1.5rem" }}>Data Deletion</h2>
         <p style={{ color: colors.textMuted, lineHeight: 1.8 }}>
-          You can delete your account and all associated data at any time via the account settings
-          or by sending a DELETE request to <code style={{ color: colors.accentLight }}>/api/user</code>.
-          This permanently removes your user record, sessions, and all boards you created.
+          You can delete your account and all associated data at any time via the account settings or by sending a
+          DELETE request to <code style={{ color: colors.accentLight }}>/api/user</code>. This permanently removes your
+          user record, sessions, and all boards you created.
         </p>
         <h2 style={{ fontSize: "1.125rem", marginTop: "1.5rem" }}>Contact</h2>
         <p style={{ color: colors.textMuted, lineHeight: 1.8 }}>
@@ -87,7 +119,13 @@ function PrivacyPolicy() {
   );
 }
 
-export function App() { return <ErrorBoundary><AppContent /></ErrorBoundary>; }
+export function App() {
+  return (
+    <ErrorBoundary>
+      <AppContent />
+    </ErrorBoundary>
+  );
+}
 
 function AppContent() {
   const [user, setUser] = useState<AuthUser | null>(null);
@@ -121,7 +159,16 @@ function AppContent() {
 
   if (loading) {
     return (
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100vh", background: colors.bg, color: colors.text }}>
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          height: "100vh",
+          background: colors.bg,
+          color: colors.text,
+        }}
+      >
         Loading...
       </div>
     );
@@ -137,7 +184,10 @@ function AppContent() {
       <ReplayViewer
         key={replayId}
         boardId={replayId}
-        onBack={() => { location.hash = ""; setReplayId(null); }}
+        onBack={() => {
+          location.hash = "";
+          setReplayId(null);
+        }}
       />
     );
   }
@@ -148,7 +198,10 @@ function AppContent() {
       <SpectatorView
         key={watchId}
         boardId={watchId}
-        onBack={() => { location.hash = ""; setWatchId(null); }}
+        onBack={() => {
+          location.hash = "";
+          setWatchId(null);
+        }}
       />
     );
   }
@@ -157,7 +210,10 @@ function AppContent() {
   if (showGallery) {
     return (
       <SceneGallery
-        onBack={() => { location.hash = ""; setShowGallery(false); }}
+        onBack={() => {
+          location.hash = "";
+          setShowGallery(false);
+        }}
       />
     );
   }
@@ -167,7 +223,10 @@ function AppContent() {
     return (
       <LeaderboardPanel
         user={user}
-        onBack={() => { location.hash = ""; setShowChallenge(false); }}
+        onBack={() => {
+          location.hash = "";
+          setShowChallenge(false);
+        }}
       />
     );
   }
@@ -183,7 +242,10 @@ function AppContent() {
         user={user}
         boardId={boardId}
         onLogout={() => setUser(null)}
-        onBack={() => { location.hash = ""; setBoardId(null); }}
+        onBack={() => {
+          location.hash = "";
+          setBoardId(null);
+        }}
       />
     );
   }
@@ -191,7 +253,10 @@ function AppContent() {
   return (
     <BoardList
       user={user}
-      onSelectBoard={(id) => { location.hash = `board/${id}`; setBoardId(id); }}
+      onSelectBoard={(id) => {
+        location.hash = `board/${id}`;
+        setBoardId(id);
+      }}
       onLogout={() => setUser(null)}
     />
   );

@@ -32,9 +32,7 @@ export function useAiObjectEffects(
 
   // AI object tracking for confetti + glow
   const prevObjectIdsRef = useRef<Set<string>>(new Set());
-  const aiCreateTimestamps = useRef<{ ts: number; x: number; y: number }[]>(
-    [],
-  );
+  const aiCreateTimestamps = useRef<{ ts: number; x: number; y: number }[]>([]);
   const [aiGlowIds, setAiGlowIds] = useState<Set<string>>(new Set());
   const glowTimersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
 
@@ -119,9 +117,7 @@ export function useAiObjectEffects(
       aiCreateTimestamps.current.push({ ts: now, x: o.x, y: o.y });
     }
     // Prune entries older than window
-    aiCreateTimestamps.current = aiCreateTimestamps.current.filter(
-      (e) => now - e.ts < AI_CONFETTI_WINDOW_MS,
-    );
+    aiCreateTimestamps.current = aiCreateTimestamps.current.filter((e) => now - e.ts < AI_CONFETTI_WINDOW_MS);
 
     // Fire confetti if threshold met within window
     if (aiCreateTimestamps.current.length >= AI_CONFETTI_THRESHOLD) {

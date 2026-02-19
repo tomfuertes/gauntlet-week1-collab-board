@@ -51,8 +51,7 @@ export const HAT_PROMPTS: string[] = [
 
 /** Pick a random hat prompt, optionally excluding one index to avoid repeats */
 export function getRandomHatPrompt(excludeIndex?: number): { prompt: string; index: number } {
-  const available = HAT_PROMPTS.map((prompt, index) => ({ prompt, index }))
-    .filter((_, i) => i !== excludeIndex);
+  const available = HAT_PROMPTS.map((prompt, index) => ({ prompt, index })).filter((_, i) => i !== excludeIndex);
   if (available.length === 0) {
     return { prompt: HAT_PROMPTS[0], index: 0 };
   }

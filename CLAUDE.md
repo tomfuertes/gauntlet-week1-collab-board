@@ -133,7 +133,8 @@ Worktree prompts must explicitly mention:
 - "Read CLAUDE.md and relevant source files before implementing" (not "Enter plan mode first")
 - "After implementation, run `/pr-review-toolkit:review-pr` and fix all issues before starting UAT"
 - "After UAT passes, commit all changes to the feature branch. Do not open a PR."
-- **Do NOT edit the "Shipped" list in `docs/notes.md`** - the orchestrator updates it at merge time to avoid conflicts between concurrent worktrees.
+- **Do NOT edit `docs/notes.md`** - the orchestrator owns it. Worktree agents write session notes to `docs/sessions/<branch>.md` (unique per branch = zero merge conflicts). The merge script consolidates session files into notes.md automatically.
+- **KEY-DECISION comments**: When making a non-obvious decision, add `// KEY-DECISION <YYYY-MM-DD>: <rationale>` at the exact code location. Searchable via `grep -r "KEY-DECISION"`. Also include in commit messages for `git log --grep` searchability.
 
 ## Architecture
 
@@ -253,13 +254,13 @@ Each object stored as separate DO Storage key (`obj:{uuid}`, ~200 bytes). LWW vi
 | Trigger | Action | File |
 |---------|--------|------|
 | Any `src/` change | Update if layout, data flow, or constraints changed | `CLAUDE.md` |
-| Feature completed | Update Roadmap Status in notes | `docs/notes.md` |
-| Decision made (chose X over Y) | Append with date + rationale | `docs/notes.md` |
+| Feature completed | Update Roadmap Status in notes | `docs/notes.md` (orchestrator only) |
+| Decision made (chose X over Y) | `// KEY-DECISION <date>: <rationale>` at the code location | Source file |
 | New dependency added | Add to Stack section | `CLAUDE.md` |
-| Session ending or context pressure | Full context dump: done, next, blockers, impl plan | `docs/notes.md` |
+| Session ending or context pressure | Full context dump: done, next, blockers, impl plan | `docs/sessions/<branch>.md` (worktrees) or `docs/notes.md` (orchestrator) |
 | Session starting | Read `docs/notes.md` + `CLAUDE.md`, git log, summarize status | (read only) |
-| notes.md > ~150 lines or 5+ sessions | Prune: collapse old sessions into Key Decisions table, delete implemented plans, keep only latest "What's Next" and active reference. Architecture/constraints belong in `CLAUDE.md`, not `notes.md`. | `docs/notes.md` |
-| PR review identifies tech debt | Append to Known Tech Debt section so it's visible at merge time | `docs/notes.md` |
+| notes.md > ~150 lines or 5+ sessions | Prune: collapse old sessions, delete implemented plans, keep only latest "What's Next" and active reference. Architecture/constraints belong in `CLAUDE.md`, not `notes.md`. | `docs/notes.md` |
+| PR review identifies tech debt | Append to Known Tech Debt section so it's visible at merge time | `docs/notes.md` (orchestrator only) |
 
 Hooks enforce the bookends: `SessionStart` reminds to read context, `PreCompact` reminds to dump context. Everything in between is your responsibility.
 

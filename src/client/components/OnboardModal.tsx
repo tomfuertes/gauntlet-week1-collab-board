@@ -39,28 +39,41 @@ export function OnboardModal({ onSubmit, onDismiss }: OnboardModalProps) {
   return (
     <Modal open onClose={onDismiss}>
       {/* Sparkle */}
-      <div style={{
-        textAlign: "center", marginBottom: 12,
-        fontSize: "2.5rem", lineHeight: 1,
-        animation: "cb-sparkle 3s ease-in-out infinite",
-      }}>
+      <div
+        style={{
+          textAlign: "center",
+          marginBottom: 12,
+          fontSize: "2.5rem",
+          lineHeight: 1,
+          animation: "cb-sparkle 3s ease-in-out infinite",
+        }}
+      >
         &#10024;
       </div>
 
       {/* Heading */}
-      <div style={{
-        textAlign: "center", marginBottom: 20,
-        color: colors.text, fontSize: "1.375rem", fontWeight: 700,
-        letterSpacing: "-0.01em",
-      }}>
+      <div
+        style={{
+          textAlign: "center",
+          marginBottom: 20,
+          color: colors.text,
+          fontSize: "1.375rem",
+          fontWeight: 700,
+          letterSpacing: "-0.01em",
+        }}
+      >
         What&apos;s the scene?
       </div>
 
       {/* Game mode selector */}
-      <div style={{
-        display: "flex", gap: 8, marginBottom: 20,
-        justifyContent: "center",
-      }}>
+      <div
+        style={{
+          display: "flex",
+          gap: 8,
+          marginBottom: 20,
+          justifyContent: "center",
+        }}
+      >
         {GAME_MODES.map((gm) => {
           const active = selectedMode === gm.mode;
           return (
@@ -71,11 +84,15 @@ export function OnboardModal({ onSubmit, onDismiss }: OnboardModalProps) {
                 flex: 1,
                 background: active ? colors.accentSubtle : "rgba(30, 41, 59, 0.6)",
                 border: `2px solid ${active ? colors.accent : colors.border}`,
-                borderRadius: 12, padding: "12px 8px",
+                borderRadius: 12,
+                padding: "12px 8px",
                 color: active ? colors.text : colors.textMuted,
                 fontSize: "0.8125rem",
                 cursor: "pointer",
-                display: "flex", flexDirection: "column", alignItems: "center", gap: 4,
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
+                gap: 4,
                 transition: "border-color 0.2s, color 0.2s, background 0.2s",
               }}
               onMouseEnter={(e) => {
@@ -107,8 +124,10 @@ export function OnboardModal({ onSubmit, onDismiss }: OnboardModalProps) {
             onClick={submit}
             style={{
               background: colors.accent,
-              borderRadius: 12, padding: "0.875rem 2rem",
-              fontSize: "0.9375rem", fontWeight: 600,
+              borderRadius: 12,
+              padding: "0.875rem 2rem",
+              fontSize: "0.9375rem",
+              fontWeight: 600,
             }}
           >
             Draw from the hat
@@ -125,12 +144,17 @@ export function OnboardModal({ onSubmit, onDismiss }: OnboardModalProps) {
                 if (e.key === "Enter") submit();
                 if (e.key !== "Escape") e.stopPropagation();
               }}
-              onKeyUp={(e) => { if (e.key !== "Escape") e.stopPropagation(); }}
+              onKeyUp={(e) => {
+                if (e.key !== "Escape") e.stopPropagation();
+              }}
               placeholder="A detective who solves crimes by smell..."
               style={{
-                flex: 1, background: "rgba(30, 41, 59, 0.8)",
-                borderRadius: 12, padding: "0.875rem 1rem",
-                fontSize: "0.9375rem", fontFamily: "inherit",
+                flex: 1,
+                background: "rgba(30, 41, 59, 0.8)",
+                borderRadius: 12,
+                padding: "0.875rem 1rem",
+                fontSize: "0.9375rem",
+                fontFamily: "inherit",
                 transition: "border-color 0.2s",
               }}
             />
@@ -140,8 +164,11 @@ export function OnboardModal({ onSubmit, onDismiss }: OnboardModalProps) {
               disabled={!hasValue}
               style={{
                 background: hasValue ? colors.accent : colors.accentDark,
-                borderRadius: 12, padding: "0 1.5rem",
-                fontSize: "0.9375rem", fontWeight: 600, flexShrink: 0,
+                borderRadius: 12,
+                padding: "0 1.5rem",
+                fontSize: "0.9375rem",
+                fontWeight: 600,
+                flexShrink: 0,
                 transition: "opacity 0.2s, background 0.2s",
               }}
             >
@@ -150,20 +177,31 @@ export function OnboardModal({ onSubmit, onDismiss }: OnboardModalProps) {
           </div>
 
           {/* Template chips */}
-          <div style={{
-            display: "flex", flexWrap: "wrap", gap: 8,
-            justifyContent: "center",
-          }}>
+          <div
+            style={{
+              display: "flex",
+              flexWrap: "wrap",
+              gap: 8,
+              justifyContent: "center",
+            }}
+          >
             {BOARD_TEMPLATES.map((chip, i) => (
               <button
                 key={chip.label}
-                onClick={() => { if (chip.prompt.trim()) onSubmit(chip.prompt, selectedMode); }}
+                onClick={() => {
+                  if (chip.prompt.trim()) onSubmit(chip.prompt, selectedMode);
+                }}
                 style={{
                   background: "rgba(30, 41, 59, 0.6)",
                   border: `1px solid ${colors.border}`,
-                  borderRadius: 20, padding: "8px 16px",
-                  color: colors.textMuted, fontSize: "0.8125rem",
-                  cursor: "pointer", display: "flex", alignItems: "center", gap: 6,
+                  borderRadius: 20,
+                  padding: "8px 16px",
+                  color: colors.textMuted,
+                  fontSize: "0.8125rem",
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 6,
                   transition: "border-color 0.2s, color 0.2s, background 0.2s",
                   animation: `cb-chip-in 0.3s ease-out ${0.15 + i * 0.04}s both`,
                 }}
@@ -187,10 +225,14 @@ export function OnboardModal({ onSubmit, onDismiss }: OnboardModalProps) {
       )}
 
       {/* Hint */}
-      <div style={{
-        textAlign: "center", marginTop: 20,
-        color: colors.textSubtle, fontSize: "0.75rem",
-      }}>
+      <div
+        style={{
+          textAlign: "center",
+          marginTop: 20,
+          color: colors.textSubtle,
+          fontSize: "0.75rem",
+        }}
+      >
         or double-click the canvas to add props yourself
       </div>
     </Modal>

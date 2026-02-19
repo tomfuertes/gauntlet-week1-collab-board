@@ -22,7 +22,7 @@ export function LeaderboardPanel({ user, onBack }: { user: AuthUser | null; onBa
       try {
         const r = await fetch("/api/challenges/today", { signal: ac.signal });
         if (!r.ok) throw new Error(`challenges/today returned ${r.status}`);
-        challengeData = await r.json() as DailyChallenge;
+        challengeData = (await r.json()) as DailyChallenge;
         setChallenge(challengeData);
       } catch (err) {
         if (ac.signal.aborted) return;
@@ -36,7 +36,7 @@ export function LeaderboardPanel({ user, onBack }: { user: AuthUser | null; onBa
       try {
         const lb = await fetch(`/api/challenges/${challengeData.id}/leaderboard`, { signal: ac.signal });
         if (!lb.ok) throw new Error(`leaderboard returned ${lb.status}`);
-        setEntries(await lb.json() as LeaderboardEntry[]);
+        setEntries((await lb.json()) as LeaderboardEntry[]);
       } catch (err) {
         if (ac.signal.aborted) return;
         console.error(JSON.stringify({ event: "leaderboard:entries:fetch:error", error: String(err) }));
@@ -48,7 +48,10 @@ export function LeaderboardPanel({ user, onBack }: { user: AuthUser | null; onBa
   }, []);
 
   const handleAccept = async () => {
-    if (!challenge || !user) { location.hash = ""; return; }
+    if (!challenge || !user) {
+      location.hash = "";
+      return;
+    }
     setEntering(true);
     try {
       const res = await fetch(`/api/challenges/${challenge.id}/enter`, { method: "POST" });
@@ -56,7 +59,7 @@ export function LeaderboardPanel({ user, onBack }: { user: AuthUser | null; onBa
         console.error(JSON.stringify({ event: "challenge:enter:error", status: res.status }));
         return;
       }
-      const { boardId } = await res.json() as { boardId: string };
+      const { boardId } = (await res.json()) as { boardId: string };
       location.hash = `board/${boardId}`;
     } catch (err) {
       console.error(JSON.stringify({ event: "challenge:enter:fetch:error", error: String(err) }));
@@ -68,11 +71,18 @@ export function LeaderboardPanel({ user, onBack }: { user: AuthUser | null; onBa
   return (
     <div style={{ minHeight: "100vh", background: colors.bg, color: colors.text }}>
       {/* Header */}
-      <div style={{
-        height: 48, display: "flex", alignItems: "center", justifyContent: "space-between",
-        padding: "0 1rem", background: colors.overlayHeader, borderBottom: `1px solid ${colors.border}`,
-        fontSize: "0.875rem",
-      }}>
+      <div
+        style={{
+          height: 48,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          padding: "0 1rem",
+          background: colors.overlayHeader,
+          borderBottom: `1px solid ${colors.border}`,
+          fontSize: "0.875rem",
+        }}
+      >
         <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
           <Button variant="link" onClick={onBack} style={{ color: colors.accentLight, fontSize: "0.875rem" }}>
             &larr; Back
@@ -84,14 +94,21 @@ export function LeaderboardPanel({ user, onBack }: { user: AuthUser | null; onBa
             onClick={handleAccept}
             style={{
               background: challenge.userBoardId ? colors.success : colors.warning,
-              color: "#000", fontWeight: 700, fontSize: "0.8125rem",
+              color: "#000",
+              fontWeight: 700,
+              fontSize: "0.8125rem",
             }}
           >
             {entering ? "Starting..." : challenge.userBoardId ? "Continue Your Scene" : "Accept Challenge"}
           </Button>
         )}
         {challenge && !user && (
-          <Button onClick={() => { location.hash = ""; }} style={{ fontSize: "0.8125rem" }}>
+          <Button
+            onClick={() => {
+              location.hash = "";
+            }}
+            style={{ fontSize: "0.8125rem" }}
+          >
             Login to join
           </Button>
         )}
@@ -105,37 +122,71 @@ export function LeaderboardPanel({ user, onBack }: { user: AuthUser | null; onBa
         ) : (
           <>
             {/* Prompt banner */}
-            <div style={{
-              background: `linear-gradient(135deg, rgba(250, 204, 21, 0.08) 0%, rgba(251, 146, 60, 0.08) 100%)`,
-              border: `1px solid rgba(250, 204, 21, 0.3)`, borderRadius: 8,
-              padding: "1.25rem 1.5rem", marginBottom: "2rem",
-            }}>
-              <div style={{ fontSize: "0.75rem", fontWeight: 700, color: colors.warning, letterSpacing: "0.05em", marginBottom: 6 }}>
+            <div
+              style={{
+                background: `linear-gradient(135deg, rgba(250, 204, 21, 0.08) 0%, rgba(251, 146, 60, 0.08) 100%)`,
+                border: `1px solid rgba(250, 204, 21, 0.3)`,
+                borderRadius: 8,
+                padding: "1.25rem 1.5rem",
+                marginBottom: "2rem",
+              }}
+            >
+              <div
+                style={{
+                  fontSize: "0.75rem",
+                  fontWeight: 700,
+                  color: colors.warning,
+                  letterSpacing: "0.05em",
+                  marginBottom: 6,
+                }}
+              >
                 🎩 TODAY'S SCENE PROMPT
               </div>
               <div style={{ fontSize: "1.125rem", fontWeight: 600 }}>{challenge.prompt}</div>
               <div style={{ fontSize: "0.75rem", color: colors.textMuted, marginTop: 6 }}>
-                {new Date(challenge.date + "T00:00:00Z").toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" })}
+                {new Date(challenge.date + "T00:00:00Z").toLocaleDateString(undefined, {
+                  weekday: "long",
+                  month: "long",
+                  day: "numeric",
+                })}
               </div>
             </div>
 
             {/* Leaderboard */}
-            <h2 style={{ fontSize: "1rem", fontWeight: 600, color: colors.textMuted, marginBottom: "1rem", letterSpacing: "0.05em" }}>
+            <h2
+              style={{
+                fontSize: "1rem",
+                fontWeight: 600,
+                color: colors.textMuted,
+                marginBottom: "1rem",
+                letterSpacing: "0.05em",
+              }}
+            >
               LEADERBOARD
             </h2>
 
             {leaderboardError ? (
-              <div style={{
-                textAlign: "center", padding: "3rem", color: colors.error,
-                border: `1px dashed ${colors.borderLight}`, borderRadius: 8,
-              }}>
+              <div
+                style={{
+                  textAlign: "center",
+                  padding: "3rem",
+                  color: colors.error,
+                  border: `1px dashed ${colors.borderLight}`,
+                  borderRadius: 8,
+                }}
+              >
                 Could not load leaderboard. Try refreshing the page.
               </div>
             ) : entries.length === 0 ? (
-              <div style={{
-                textAlign: "center", padding: "3rem", color: colors.textDim,
-                border: `1px dashed ${colors.borderLight}`, borderRadius: 8,
-              }}>
+              <div
+                style={{
+                  textAlign: "center",
+                  padding: "3rem",
+                  color: colors.textDim,
+                  border: `1px dashed ${colors.borderLight}`,
+                  borderRadius: 8,
+                }}
+              >
                 No entries yet - be the first to accept today's challenge!
               </div>
             ) : (
@@ -144,25 +195,47 @@ export function LeaderboardPanel({ user, onBack }: { user: AuthUser | null; onBa
                   // Compare by userId (stable) not displayName (mutable, non-unique)
                   const isCurrentUser = user?.id === entry.userId;
                   return (
-                    <div key={entry.boardId} style={{
-                      display: "flex", alignItems: "center", gap: "1rem",
-                      background: isCurrentUser ? `rgba(99, 102, 241, 0.12)` : colors.surface,
-                      border: `1px solid ${isCurrentUser ? colors.accentLight : colors.border}`,
-                      borderRadius: 8, padding: "0.75rem 1rem",
-                    }}>
+                    <div
+                      key={entry.boardId}
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "1rem",
+                        background: isCurrentUser ? `rgba(99, 102, 241, 0.12)` : colors.surface,
+                        border: `1px solid ${isCurrentUser ? colors.accentLight : colors.border}`,
+                        borderRadius: 8,
+                        padding: "0.75rem 1rem",
+                      }}
+                    >
                       {/* Rank - array is ordered by reactionCount DESC server-side */}
                       <div style={{ width: 32, textAlign: "center", fontSize: "1.125rem", flexShrink: 0 }}>
-                        {i < 3 ? MEDAL[i] : <span style={{ color: colors.textDim, fontSize: "0.875rem" }}>#{i + 1}</span>}
+                        {i < 3 ? (
+                          MEDAL[i]
+                        ) : (
+                          <span style={{ color: colors.textDim, fontSize: "0.875rem" }}>#{i + 1}</span>
+                        )}
                       </div>
                       {/* Username */}
                       <div style={{ flex: 1, fontWeight: isCurrentUser ? 700 : 400 }}>
                         {entry.username}
                         {isCurrentUser && (
-                          <span style={{ marginLeft: 6, fontSize: "0.7rem", color: colors.accentLight, fontWeight: 400 }}>you</span>
+                          <span
+                            style={{ marginLeft: 6, fontSize: "0.7rem", color: colors.accentLight, fontWeight: 400 }}
+                          >
+                            you
+                          </span>
                         )}
                       </div>
                       {/* Reaction count */}
-                      <div style={{ color: colors.textMuted, fontSize: "0.875rem", display: "flex", alignItems: "center", gap: 4 }}>
+                      <div
+                        style={{
+                          color: colors.textMuted,
+                          fontSize: "0.875rem",
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 4,
+                        }}
+                      >
                         <span>👏</span>
                         <span>{entry.reactionCount}</span>
                       </div>
@@ -170,14 +243,20 @@ export function LeaderboardPanel({ user, onBack }: { user: AuthUser | null; onBa
                       <div style={{ display: "flex", gap: "0.5rem" }}>
                         <Button
                           variant="link"
-                          onClick={(e) => { e.stopPropagation(); location.hash = `watch/${entry.boardId}`; }}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            location.hash = `watch/${entry.boardId}`;
+                          }}
                           style={{ fontSize: "0.75rem", color: colors.accentLight }}
                         >
                           Watch
                         </Button>
                         <Button
                           variant="link"
-                          onClick={(e) => { e.stopPropagation(); location.hash = `replay/${entry.boardId}`; }}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            location.hash = `replay/${entry.boardId}`;
+                          }}
                           style={{ fontSize: "0.75rem", color: colors.textMuted }}
                         >
                           Replay

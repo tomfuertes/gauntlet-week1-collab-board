@@ -67,22 +67,34 @@ function getToolIcon(name: string): string {
 function toolSummary(t: { name: string; args?: Record<string, unknown> }): string {
   const a = t.args || {};
   switch (t.name) {
-    case "createStickyNote": return `Created sticky: "${a.text || "..."}"`;
-    case "createShape": return `Drew ${a.shape || "shape"}${a.fill ? ` (${a.fill})` : ""}`;
-    case "createFrame": return `Created frame: "${a.title || "..."}"`;
-    case "createConnector": return "Connected objects";
-    case "moveObject": return "Moved object";
-    case "resizeObject": return "Resized object";
-    case "updateText": return `Updated text: "${a.text || "..."}"`;
-    case "changeColor": return `Changed color to ${a.color || "..."}`;
-    case "getBoardState": return `Read board${a.filter ? ` (${a.filter}s)` : ""}`;
-    case "deleteObject": return "Deleted object";
-    case "generateImage": return `Generated image: "${a.prompt || "..."}"`;
+    case "createStickyNote":
+      return `Created sticky: "${a.text || "..."}"`;
+    case "createShape":
+      return `Drew ${a.shape || "shape"}${a.fill ? ` (${a.fill})` : ""}`;
+    case "createFrame":
+      return `Created frame: "${a.title || "..."}"`;
+    case "createConnector":
+      return "Connected objects";
+    case "moveObject":
+      return "Moved object";
+    case "resizeObject":
+      return "Resized object";
+    case "updateText":
+      return `Updated text: "${a.text || "..."}"`;
+    case "changeColor":
+      return `Changed color to ${a.color || "..."}`;
+    case "getBoardState":
+      return `Read board${a.filter ? ` (${a.filter}s)` : ""}`;
+    case "deleteObject":
+      return "Deleted object";
+    case "generateImage":
+      return `Generated image: "${a.prompt || "..."}"`;
     case "batchExecute": {
       const ops = a.operations as unknown[] | undefined;
       return `Batch: ${ops?.length ?? 0} operations`;
     }
-    default: return TOOL_LABELS[t.name as ToolName] || t.name;
+    default:
+      return TOOL_LABELS[t.name as ToolName] || t.name;
   }
 }
 
@@ -144,7 +156,14 @@ function getIntentChips(userMessageCount: number, gameMode?: GameMode): IntentCh
   return DEEP_SCENE_INTENTS;
 }
 
-function ChipButton({ label, color, borderRadius, disabled, mobile, onClick }: {
+function ChipButton({
+  label,
+  color,
+  borderRadius,
+  disabled,
+  mobile,
+  onClick,
+}: {
   label: string;
   color: string;
   borderRadius: number;
@@ -200,17 +219,38 @@ function ToolHistory({ tools }: { tools: ToolCallDisplay[] }) {
       <button
         onClick={() => setOpen((o) => !o)}
         style={{
-          background: "none", border: "none", color: "#64748b", cursor: "pointer",
-          fontSize: "0.6875rem", padding: 0, display: "flex", alignItems: "center", gap: 4,
+          background: "none",
+          border: "none",
+          color: "#64748b",
+          cursor: "pointer",
+          fontSize: "0.6875rem",
+          padding: 0,
+          display: "flex",
+          alignItems: "center",
+          gap: 4,
         }}
       >
-        <span style={{ fontSize: "0.625rem", transition: "transform 0.15s", transform: open ? "rotate(90deg)" : "none" }}>
+        <span
+          style={{
+            fontSize: "0.625rem",
+            transition: "transform 0.15s",
+            transform: open ? "rotate(90deg)" : "none",
+          }}
+        >
           ▶
         </span>
         {tools.length} action{tools.length > 1 ? "s" : ""}
       </button>
       {open && (
-        <div style={{ marginTop: 4, paddingLeft: 10, display: "flex", flexDirection: "column", gap: 3 }}>
+        <div
+          style={{
+            marginTop: 4,
+            paddingLeft: 10,
+            display: "flex",
+            flexDirection: "column",
+            gap: 3,
+          }}
+        >
           {tools.map((t, i) => (
             <span key={i} style={{ fontSize: "0.6875rem", color: "#94a3b8" }}>
               {getToolIcon(t.name)} {toolSummary(t)}
@@ -227,11 +267,18 @@ const SENDER_RE = /^\[([^\]]+)\]\s*/;
 
 const PERSONA_COLOR_PRESETS = ["#fb923c", "#4ade80", "#f87171", "#60a5fa", "#c084fc", "#fbbf24"];
 
-export function ChatPanel({ boardId, username, gameMode, aiModel, onClose, initialPrompt, selectedIds, onAIComplete, mobileMode = false }: ChatPanelProps) {
-  const selectedIdsArray = useMemo(
-    () => (selectedIds?.size ? [...selectedIds] : undefined),
-    [selectedIds],
-  );
+export function ChatPanel({
+  boardId,
+  username,
+  gameMode,
+  aiModel,
+  onClose,
+  initialPrompt,
+  selectedIds,
+  onAIComplete,
+  mobileMode = false,
+}: ChatPanelProps) {
+  const selectedIdsArray = useMemo(() => (selectedIds?.size ? [...selectedIds] : undefined), [selectedIds]);
 
   // Persona management state
   const [personas, setPersonas] = useState<Persona[]>([...DEFAULT_PERSONAS]);
@@ -253,7 +300,7 @@ export function ChatPanel({ boardId, username, gameMode, aiModel, onClose, initi
   // Fetch personas from API on mount
   useEffect(() => {
     refreshPersonas();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [boardId]);
 
   const refreshPersonas = useCallback(() => {
@@ -298,11 +345,12 @@ export function ChatPanel({ boardId, username, gameMode, aiModel, onClose, initi
         setNewColor(PERSONA_COLOR_PRESETS[0]);
         refreshPersonas();
       } else {
-        const msg = r.status === 403
-          ? "Only the board owner can add characters."
-          : r.status === 401
-            ? "Session expired. Please refresh the page."
-            : `Failed to add character (${r.status}).`;
+        const msg =
+          r.status === 403
+            ? "Only the board owner can add characters."
+            : r.status === 401
+              ? "Session expired. Please refresh the page."
+              : `Failed to add character (${r.status}).`;
         setCreateError(msg);
         console.error(`[ChatPanel] handleCreatePersona: ${r.status}`);
       }
@@ -314,21 +362,24 @@ export function ChatPanel({ boardId, username, gameMode, aiModel, onClose, initi
     }
   }, [boardId, newName, newTrait, newColor, isCreating, refreshPersonas]);
 
-  const handleDeletePersona = useCallback(async (personaId: string) => {
-    try {
-      const r = await fetch(`/api/boards/${boardId}/personas/${personaId}`, {
-        method: "DELETE",
-        credentials: "include",
-      });
-      if (!r.ok) {
-        console.error(`[ChatPanel] handleDeletePersona: ${r.status}`);
+  const handleDeletePersona = useCallback(
+    async (personaId: string) => {
+      try {
+        const r = await fetch(`/api/boards/${boardId}/personas/${personaId}`, {
+          method: "DELETE",
+          credentials: "include",
+        });
+        if (!r.ok) {
+          console.error(`[ChatPanel] handleDeletePersona: ${r.status}`);
+        }
+      } catch (err) {
+        console.error("[ChatPanel] handleDeletePersona network error:", err);
+      } finally {
+        refreshPersonas(); // always refresh - shows current state regardless of delete result
       }
-    } catch (err) {
-      console.error("[ChatPanel] handleDeletePersona network error:", err);
-    } finally {
-      refreshPersonas(); // always refresh - shows current state regardless of delete result
-    }
-  }, [boardId, refreshPersonas]);
+    },
+    [boardId, refreshPersonas],
+  );
 
   // Connect to ChatAgent DO instance named by boardId
   const agent = useAgent({ agent: "ChatAgent", name: boardId });
@@ -354,13 +405,8 @@ export function ChatPanel({ boardId, username, gameMode, aiModel, onClose, initi
   );
 
   const loading = sdkStatus === "streaming" || sdkStatus === "submitted";
-  const error = sdkStatus === "error" ? (sdkError?.message || "Something went wrong") : undefined;
-  const status =
-    sdkStatus === "submitted"
-      ? "Thinking..."
-      : sdkStatus === "streaming"
-        ? "Responding..."
-        : "";
+  const error = sdkStatus === "error" ? sdkError?.message || "Something went wrong" : undefined;
+  const status = sdkStatus === "submitted" ? "Thinking..." : sdkStatus === "streaming" ? "Responding..." : "";
 
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -428,29 +474,51 @@ export function ChatPanel({ boardId, username, gameMode, aiModel, onClose, initi
         animation: "cb-mobile-chat-in 0.25s ease-out",
       }
     : {
-        position: "absolute", top: 16, bottom: 72, right: 16, width: 360,
-        zIndex: 30, background: "rgba(15, 23, 42, 0.97)", border: "1px solid #334155",
-        borderRadius: 12, boxShadow: "0 8px 32px rgba(0,0,0,0.4)",
-        display: "flex", flexDirection: "column",
+        position: "absolute",
+        top: 16,
+        bottom: 72,
+        right: 16,
+        width: 360,
+        zIndex: 30,
+        background: "rgba(15, 23, 42, 0.97)",
+        border: "1px solid #334155",
+        borderRadius: 12,
+        boxShadow: "0 8px 32px rgba(0,0,0,0.4)",
+        display: "flex",
+        flexDirection: "column",
         animation: "cb-chat-slide-in 0.3s ease-out",
       };
 
   return (
     <div style={containerStyle}>
       {/* Header */}
-      <div style={{
-        height: 48, display: "flex", alignItems: "center", justifyContent: "space-between",
-        padding: "0 1rem", borderBottom: "1px solid #334155", flexShrink: 0,
-        borderRadius: "12px 12px 0 0",
-      }}>
+      <div
+        style={{
+          height: 48,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          padding: "0 1rem",
+          borderBottom: "1px solid #334155",
+          flexShrink: 0,
+          borderRadius: "12px 12px 0 0",
+        }}
+      >
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <button
             onClick={() => setShowPersonaModal(true)}
             title="Manage AI characters"
             style={{
-              background: "none", border: "none", cursor: "pointer",
-              color: "#e2e8f0", fontWeight: 600, fontSize: "0.875rem", padding: 0,
-              display: "flex", alignItems: "center", gap: 4,
+              background: "none",
+              border: "none",
+              cursor: "pointer",
+              color: "#e2e8f0",
+              fontWeight: 600,
+              fontSize: "0.875rem",
+              padding: 0,
+              display: "flex",
+              alignItems: "center",
+              gap: 4,
             }}
           >
             {personas.map((p, i) => (
@@ -462,56 +530,87 @@ export function ChatPanel({ boardId, username, gameMode, aiModel, onClose, initi
             <span style={{ color: "#475569", fontSize: "0.75rem", marginLeft: 2 }}>⚙</span>
           </button>
           {budgetLabel && (
-            <span style={{
-              fontSize: "0.625rem",
-              fontWeight: 700,
-              color: budgetColor,
-              background: `${budgetColor}18`,
-              border: `1px solid ${budgetColor}44`,
-              borderRadius: 10,
-              padding: "1px 8px",
-              animation: budgetPct >= 0.8 ? "cb-pulse 2s ease-in-out infinite" : undefined,
-            }}>
+            <span
+              style={{
+                fontSize: "0.625rem",
+                fontWeight: 700,
+                color: budgetColor,
+                background: `${budgetColor}18`,
+                border: `1px solid ${budgetColor}44`,
+                borderRadius: 10,
+                padding: "1px 8px",
+                animation: budgetPct >= 0.8 ? "cb-pulse 2s ease-in-out infinite" : undefined,
+              }}
+            >
               {budgetLabel}
             </span>
           )}
           {gameMode === "hat" && (
-            <span style={{
-              fontSize: "0.6875rem", color: colors.warning,
-              border: `1px solid ${colors.warning}44`, borderRadius: 8,
-              padding: "1px 6px",
-            }}>
+            <span
+              style={{
+                fontSize: "0.6875rem",
+                color: colors.warning,
+                border: `1px solid ${colors.warning}44`,
+                borderRadius: 8,
+                padding: "1px 6px",
+              }}
+            >
               Hat
             </span>
           )}
           {gameMode === "yesand" && (
-            <span style={{
-              fontSize: "0.6875rem", color: colors.info,
-              border: `1px solid ${colors.info}44`, borderRadius: 8,
-              padding: "1px 6px",
-            }}>
+            <span
+              style={{
+                fontSize: "0.6875rem",
+                color: colors.info,
+                border: `1px solid ${colors.info}44`,
+                borderRadius: 8,
+                padding: "1px 6px",
+              }}
+            >
               Beat {Math.min(userMessageCount, 10)}/10
             </span>
           )}
         </div>
         {!mobileMode && (
-          <button onClick={onClose} style={{
-            background: "none", border: "none", color: "#94a3b8", cursor: "pointer",
-            fontSize: "1.25rem", lineHeight: 1, padding: "0.25rem",
-          }}>
+          <button
+            onClick={onClose}
+            style={{
+              background: "none",
+              border: "none",
+              color: "#94a3b8",
+              cursor: "pointer",
+              fontSize: "1.25rem",
+              lineHeight: 1,
+              padding: "0.25rem",
+            }}
+          >
             ✕
           </button>
         )}
       </div>
 
       {/* Messages */}
-      <div ref={scrollRef} style={{
-        flex: 1, overflowY: "auto", padding: "1rem",
-        display: "flex", flexDirection: "column", gap: "0.75rem",
-      }}>
+      <div
+        ref={scrollRef}
+        style={{
+          flex: 1,
+          overflowY: "auto",
+          padding: "1rem",
+          display: "flex",
+          flexDirection: "column",
+          gap: "0.75rem",
+        }}
+      >
         {uiMessages.length === 0 && !loading && (
           <div style={{ textAlign: "center", marginTop: "2rem" }}>
-            <div style={{ color: "#64748b", fontSize: "0.8125rem", marginBottom: "1rem" }}>
+            <div
+              style={{
+                color: "#64748b",
+                fontSize: "0.8125rem",
+                marginBottom: "1rem",
+              }}
+            >
               Pick a scene to get started, or type your own:
             </div>
           </div>
@@ -541,22 +640,21 @@ export function ChatPanel({ boardId, username, gameMode, aiModel, onClose, initi
             const looksLikePersona = /^[A-Z][A-Z0-9]*$/.test(extracted);
             if (msg.role === "user" || personaColorMap[extracted] || (msg.role === "assistant" && looksLikePersona)) {
               sender = extracted;
-              // Strip ALL occurrences of this prefix - multi-step LLM repeats [NAME] at start of
-              // each text part (e.g. pre-tool text + post-tool text both get [SPARK] prefix)
+              // KEY-DECISION 2026-02-19: Global regex prefix strip, not single slice(). Multi-step
+              // streamText produces [NAME] at start of each text part; slice only removed the first.
               displayText = displayText.replace(new RegExp(`\\[${extracted}\\]\\s*`, "g"), "").trim();
             }
           }
 
-          const content =
-            displayText ||
-            (tools.length > 0 ? "I performed the requested actions on the board." : "");
+          const content = displayText || (tools.length > 0 ? "I performed the requested actions on the board." : "");
 
           const isMe = sender === username;
-          const senderColor = msg.role === "assistant"
-            ? (sender && personaColorMap[sender]) || colors.aiCursor
-            : sender
-              ? getUserColor(sender)
-              : colors.accent;
+          const senderColor =
+            msg.role === "assistant"
+              ? (sender && personaColorMap[sender]) || colors.aiCursor
+              : sender
+                ? getUserColor(sender)
+                : colors.accent;
           const senderLabel = msg.role === "assistant" ? (sender ?? "AI") : sender;
 
           // Skip empty assistant messages (no text, no tools) - avoids blank "AI" bubbles
@@ -567,48 +665,61 @@ export function ChatPanel({ boardId, username, gameMode, aiModel, onClose, initi
           }
 
           return (
-            <div key={msg.id} style={{
-              alignSelf: msg.role === "user" ? "flex-end" : "flex-start",
-              maxWidth: "85%",
-            }}>
-              {msg.role === "assistant" && tools.length > 0 && (
-                <ToolHistory tools={tools} />
-              )}
+            <div
+              key={msg.id}
+              style={{
+                alignSelf: msg.role === "user" ? "flex-end" : "flex-start",
+                maxWidth: "85%",
+              }}
+            >
+              {msg.role === "assistant" && tools.length > 0 && <ToolHistory tools={tools} />}
               {senderLabel && (
-                <div style={{
-                  fontSize: "0.6875rem",
-                  fontWeight: 600,
-                  color: senderColor,
-                  marginBottom: 2,
-                  textAlign: msg.role === "user" ? "right" : "left",
-                  paddingLeft: msg.role === "user" ? 0 : 4,
-                  paddingRight: msg.role === "user" ? 4 : 0,
-                }}>
+                <div
+                  style={{
+                    fontSize: "0.6875rem",
+                    fontWeight: 600,
+                    color: senderColor,
+                    marginBottom: 2,
+                    textAlign: msg.role === "user" ? "right" : "left",
+                    paddingLeft: msg.role === "user" ? 0 : 4,
+                    paddingRight: msg.role === "user" ? 4 : 0,
+                  }}
+                >
                   {isMe ? "You" : senderLabel}
                 </div>
               )}
-              <div style={{
-                padding: "0.5rem 0.75rem",
-                borderRadius: msg.role === "user" ? "12px 12px 4px 12px" : "12px 12px 12px 4px",
-                background: msg.role === "user" ? colors.accent : "#1e293b",
-                color: msg.role === "user" ? "#fff" : "#e2e8f0",
-                fontSize: "0.8125rem",
-                lineHeight: 1.5,
-                whiteSpace: "pre-wrap",
-                wordBreak: "break-word",
-              }}>
+              <div
+                style={{
+                  padding: "0.5rem 0.75rem",
+                  borderRadius: msg.role === "user" ? "12px 12px 4px 12px" : "12px 12px 12px 4px",
+                  background: msg.role === "user" ? colors.accent : "#1e293b",
+                  color: msg.role === "user" ? "#fff" : "#e2e8f0",
+                  fontSize: "0.8125rem",
+                  lineHeight: 1.5,
+                  whiteSpace: "pre-wrap",
+                  wordBreak: "break-word",
+                }}
+              >
                 {content}
               </div>
             </div>
           );
         })}
         {loading && (
-          <div style={{
-            alignSelf: "flex-start", padding: "0.5rem 0.75rem",
-            borderRadius: "12px 12px 12px 4px", background: "#1e293b",
-            color: "#94a3b8", fontSize: "0.8125rem",
-            display: "flex", alignItems: "center", gap: 4, minHeight: 24,
-          }}>
+          <div
+            style={{
+              alignSelf: "flex-start",
+              padding: "0.5rem 0.75rem",
+              borderRadius: "12px 12px 12px 4px",
+              background: "#1e293b",
+              color: "#94a3b8",
+              fontSize: "0.8125rem",
+              display: "flex",
+              alignItems: "center",
+              gap: 4,
+              minHeight: 24,
+            }}
+          >
             {!status || status === "Thinking..." ? (
               <span className="chat-bounce-dots">
                 <span className="chat-dot" />
@@ -621,11 +732,16 @@ export function ChatPanel({ boardId, username, gameMode, aiModel, onClose, initi
           </div>
         )}
         {error && !loading && (
-          <div style={{
-            alignSelf: "flex-start", padding: "0.5rem 0.75rem",
-            borderRadius: "12px 12px 12px 4px", background: "rgba(248, 113, 113, 0.1)",
-            color: colors.error, fontSize: "0.8125rem",
-          }}>
+          <div
+            style={{
+              alignSelf: "flex-start",
+              padding: "0.5rem 0.75rem",
+              borderRadius: "12px 12px 12px 4px",
+              background: "rgba(248, 113, 113, 0.1)",
+              color: colors.error,
+              fontSize: "0.8125rem",
+            }}
+          >
             {error}
           </div>
         )}
@@ -633,53 +749,61 @@ export function ChatPanel({ boardId, username, gameMode, aiModel, onClose, initi
 
       {/* Chips bar: scene templates when empty, intent chips when in-scene */}
       {!isSceneOver && (
-        <div style={{
-          padding: mobileMode ? "0.5rem 0.75rem" : "0.375rem 0.75rem",
-          // 44px min height for touch targets on mobile (Apple HIG)
-          minHeight: mobileMode ? 44 : undefined,
-          borderTop: "1px solid #1e293b", flexShrink: 0,
-          display: "flex", gap: 6, overflowX: "auto", alignItems: "center",
-        }}>
-          {uiMessages.length === 0 ? (
-            BOARD_TEMPLATES.map((t) => (
-              <ChipButton
-                key={t.label}
-                label={t.label}
-                color={colors.textMuted}
-                borderRadius={6}
-                disabled={loading}
-                mobile={mobileMode}
-                onClick={() => sendMessage(t.prompt)}
-              />
-            ))
-          ) : (
-            getIntentChips(userMessageCount, gameMode).map((chip) => (
-              <ChipButton
-                key={chip.prompt}
-                label={chip.prompt === "[NEXT-HAT-PROMPT]" ? "Next prompt" : chip.prompt}
-                color={CATEGORY_COLORS[chip.category]}
-                borderRadius={16}
-                disabled={loading || isSceneOver}
-                mobile={mobileMode}
-                onClick={() => sendMessage(chip.prompt)}
-              />
-            ))
-          )}
+        <div
+          style={{
+            padding: mobileMode ? "0.5rem 0.75rem" : "0.375rem 0.75rem",
+            // 44px min height for touch targets on mobile (Apple HIG)
+            minHeight: mobileMode ? 44 : undefined,
+            borderTop: "1px solid #1e293b",
+            flexShrink: 0,
+            display: "flex",
+            gap: 6,
+            overflowX: "auto",
+            alignItems: "center",
+          }}
+        >
+          {uiMessages.length === 0
+            ? BOARD_TEMPLATES.map((t) => (
+                <ChipButton
+                  key={t.label}
+                  label={t.label}
+                  color={colors.textMuted}
+                  borderRadius={6}
+                  disabled={loading}
+                  mobile={mobileMode}
+                  onClick={() => sendMessage(t.prompt)}
+                />
+              ))
+            : getIntentChips(userMessageCount, gameMode).map((chip) => (
+                <ChipButton
+                  key={chip.prompt}
+                  label={chip.prompt === "[NEXT-HAT-PROMPT]" ? "Next prompt" : chip.prompt}
+                  color={CATEGORY_COLORS[chip.category]}
+                  borderRadius={16}
+                  disabled={loading || isSceneOver}
+                  mobile={mobileMode}
+                  onClick={() => sendMessage(chip.prompt)}
+                />
+              ))}
         </div>
       )}
 
       {/* Input / Scene complete */}
       {isSceneOver ? (
-        <div style={{
-          padding: "0.75rem",
-          paddingBottom: mobileMode ? "max(0.75rem, env(safe-area-inset-bottom))" : "0.75rem",
-          borderTop: "1px solid #334155", flexShrink: 0,
-          display: "flex", flexDirection: "column", alignItems: "center", gap: 8,
-          borderRadius: mobileMode ? 0 : "0 0 12px 12px",
-        }}>
-          <span style={{ color: "#94a3b8", fontSize: "0.8125rem", fontWeight: 600 }}>
-            Scene complete
-          </span>
+        <div
+          style={{
+            padding: "0.75rem",
+            paddingBottom: mobileMode ? "max(0.75rem, env(safe-area-inset-bottom))" : "0.75rem",
+            borderTop: "1px solid #334155",
+            flexShrink: 0,
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            gap: 8,
+            borderRadius: mobileMode ? 0 : "0 0 12px 12px",
+          }}
+        >
+          <span style={{ color: "#94a3b8", fontSize: "0.8125rem", fontWeight: 600 }}>Scene complete</span>
           <Button
             variant="primary"
             size="md"
@@ -690,24 +814,36 @@ export function ChatPanel({ boardId, username, gameMode, aiModel, onClose, initi
           </Button>
         </div>
       ) : (
-        <div style={{
-          padding: "0.75rem",
-          // Safe-area-inset for notched phones (iOS home indicator, etc.)
-          paddingBottom: mobileMode ? "max(0.75rem, env(safe-area-inset-bottom))" : "0.75rem",
-          borderTop: "1px solid #334155", flexShrink: 0,
-          display: "flex", gap: "0.5rem",
-          borderRadius: mobileMode ? 0 : "0 0 12px 12px",
-        }}>
+        <div
+          style={{
+            padding: "0.75rem",
+            // Safe-area-inset for notched phones (iOS home indicator, etc.)
+            paddingBottom: mobileMode ? "max(0.75rem, env(safe-area-inset-bottom))" : "0.75rem",
+            borderTop: "1px solid #334155",
+            flexShrink: 0,
+            display: "flex",
+            gap: "0.5rem",
+            borderRadius: mobileMode ? 0 : "0 0 12px 12px",
+          }}
+        >
           <textarea
             ref={inputRef}
             placeholder="Ask the AI..."
             onKeyDown={handleKeyDown}
             rows={1}
             style={{
-              flex: 1, resize: "none", background: "#1e293b", border: "1px solid #334155",
-              borderRadius: 8, padding: "0.5rem 0.75rem", color: "#e2e8f0",
-              fontSize: "0.8125rem", outline: "none", fontFamily: "inherit",
-              maxHeight: 120, overflowY: "auto",
+              flex: 1,
+              resize: "none",
+              background: "#1e293b",
+              border: "1px solid #334155",
+              borderRadius: 8,
+              padding: "0.5rem 0.75rem",
+              color: "#e2e8f0",
+              fontSize: "0.8125rem",
+              outline: "none",
+              fontFamily: "inherit",
+              maxHeight: 120,
+              overflowY: "auto",
             }}
           />
           <Button
@@ -717,7 +853,10 @@ export function ChatPanel({ boardId, username, gameMode, aiModel, onClose, initi
             disabled={loading}
             style={{
               background: loading ? colors.accentDark : colors.accent,
-              borderRadius: 8, fontSize: "0.8125rem", fontWeight: 600, flexShrink: 0,
+              borderRadius: 8,
+              fontSize: "0.8125rem",
+              fontWeight: 600,
+              flexShrink: 0,
             }}
           >
             Send
@@ -730,33 +869,76 @@ export function ChatPanel({ boardId, username, gameMode, aiModel, onClose, initi
         <div style={{ color: "#e2e8f0" }}>
           <h3 style={{ margin: "0 0 1rem", fontSize: "1rem", fontWeight: 700 }}>AI Characters</h3>
           {isUsingDefaults && (
-            <p style={{ margin: "0 0 1rem", fontSize: "0.75rem", color: "#64748b" }}>
+            <p
+              style={{
+                margin: "0 0 1rem",
+                fontSize: "0.75rem",
+                color: "#64748b",
+              }}
+            >
               Using default SPARK &amp; SAGE. Add custom characters to replace them for this board.
             </p>
           )}
 
           {/* Existing custom personas */}
           {!isUsingDefaults && (
-            <div style={{ marginBottom: "1rem", display: "flex", flexDirection: "column", gap: 6 }}>
+            <div
+              style={{
+                marginBottom: "1rem",
+                display: "flex",
+                flexDirection: "column",
+                gap: 6,
+              }}
+            >
               {personas.map((p) => (
-                <div key={p.id} style={{
-                  display: "flex", alignItems: "center", gap: 8,
-                  background: "#1e293b", borderRadius: 8, padding: "6px 10px",
-                }}>
-                  <span style={{
-                    width: 10, height: 10, borderRadius: "50%", background: p.color, flexShrink: 0,
-                  }} />
+                <div
+                  key={p.id}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 8,
+                    background: "#1e293b",
+                    borderRadius: 8,
+                    padding: "6px 10px",
+                  }}
+                >
+                  <span
+                    style={{
+                      width: 10,
+                      height: 10,
+                      borderRadius: "50%",
+                      background: p.color,
+                      flexShrink: 0,
+                    }}
+                  />
                   <span style={{ fontWeight: 600, color: p.color, minWidth: 60 }}>{p.name}</span>
-                  <span style={{ fontSize: "0.75rem", color: "#94a3b8", flex: 1, overflow: "hidden",
-                    textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.trait}</span>
+                  <span
+                    style={{
+                      fontSize: "0.75rem",
+                      color: "#94a3b8",
+                      flex: 1,
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    {p.trait}
+                  </span>
                   <button
                     onClick={() => handleDeletePersona(p.id)}
                     style={{
-                      background: "none", border: "none", color: "#64748b", cursor: "pointer",
-                      fontSize: "0.875rem", padding: "2px 4px", flexShrink: 0,
+                      background: "none",
+                      border: "none",
+                      color: "#64748b",
+                      cursor: "pointer",
+                      fontSize: "0.875rem",
+                      padding: "2px 4px",
+                      flexShrink: 0,
                     }}
                     title="Delete character"
-                  >✕</button>
+                  >
+                    ✕
+                  </button>
                 </div>
               ))}
             </div>
@@ -764,7 +946,14 @@ export function ChatPanel({ boardId, username, gameMode, aiModel, onClose, initi
 
           {/* Add character form */}
           <div style={{ borderTop: "1px solid #334155", paddingTop: "1rem" }}>
-            <p style={{ margin: "0 0 0.75rem", fontSize: "0.8125rem", fontWeight: 600, color: "#94a3b8" }}>
+            <p
+              style={{
+                margin: "0 0 0.75rem",
+                fontSize: "0.8125rem",
+                fontWeight: 600,
+                color: "#94a3b8",
+              }}
+            >
               Add Character
             </p>
             <div style={{ marginBottom: 8 }}>
@@ -773,9 +962,15 @@ export function ChatPanel({ boardId, username, gameMode, aiModel, onClose, initi
                 value={newName}
                 onChange={(e) => setNewName(e.target.value.toUpperCase().slice(0, 20))}
                 style={{
-                  width: "100%", boxSizing: "border-box", background: "#1e293b",
-                  border: "1px solid #334155", borderRadius: 8,
-                  padding: "0.4rem 0.6rem", color: "#e2e8f0", fontSize: "0.8125rem", outline: "none",
+                  width: "100%",
+                  boxSizing: "border-box",
+                  background: "#1e293b",
+                  border: "1px solid #334155",
+                  borderRadius: 8,
+                  padding: "0.4rem 0.6rem",
+                  color: "#e2e8f0",
+                  fontSize: "0.8125rem",
+                  outline: "none",
                 }}
               />
             </div>
@@ -785,21 +980,41 @@ export function ChatPanel({ boardId, username, gameMode, aiModel, onClose, initi
               onChange={(e) => setNewTrait(e.target.value.slice(0, 500))}
               rows={3}
               style={{
-                width: "100%", boxSizing: "border-box", resize: "vertical", background: "#1e293b",
-                border: "1px solid #334155", borderRadius: 8, padding: "0.4rem 0.6rem",
-                color: "#e2e8f0", fontSize: "0.8125rem", outline: "none", fontFamily: "inherit",
+                width: "100%",
+                boxSizing: "border-box",
+                resize: "vertical",
+                background: "#1e293b",
+                border: "1px solid #334155",
+                borderRadius: 8,
+                padding: "0.4rem 0.6rem",
+                color: "#e2e8f0",
+                fontSize: "0.8125rem",
+                outline: "none",
+                fontFamily: "inherit",
                 marginBottom: 8,
               }}
             />
-            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 8,
+                marginBottom: 12,
+              }}
+            >
               <span style={{ fontSize: "0.75rem", color: "#64748b" }}>Color:</span>
               {PERSONA_COLOR_PRESETS.map((c) => (
                 <button
                   key={c}
                   onClick={() => setNewColor(c)}
                   style={{
-                    width: 20, height: 20, borderRadius: "50%", background: c, border: "none",
-                    cursor: "pointer", outline: newColor === c ? `2px solid ${c}` : "none",
+                    width: 20,
+                    height: 20,
+                    borderRadius: "50%",
+                    background: c,
+                    border: "none",
+                    cursor: "pointer",
+                    outline: newColor === c ? `2px solid ${c}` : "none",
                     outlineOffset: 2,
                   }}
                 />
@@ -815,7 +1030,13 @@ export function ChatPanel({ boardId, username, gameMode, aiModel, onClose, initi
               {isCreating ? "Adding..." : "Add Character"}
             </Button>
             {createError && (
-              <p style={{ margin: "0.5rem 0 0", fontSize: "0.75rem", color: "#f87171" }}>
+              <p
+                style={{
+                  margin: "0.5rem 0 0",
+                  fontSize: "0.75rem",
+                  color: "#f87171",
+                }}
+              >
                 {createError}
               </p>
             )}

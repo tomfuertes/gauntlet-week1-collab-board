@@ -118,8 +118,9 @@ export const PERSONA_META = [
 ] as const;
 
 /** Persona name -> display color for ChatPanel sender labels (derived from DEFAULT_PERSONAS) */
-export const PERSONA_COLORS: Record<string, string> =
-  Object.fromEntries(DEFAULT_PERSONAS.map((p) => [p.name, p.color]));
+export const PERSONA_COLORS: Record<string, string> = Object.fromEntries(
+  DEFAULT_PERSONAS.map((p) => [p.name, p.color]),
+);
 
 /** Max human turns per scene before AI wraps up */
 export const SCENE_TURN_BUDGET = 20;
@@ -128,7 +129,12 @@ export type GameMode = "freeform" | "hat" | "yesand";
 
 export const GAME_MODES = [
   { mode: "freeform" as const, label: "Freeform", icon: "\u2728", description: "Classic improv - no rules, just play" },
-  { mode: "hat" as const, label: "Scenes From a Hat", icon: "\uD83C\uDFA9", description: "Random prompts, short scenes" },
+  {
+    mode: "hat" as const,
+    label: "Scenes From a Hat",
+    icon: "\uD83C\uDFA9",
+    description: "Random prompts, short scenes",
+  },
   { mode: "yesand" as const, label: "Yes-And Chain", icon: "\uD83D\uDD17", description: "Build a 10-beat chain" },
 ] as const;
 
@@ -140,7 +146,11 @@ export const AI_MODELS = [
   { id: "glm-4.7-flash" as const, label: "GLM 4.7 Flash", modelId: "@cf/zai-org/glm-4.7-flash" },
   { id: "gpt-oss-20b" as const, label: "GPT-OSS 20B", modelId: "@cf/openai/gpt-oss-20b" },
   { id: "llama-4-scout" as const, label: "Llama 4 Scout", modelId: "@cf/meta/llama-4-scout-17b-16e-instruct" },
-  { id: "mistral-small-3.1" as const, label: "Mistral Small 3.1", modelId: "@cf/mistralai/mistral-small-3.1-24b-instruct" },
+  {
+    id: "mistral-small-3.1" as const,
+    label: "Mistral Small 3.1",
+    modelId: "@cf/mistralai/mistral-small-3.1-24b-instruct",
+  },
 ] as const;
 
 export interface DailyChallenge {

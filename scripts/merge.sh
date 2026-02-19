@@ -70,9 +70,35 @@ echo ""
 echo "=== Merge complete ==="
 git log --oneline -3
 
+# --- Consolidate session file into notes.md ---
+SESSION_FILE="docs/sessions/${BRANCH}.md"
+if [[ -f "${SESSION_FILE}" ]]; then
+  echo ""
+  echo "=== Consolidating session file: ${SESSION_FILE} ==="
+  # Append session contents under a dated header
+  printf '\n## Session: %s (%s)\n\n' "${BRANCH}" "$(date +%Y-%m-%d)" >> docs/notes.md
+  cat "${SESSION_FILE}" >> docs/notes.md
+  printf '\n' >> docs/notes.md
+  rm "${SESSION_FILE}"
+  git add docs/notes.md "${SESSION_FILE}"
+  git commit --no-gpg-sign -m "docs: consolidate ${BRANCH} session notes"
+  echo "Session file consolidated into docs/notes.md"
+else
+  echo ""
+  echo "(No session file found at ${SESSION_FILE} - skipping consolidation)"
+fi
+
+# --- Print what's next summary ---
+echo ""
+echo "=== What's Next ==="
+# Show Loose Ends and Next/Unshipped sections from notes.md
+awk '/^## Loose Ends/,/^## [^L]/' docs/notes.md | head -30
+echo "---"
+awk '/^## Next \/ Unshipped/,/^## [^N]/' docs/notes.md | head -20
+
 # Squash commit uses --no-gpg-sign (sandbox can't reach GPG agent socket).
 # Remind user to sign if they have gpgsign configured.
 if git config --get commit.gpgsign &>/dev/null; then
   echo ""
-  echo "⚠ Unsigned commit. To GPG sign: git commit --amend --no-edit"
+  echo "⚠ Unsigned commit(s). To GPG sign: git commit --amend --no-edit"
 fi

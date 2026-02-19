@@ -31,7 +31,7 @@ function getBoardStub(env: Bindings, boardId: string) {
 async function checkBoardOwnership(
   db: D1Database,
   boardId: string,
-  userId: string
+  userId: string,
 ): Promise<"not_found" | "forbidden" | "ok"> {
   const board = await db.prepare("SELECT created_by FROM boards WHERE id = ?").bind(boardId).first();
   if (!board) return "not_found";
@@ -61,8 +61,10 @@ app.get("/api/boards", async (c) => {
      LEFT JOIN board_activity a ON a.board_id = b.id
      LEFT JOIN user_board_seen s ON s.board_id = b.id AND s.user_id = ?1
      WHERE b.created_by = ?1 OR b.created_by = 'system' OR s.user_id IS NOT NULL
-     ORDER BY b.updated_at DESC`
-  ).bind(user.id).all();
+     ORDER BY b.updated_at DESC`,
+  )
+    .bind(user.id)
+    .all();
   return c.json(results);
 });
 
@@ -75,8 +77,10 @@ app.post("/api/boards", async (c) => {
   const name = body.name || "Untitled Board";
 
   await c.env.DB.prepare(
-    "INSERT INTO boards (id, name, created_by, created_at, updated_at) VALUES (?, ?, ?, datetime('now'), datetime('now'))"
-  ).bind(id, name, user.id).run();
+    "INSERT INTO boards (id, name, created_by, created_at, updated_at) VALUES (?, ?, ?, datetime('now'), datetime('now'))",
+  )
+    .bind(id, name, user.id)
+    .run();
   // Seed activity + seen so the board appears immediately in GET /api/boards
   // (avoids D1 read replication lag - board is visible before any WS activity)
   await recordBoardActivity(c.env.DB, id);
@@ -107,14 +111,18 @@ app.get("/api/boards/:boardId", async (c) => {
   if (!user) return c.text("Unauthorized", 401);
   const boardId = c.req.param("boardId");
   const row = await c.env.DB.prepare("SELECT id, name, game_mode, created_by FROM boards WHERE id = ?")
-    .bind(boardId).first();
+    .bind(boardId)
+    .first();
   if (!row) return c.text("Not found", 404);
   return c.json(row);
 });
 
 // Board objects endpoint for eval harness (auth-protected)
 // Canvas usable area bounds from LAYOUT RULES in prompts.ts
-const CANVAS_MIN_X = 50, CANVAS_MIN_Y = 60, CANVAS_MAX_X = 1150, CANVAS_MAX_Y = 780;
+const CANVAS_MIN_X = 50,
+  CANVAS_MIN_Y = 60,
+  CANVAS_MAX_X = 1150,
+  CANVAS_MAX_Y = 780;
 
 app.get("/api/boards/:boardId/objects", async (c) => {
   const user = await requireAuth(c);
@@ -143,10 +151,8 @@ app.patch("/api/boards/:boardId", async (c) => {
   if (ownership === "not_found") return c.text("Not found", 404);
   if (ownership === "forbidden") return c.text("Forbidden", 403);
   const body = await c.req.json<{ game_mode?: string }>();
-  const gameMode = ["hat", "yesand", "freeform"].includes(body.game_mode ?? "")
-    ? body.game_mode : "freeform";
-  await c.env.DB.prepare("UPDATE boards SET game_mode = ? WHERE id = ?")
-    .bind(gameMode, boardId).run();
+  const gameMode = ["hat", "yesand", "freeform"].includes(body.game_mode ?? "") ? body.game_mode : "freeform";
+  await c.env.DB.prepare("UPDATE boards SET game_mode = ? WHERE id = ?").bind(gameMode, boardId).run();
   return c.json({ ok: true });
 });
 
@@ -170,9 +176,9 @@ app.delete("/api/user", async (c) => {
   if (!user) return c.text("Unauthorized", 401);
 
   // Delete user's boards (and their DO storage)
-  const { results: userBoards } = await c.env.DB.prepare(
-    "SELECT id FROM boards WHERE created_by = ?"
-  ).bind(user.id).all();
+  const { results: userBoards } = await c.env.DB.prepare("SELECT id FROM boards WHERE created_by = ?")
+    .bind(user.id)
+    .all();
   for (const board of userBoards) {
     await getBoardStub(c.env, board.id as string).deleteBoard();
   }
@@ -200,19 +206,19 @@ app.get("/api/challenges/today", async (c) => {
 
     const today = new Date().toISOString().split("T")[0]; // YYYY-MM-DD UTC
 
-    let challenge = await c.env.DB.prepare(
-      "SELECT id, date, prompt FROM daily_challenges WHERE date = ?"
-    ).bind(today).first<{ id: number; date: string; prompt: string }>();
+    let challenge = await c.env.DB.prepare("SELECT id, date, prompt FROM daily_challenges WHERE date = ?")
+      .bind(today)
+      .first<{ id: number; date: string; prompt: string }>();
 
     if (!challenge) {
       // INSERT ... RETURNING is not reliably supported in D1 - use INSERT then SELECT
       const { prompt, index } = getRandomHatPrompt();
-      await c.env.DB.prepare(
-        "INSERT OR IGNORE INTO daily_challenges (date, prompt, hat_prompt_index) VALUES (?, ?, ?)"
-      ).bind(today, prompt, index).run();
-      challenge = await c.env.DB.prepare(
-        "SELECT id, date, prompt FROM daily_challenges WHERE date = ?"
-      ).bind(today).first<{ id: number; date: string; prompt: string }>();
+      await c.env.DB.prepare("INSERT OR IGNORE INTO daily_challenges (date, prompt, hat_prompt_index) VALUES (?, ?, ?)")
+        .bind(today, prompt, index)
+        .run();
+      challenge = await c.env.DB.prepare("SELECT id, date, prompt FROM daily_challenges WHERE date = ?")
+        .bind(today)
+        .first<{ id: number; date: string; prompt: string }>();
     }
 
     if (!challenge) {
@@ -221,9 +227,11 @@ app.get("/api/challenges/today", async (c) => {
     }
 
     const userBoardId: string | null = user
-      ? (await c.env.DB.prepare(
-          "SELECT board_id FROM challenge_entries WHERE challenge_id = ? AND user_id = ?"
-        ).bind(challenge.id, user.id).first<{ board_id: string }>())?.board_id ?? null
+      ? ((
+          await c.env.DB.prepare("SELECT board_id FROM challenge_entries WHERE challenge_id = ? AND user_id = ?")
+            .bind(challenge.id, user.id)
+            .first<{ board_id: string }>()
+        )?.board_id ?? null)
       : null;
 
     return c.json({ ...challenge, userBoardId });
@@ -243,13 +251,15 @@ app.post("/api/challenges/:id/enter", async (c) => {
 
   // Check for existing entry (idempotent)
   const existing = await c.env.DB.prepare(
-    "SELECT board_id FROM challenge_entries WHERE challenge_id = ? AND user_id = ?"
-  ).bind(challengeId, user.id).first<{ board_id: string }>();
+    "SELECT board_id FROM challenge_entries WHERE challenge_id = ? AND user_id = ?",
+  )
+    .bind(challengeId, user.id)
+    .first<{ board_id: string }>();
   if (existing) return c.json({ boardId: existing.board_id });
 
-  const challenge = await c.env.DB.prepare(
-    "SELECT id, prompt FROM daily_challenges WHERE id = ?"
-  ).bind(challengeId).first<{ id: number; prompt: string }>();
+  const challenge = await c.env.DB.prepare("SELECT id, prompt FROM daily_challenges WHERE id = ?")
+    .bind(challengeId)
+    .first<{ id: number; prompt: string }>();
   if (!challenge) return c.text("Challenge not found", 404);
 
   const boardId = crypto.randomUUID();
@@ -257,18 +267,24 @@ app.post("/api/challenges/:id/enter", async (c) => {
 
   try {
     await c.env.DB.prepare(
-      "INSERT INTO boards (id, name, created_by, created_at, updated_at, game_mode) VALUES (?, ?, ?, datetime('now'), datetime('now'), 'hat')"
-    ).bind(boardId, boardName, user.id).run();
+      "INSERT INTO boards (id, name, created_by, created_at, updated_at, game_mode) VALUES (?, ?, ?, datetime('now'), datetime('now'), 'hat')",
+    )
+      .bind(boardId, boardName, user.id)
+      .run();
     await recordBoardActivity(c.env.DB, boardId);
     await markBoardSeen(c.env.DB, user.id, boardId);
     await c.env.DB.prepare(
-      "INSERT INTO challenge_entries (challenge_id, board_id, user_id, created_at) VALUES (?, ?, ?, datetime('now'))"
-    ).bind(challengeId, boardId, user.id).run();
+      "INSERT INTO challenge_entries (challenge_id, board_id, user_id, created_at) VALUES (?, ?, ?, datetime('now'))",
+    )
+      .bind(challengeId, boardId, user.id)
+      .run();
   } catch (err) {
     // UNIQUE constraint fired from concurrent request - re-fetch the winner's entry
     const raceWinner = await c.env.DB.prepare(
-      "SELECT board_id FROM challenge_entries WHERE challenge_id = ? AND user_id = ?"
-    ).bind(challengeId, user.id).first<{ board_id: string }>();
+      "SELECT board_id FROM challenge_entries WHERE challenge_id = ? AND user_id = ?",
+    )
+      .bind(challengeId, user.id)
+      .first<{ board_id: string }>();
     if (raceWinner) return c.json({ boardId: raceWinner.board_id });
     console.error(JSON.stringify({ event: "challenge:enter:error", error: String(err) }));
     return c.text("Failed to create challenge entry", 500);
@@ -290,8 +306,10 @@ app.get("/api/challenges/:id/leaderboard", async (c) => {
        JOIN users u ON u.id = ce.user_id
        WHERE ce.challenge_id = ?
        ORDER BY ce.reaction_count DESC
-       LIMIT 20`
-    ).bind(challengeId).all<{ boardId: string; userId: string; username: string; reactionCount: number }>();
+       LIMIT 20`,
+    )
+      .bind(challengeId)
+      .all<{ boardId: string; userId: string; username: string; reactionCount: number }>();
 
     return c.json(results);
   } catch (err) {
@@ -309,8 +327,10 @@ app.get("/api/boards/:boardId/personas", async (c) => {
   const boardId = c.req.param("boardId");
   try {
     const { results } = await c.env.DB.prepare(
-      "SELECT id, name, trait, color FROM board_personas WHERE board_id = ? ORDER BY created_at"
-    ).bind(boardId).all();
+      "SELECT id, name, trait, color FROM board_personas WHERE board_id = ? ORDER BY created_at",
+    )
+      .bind(boardId)
+      .all();
     return c.json(results.length > 0 ? results : null); // null = use defaults
   } catch (err) {
     console.error(JSON.stringify({ event: "personas:get-error", boardId, error: String(err) }));
@@ -328,22 +348,26 @@ app.post("/api/boards/:boardId/personas", async (c) => {
 
   const body = await c.req.json<{ name?: string; trait?: string; color?: string }>();
   // Strip non-alphanumeric chars from name (name used as [NAME] prefix in LLM protocol)
-  const name = (body.name ?? "").trim().replace(/[^A-Z0-9 _-]/gi, "").toUpperCase().slice(0, 30);
+  const name = (body.name ?? "")
+    .trim()
+    .replace(/[^A-Z0-9 _-]/gi, "")
+    .toUpperCase()
+    .slice(0, 30);
   const trait = (body.trait ?? "").trim().slice(0, 500);
   const color = /^#[0-9a-fA-F]{6}$/.test(body.color ?? "") ? body.color! : "#fb923c";
   if (!name || !trait) return c.text("name and trait are required", 400);
 
   try {
     // Limit to 10 personas per board to prevent unbounded growth
-    const existing = await c.env.DB.prepare(
-      "SELECT COUNT(*) as count FROM board_personas WHERE board_id = ?"
-    ).bind(boardId).first<{ count: number }>();
+    const existing = await c.env.DB.prepare("SELECT COUNT(*) as count FROM board_personas WHERE board_id = ?")
+      .bind(boardId)
+      .first<{ count: number }>();
     if ((existing?.count ?? 0) >= 10) return c.text("Maximum 10 characters per board", 400);
 
     const id = crypto.randomUUID();
-    await c.env.DB.prepare(
-      "INSERT INTO board_personas (id, board_id, name, trait, color) VALUES (?, ?, ?, ?, ?)"
-    ).bind(id, boardId, name, trait, color).run();
+    await c.env.DB.prepare("INSERT INTO board_personas (id, board_id, name, trait, color) VALUES (?, ?, ?, ?, ?)")
+      .bind(id, boardId, name, trait, color)
+      .run();
     return c.json({ id, name, trait, color }, 201);
   } catch (err) {
     console.error(JSON.stringify({ event: "personas:post-error", boardId, error: String(err) }));
@@ -361,9 +385,7 @@ app.delete("/api/boards/:boardId/personas/:personaId", async (c) => {
 
   const personaId = c.req.param("personaId");
   try {
-    await c.env.DB.prepare(
-      "DELETE FROM board_personas WHERE id = ? AND board_id = ?"
-    ).bind(personaId, boardId).run();
+    await c.env.DB.prepare("DELETE FROM board_personas WHERE id = ? AND board_id = ?").bind(personaId, boardId).run();
     return c.json({ deleted: true });
   } catch (err) {
     console.error(JSON.stringify({ event: "personas:delete-error", boardId, personaId, error: String(err) }));
@@ -381,8 +403,15 @@ app.get("/api/boards/public", async (c) => {
        JOIN users u ON u.id = b.created_by
        LEFT JOIN board_activity a ON a.board_id = b.id
        ORDER BY a.last_activity_at DESC
-       LIMIT 50`
-    ).all<{ id: string; name: string; game_mode?: string; creator: string; last_activity_at: string; eventCount: number }>();
+       LIMIT 50`,
+    ).all<{
+      id: string;
+      name: string;
+      game_mode?: string;
+      creator: string;
+      last_activity_at: string;
+      eventCount: number;
+    }>();
     return c.json(results);
   } catch (err) {
     console.error(JSON.stringify({ event: "gallery:public:error", error: String(err) }));
@@ -424,9 +453,11 @@ app.get("/ws/watch/:boardId", async (c) => {
   url.searchParams.set("boardId", boardId);
   url.searchParams.set("role", "spectator");
 
-  return stub.fetch(new Request(url.toString(), {
-    headers: c.req.raw.headers,
-  }));
+  return stub.fetch(
+    new Request(url.toString(), {
+      headers: c.req.raw.headers,
+    }),
+  );
 });
 
 // WebSocket upgrade - authenticate then forward to Board DO
@@ -448,9 +479,11 @@ app.get("/ws/board/:boardId", async (c) => {
   url.searchParams.set("username", user.displayName);
   url.searchParams.set("boardId", boardId);
 
-  return stub.fetch(new Request(url.toString(), {
-    headers: c.req.raw.headers,
-  }));
+  return stub.fetch(
+    new Request(url.toString(), {
+      headers: c.req.raw.headers,
+    }),
+  );
 });
 
 export default app;

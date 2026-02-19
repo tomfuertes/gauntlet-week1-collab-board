@@ -60,15 +60,11 @@ async function createAndMutate(stub: BoardStub, obj: BoardObject) {
   try {
     result = await stub.mutate({ type: "obj:create", obj });
   } catch (err) {
-    console.error(
-      JSON.stringify({ event: "ai:create:error", type: obj.type, id: obj.id, error: String(err) }),
-    );
+    console.error(JSON.stringify({ event: "ai:create:error", type: obj.type, id: obj.id, error: String(err) }));
     return { error: `Failed to create ${obj.type}: ${err instanceof Error ? err.message : String(err)}` };
   }
   if (!result.ok) {
-    console.error(
-      JSON.stringify({ event: "ai:create:rejected", type: obj.type, id: obj.id, error: result.error }),
-    );
+    console.error(JSON.stringify({ event: "ai:create:rejected", type: obj.type, id: obj.id, error: result.error }));
     return { error: result.error };
   }
   console.debug(
@@ -108,9 +104,7 @@ async function updateAndMutate(
       obj: { id, ...fields, updatedAt: Date.now() },
     });
   } catch (err) {
-    console.error(
-      JSON.stringify({ event: "ai:update:error", id, error: String(err) }),
-    );
+    console.error(JSON.stringify({ event: "ai:update:error", id, error: String(err) }));
     return { error: `Failed to update ${id}: ${err instanceof Error ? err.message : String(err)}` };
   }
   if (!result.ok) return { error: result.error ?? "Unknown mutation error" };
@@ -137,20 +131,14 @@ async function readAndCenter(stub: BoardStub, id: string): Promise<BoardObject |
 
 /** Check if two board objects overlap (axis-aligned bounding boxes) */
 export function rectsOverlap(a: BoardObject, b: BoardObject): boolean {
-  return (
-    a.x < b.x + b.width &&
-    a.x + a.width > b.x &&
-    a.y < b.y + b.height &&
-    a.y + a.height > b.y
-  );
+  return a.x < b.x + b.width && a.x + a.width > b.x && a.y < b.y + b.height && a.y + a.height > b.y;
 }
 
 /** Count pairwise overlaps among objects (0 = perfect layout) */
 export function computeOverlapScore(objects: BoardObject[]): number {
   let overlaps = 0;
   for (let i = 0; i < objects.length; i++)
-    for (let j = i + 1; j < objects.length; j++)
-      if (rectsOverlap(objects[i], objects[j])) overlaps++;
+    for (let j = i + 1; j < objects.length; j++) if (rectsOverlap(objects[i], objects[j])) overlaps++;
   return overlaps;
 }
 
@@ -172,8 +160,7 @@ function instrumentExecute<TArgs, TResult>(
     // Guard: reject non-object inputs from malformed LLM tool calls.
     // Free-tier models (GLM-4.7-Flash) sometimes emit strings or nulls.
     if (!isPlainObject(args)) {
-      const inputType =
-        args === null ? "null" : Array.isArray(args) ? "array" : typeof args;
+      const inputType = args === null ? "null" : Array.isArray(args) ? "array" : typeof args;
       console.error(
         JSON.stringify({
           event: "ai:tool:invalid-input",
@@ -242,18 +229,11 @@ export function createSDKTools(stub: BoardStub, batchId?: string, ai?: Ai) {
   const baseTools = {
     // 1. createStickyNote
     createStickyNote: tool({
-      description:
-        "Create a sticky note on the whiteboard with text content",
+      description: "Create a sticky note on the whiteboard with text content",
       inputSchema: z.object({
         text: z.string().describe("The text content of the sticky note"),
-        x: z
-          .number()
-          .optional()
-          .describe("X position on the canvas (default: random 100-800)"),
-        y: z
-          .number()
-          .optional()
-          .describe("Y position on the canvas (default: random 100-600)"),
+        x: z.number().optional().describe("X position on the canvas (default: random 100-800)"),
+        y: z.number().optional().describe("Y position on the canvas (default: random 100-600)"),
         color: z
           .string()
           .optional()
@@ -262,10 +242,17 @@ export function createSDKTools(stub: BoardStub, batchId?: string, ai?: Ai) {
           ),
       }),
       execute: instrumentExecute("createStickyNote", async ({ text, x, y, color }) => {
-        const obj = makeObject("sticky", randomPos(x, y), TOOL_DEFAULTS.sticky.width, TOOL_DEFAULTS.sticky.height, {
-          text: text || "New note",
-          color: color || TOOL_DEFAULTS.sticky.color,
-        }, batchId);
+        const obj = makeObject(
+          "sticky",
+          randomPos(x, y),
+          TOOL_DEFAULTS.sticky.width,
+          TOOL_DEFAULTS.sticky.height,
+          {
+            text: text || "New note",
+            color: color || TOOL_DEFAULTS.sticky.color,
+          },
+          batchId,
+        );
         return createAndMutate(stub, obj);
       }),
     }),
@@ -275,51 +262,21 @@ export function createSDKTools(stub: BoardStub, batchId?: string, ai?: Ai) {
       description:
         "Create a shape on the whiteboard. Use shape='rect' for rectangle, 'circle' for circle, 'line' for line.",
       inputSchema: z.object({
-        shape: z
-          .string()
-          .describe("Shape type: 'rect', 'circle', or 'line'"),
-        x: z
-          .number()
-          .optional()
-          .describe(
-            "X position (default: random). For circle: center X. For line: start X.",
-          ),
-        y: z
-          .number()
-          .optional()
-          .describe(
-            "Y position (default: random). For circle: center Y. For line: start Y.",
-          ),
+        shape: z.string().describe("Shape type: 'rect', 'circle', or 'line'"),
+        x: z.number().optional().describe("X position (default: random). For circle: center X. For line: start X."),
+        y: z.number().optional().describe("Y position (default: random). For circle: center Y. For line: start Y."),
         width: z
           .number()
           .optional()
-          .describe(
-            "Width (default: 150). For circle: diameter. For line: X delta to endpoint.",
-          ),
+          .describe("Width (default: 150). For circle: diameter. For line: X delta to endpoint."),
         height: z
           .number()
           .optional()
-          .describe(
-            "Height (default: 100). For circle: same as width. For line: Y delta to endpoint.",
-          ),
-        fill: z
-          .string()
-          .optional()
-          .describe("Fill color hex (default: #3b82f6)"),
-        stroke: z
-          .string()
-          .optional()
-          .describe("Stroke color hex (default: #2563eb)"),
+          .describe("Height (default: 100). For circle: same as width. For line: Y delta to endpoint."),
+        fill: z.string().optional().describe("Fill color hex (default: #3b82f6)"),
+        stroke: z.string().optional().describe("Stroke color hex (default: #2563eb)"),
       }),
-      execute: instrumentExecute("createShape", async ({
-        shape: shapeArg,
-        x,
-        y,
-        width,
-        height,
-        fill,
-        stroke,
-      }) => {
+      execute: instrumentExecute("createShape", async ({ shape: shapeArg, x, y, width, height, fill, stroke }) => {
         const shape = shapeArg || "rect";
 
         if (shape === "circle") {
@@ -367,22 +324,10 @@ export function createSDKTools(stub: BoardStub, batchId?: string, ai?: Ai) {
         "Create a frame (labeled container/region) on the whiteboard to group or organize objects. Frames render behind other objects.",
       inputSchema: z.object({
         title: z.string().describe("The frame title/label"),
-        x: z
-          .number()
-          .optional()
-          .describe("X position (default: random 100-800)"),
-        y: z
-          .number()
-          .optional()
-          .describe("Y position (default: random 100-600)"),
-        width: z
-          .number()
-          .optional()
-          .describe("Width in pixels (default: 400)"),
-        height: z
-          .number()
-          .optional()
-          .describe("Height in pixels (default: 300)"),
+        x: z.number().optional().describe("X position (default: random 100-800)"),
+        y: z.number().optional().describe("Y position (default: random 100-600)"),
+        width: z.number().optional().describe("Width in pixels (default: 400)"),
+        height: z.number().optional().describe("Height in pixels (default: 300)"),
       }),
       execute: instrumentExecute("createFrame", async ({ title, x, y, width, height }) => {
         const obj = makeObject(
@@ -391,10 +336,7 @@ export function createSDKTools(stub: BoardStub, batchId?: string, ai?: Ai) {
           width ?? TOOL_DEFAULTS.frame.width,
           height ?? TOOL_DEFAULTS.frame.height,
           {
-            text:
-              typeof title === "string" && title.trim()
-                ? title.trim()
-                : "Frame",
+            text: typeof title === "string" && title.trim() ? title.trim() : "Frame",
           },
           batchId,
         );
@@ -409,14 +351,8 @@ export function createSDKTools(stub: BoardStub, batchId?: string, ai?: Ai) {
       inputSchema: z.object({
         fromId: z.string().describe("ID of the source object"),
         toId: z.string().describe("ID of the target object"),
-        stroke: z
-          .string()
-          .optional()
-          .describe("Stroke color hex (default: #94a3b8)"),
-        arrow: z
-          .string()
-          .optional()
-          .describe("Arrow style: 'end' (default), 'both', or 'none'"),
+        stroke: z.string().optional().describe("Stroke color hex (default: #94a3b8)"),
+        arrow: z.string().optional().describe("Arrow style: 'end' (default), 'both', or 'none'"),
       }),
       execute: instrumentExecute("createConnector", async ({ fromId, toId, stroke, arrow }) => {
         const fromObj = await stub.readObject(fromId);
@@ -437,12 +373,18 @@ export function createSDKTools(stub: BoardStub, batchId?: string, ai?: Ai) {
           };
         }
 
-        const arrowStyle =
-          arrow === "both" ? "both" : arrow === "none" ? "none" : "end";
-        const obj = makeObject("line", { x: x1, y: y1 }, w, h, {
-          stroke: stroke || TOOL_DEFAULTS.connector.stroke,
-          arrow: arrowStyle as "end" | "both" | "none",
-        }, batchId);
+        const arrowStyle = arrow === "both" ? "both" : arrow === "none" ? "none" : "end";
+        const obj = makeObject(
+          "line",
+          { x: x1, y: y1 },
+          w,
+          h,
+          {
+            stroke: stroke || TOOL_DEFAULTS.connector.stroke,
+            arrow: arrowStyle as "end" | "both" | "none",
+          },
+          batchId,
+        );
         const result = await createAndMutate(stub, obj);
         if ("error" in result) return result;
         return { ...result, from: fromId, to: toId };
@@ -451,8 +393,7 @@ export function createSDKTools(stub: BoardStub, batchId?: string, ai?: Ai) {
 
     // 5. moveObject
     moveObject: tool({
-      description:
-        "Move an existing object to a new position on the whiteboard",
+      description: "Move an existing object to a new position on the whiteboard",
       inputSchema: z.object({
         id: z.string().describe("The ID of the object to move"),
         x: z.number().describe("New X position"),
@@ -482,8 +423,7 @@ export function createSDKTools(stub: BoardStub, batchId?: string, ai?: Ai) {
 
     // 7. updateText
     updateText: tool({
-      description:
-        "Update the text content of a sticky note, text object, or frame title",
+      description: "Update the text content of a sticky note, text object, or frame title",
       inputSchema: z.object({
         id: z.string().describe("The ID of the object to update"),
         text: z.string().describe("New text content"),
@@ -496,8 +436,7 @@ export function createSDKTools(stub: BoardStub, batchId?: string, ai?: Ai) {
 
     // 8. changeColor
     changeColor: tool({
-      description:
-        "Change the color of an object. Maps to props.color for stickies, props.fill for shapes.",
+      description: "Change the color of an object. Maps to props.color for stickies, props.fill for shapes.",
       inputSchema: z.object({
         id: z.string().describe("The ID of the object to recolor"),
         color: z.string().describe("New hex color"),
@@ -508,8 +447,9 @@ export function createSDKTools(stub: BoardStub, batchId?: string, ai?: Ai) {
         const props: BoardObjectProps =
           existing.type === "sticky" || existing.type === "text"
             ? { color }
-            : existing.type === "line" ? { stroke: color }
-            : { fill: color };
+            : existing.type === "line"
+              ? { stroke: color }
+              : { fill: color };
         return updateAndMutate(stub, id, { props }, "recolored", { color });
       }),
     }),
@@ -522,27 +462,18 @@ export function createSDKTools(stub: BoardStub, batchId?: string, ai?: Ai) {
         filter: z
           .string()
           .optional()
-          .describe(
-            "Filter by object type: 'sticky', 'rect', 'circle', 'line', 'text', 'frame', 'image'",
-          ),
-        ids: z
-          .array(z.string())
-          .optional()
-          .describe("Array of specific object IDs to return"),
+          .describe("Filter by object type: 'sticky', 'rect', 'circle', 'line', 'text', 'frame', 'image'"),
+        ids: z.array(z.string()).optional().describe("Array of specific object IDs to return"),
       }),
       execute: instrumentExecute("getBoardState", async ({ filter, ids }) => {
         const objects = await stub.readObjects();
 
         if (ids && ids.length > 0) {
-          return objects
-            .filter((o: BoardObject) => ids.includes(o.id))
-            .map(stripForLLM);
+          return objects.filter((o: BoardObject) => ids.includes(o.id)).map(stripForLLM);
         }
 
         if (filter) {
-          return objects
-            .filter((o: BoardObject) => o.type === filter)
-            .map(stripForLLM);
+          return objects.filter((o: BoardObject) => o.type === filter).map(stripForLLM);
         }
 
         // Compute and log overlap score for observability
@@ -559,8 +490,7 @@ export function createSDKTools(stub: BoardStub, batchId?: string, ai?: Ai) {
 
         if (objects.length >= 20) {
           const counts: Record<string, number> = {};
-          for (const o of objects)
-            counts[o.type] = (counts[o.type] || 0) + 1;
+          for (const o of objects) counts[o.type] = (counts[o.type] || 0) + 1;
           return {
             summary: true,
             total: objects.length,
@@ -585,9 +515,7 @@ export function createSDKTools(stub: BoardStub, batchId?: string, ai?: Ai) {
         try {
           result = await stub.mutate({ type: "obj:delete", id });
         } catch (err) {
-          console.error(
-            JSON.stringify({ event: "ai:delete:error", id, error: String(err) }),
-          );
+          console.error(JSON.stringify({ event: "ai:delete:error", id, error: String(err) }));
           return { error: `Failed to delete ${id}: ${err instanceof Error ? err.message : String(err)}` };
         }
         if (!result.ok) return { error: result.error };
@@ -600,25 +528,11 @@ export function createSDKTools(stub: BoardStub, batchId?: string, ai?: Ai) {
       description:
         "Generate an AI image from a text prompt and place it on the whiteboard. Uses Stable Diffusion XL. Great for illustrations, scene backdrops, character portraits, props, etc.",
       inputSchema: z.object({
-        prompt: z
-          .string()
-          .describe("Text description of the image to generate (be specific and descriptive)"),
-        x: z
-          .number()
-          .optional()
-          .describe("X position on the canvas (default: random 100-800)"),
-        y: z
-          .number()
-          .optional()
-          .describe("Y position on the canvas (default: random 100-600)"),
-        width: z
-          .number()
-          .optional()
-          .describe("Display width on the board in pixels (default: 512)"),
-        height: z
-          .number()
-          .optional()
-          .describe("Display height on the board in pixels (default: 512)"),
+        prompt: z.string().describe("Text description of the image to generate (be specific and descriptive)"),
+        x: z.number().optional().describe("X position on the canvas (default: random 100-800)"),
+        y: z.number().optional().describe("Y position on the canvas (default: random 100-600)"),
+        width: z.number().optional().describe("Display width on the board in pixels (default: 512)"),
+        height: z.number().optional().describe("Display height on the board in pixels (default: 512)"),
       }),
       execute: instrumentExecute("generateImage", async ({ prompt, x, y, width, height }) => {
         if (!ai) {
@@ -652,9 +566,7 @@ export function createSDKTools(stub: BoardStub, batchId?: string, ai?: Ai) {
             totalLen += value.byteLength;
           }
           if (totalLen === 0) {
-            console.error(
-              JSON.stringify({ event: "ai:image:empty-response", prompt: prompt.slice(0, 100) }),
-            );
+            console.error(JSON.stringify({ event: "ai:image:empty-response", prompt: prompt.slice(0, 100) }));
             return { error: "Image generation returned empty response (0 bytes)" };
           }
           if (totalLen > MAX_IMAGE_BYTES) {
@@ -687,7 +599,12 @@ export function createSDKTools(stub: BoardStub, batchId?: string, ai?: Ai) {
           base64 = btoa(binary);
         } catch (err) {
           console.error(
-            JSON.stringify({ event: "ai:image:base64-error", prompt: prompt.slice(0, 100), bytesLen: imageBytes.length, error: String(err) }),
+            JSON.stringify({
+              event: "ai:image:base64-error",
+              prompt: prompt.slice(0, 100),
+              bytesLen: imageBytes.length,
+              error: String(err),
+            }),
           );
           return { error: `Base64 encoding failed: ${err instanceof Error ? err.message : String(err)}` };
         }
@@ -695,14 +612,7 @@ export function createSDKTools(stub: BoardStub, batchId?: string, ai?: Ai) {
         const src = `data:image/png;base64,${base64}`;
         const displayW = width ?? TOOL_DEFAULTS.image.width;
         const displayH = height ?? TOOL_DEFAULTS.image.height;
-        const obj = makeObject(
-          "image",
-          randomPos(x, y),
-          displayW,
-          displayH,
-          { src, prompt },
-          batchId,
-        );
+        const obj = makeObject("image", randomPos(x, y), displayW, displayH, { src, prompt }, batchId);
         return createAndMutate(stub, obj);
       }),
     }),
@@ -754,15 +664,12 @@ export function createSDKTools(stub: BoardStub, batchId?: string, ai?: Ai) {
           .describe("Ordered list of operations to execute sequentially"),
       }),
       execute: instrumentExecute("batchExecute", async ({ operations }) => {
-        const errMsg = (err: unknown): string =>
-          err instanceof Error ? err.message : String(err);
+        const errMsg = (err: unknown): string => (err instanceof Error ? err.message : String(err));
 
         const results: unknown[] = [];
         let failed = 0;
         const toolNames = operations.map((op) => op.tool);
-        console.debug(
-          JSON.stringify({ event: "batch:start", count: operations.length, tools: toolNames }),
-        );
+        console.debug(JSON.stringify({ event: "batch:start", count: operations.length, tools: toolNames }));
 
         for (const op of operations) {
           const executeFn = toolRegistry[op.tool];
@@ -779,9 +686,7 @@ export function createSDKTools(stub: BoardStub, batchId?: string, ai?: Ai) {
             if (isPlainObject(result) && "error" in result) failed++;
           } catch (err) {
             // Unexpected throw not caught by instrumentExecute (which rethrows) - log for diagnosis
-            console.error(
-              JSON.stringify({ event: "batch:op:error", tool: op.tool, error: errMsg(err) }),
-            );
+            console.error(JSON.stringify({ event: "batch:op:error", tool: op.tool, error: errMsg(err) }));
             results.push({ error: `${op.tool} failed: ${errMsg(err)}` });
             failed++;
           }
@@ -789,7 +694,12 @@ export function createSDKTools(stub: BoardStub, batchId?: string, ai?: Ai) {
 
         if (failed > 0) {
           console.error(
-            JSON.stringify({ event: "batch:partial-failure", completed: operations.length - failed, failed, tools: toolNames }),
+            JSON.stringify({
+              event: "batch:partial-failure",
+              completed: operations.length - failed,
+              failed,
+              tools: toolNames,
+            }),
           );
         }
 

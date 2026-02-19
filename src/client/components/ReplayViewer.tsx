@@ -62,7 +62,11 @@ export function ReplayViewer({ boardId, onBack }: ReplayViewerProps) {
     } else if (evt.type === "obj:update" && evt.obj) {
       const existing = targets.get(evt.obj.id);
       if (existing) {
-        targets.set(evt.obj.id, { ...existing, ...evt.obj, props: { ...existing.props, ...(evt.obj.props || {}) } } as BoardObject);
+        targets.set(evt.obj.id, {
+          ...existing,
+          ...evt.obj,
+          props: { ...existing.props, ...(evt.obj.props || {}) },
+        } as BoardObject);
       } else {
         targets.set(evt.obj.id, evt.obj);
         rendered.set(evt.obj.id, { ...evt.obj }); // new object, instant
@@ -100,7 +104,7 @@ export function ReplayViewer({ boardId, onBack }: ReplayViewerProps) {
           continue;
         }
 
-        for (const key of ['x', 'y', 'width', 'height', 'rotation'] as const) {
+        for (const key of ["x", "y", "width", "height", "rotation"] as const) {
           const diff = target[key] - r[key];
           if (Math.abs(diff) > SNAP) {
             r[key] += diff * LERP;
@@ -126,7 +130,14 @@ export function ReplayViewer({ boardId, onBack }: ReplayViewerProps) {
       let snapped = false;
       for (const [id, target] of targets) {
         const r = rendered.get(id);
-        if (!r || r.x !== target.x || r.y !== target.y || r.width !== target.width || r.height !== target.height || r.rotation !== target.rotation) {
+        if (
+          !r ||
+          r.x !== target.x ||
+          r.y !== target.y ||
+          r.width !== target.width ||
+          r.height !== target.height ||
+          r.rotation !== target.rotation
+        ) {
           rendered.set(id, { ...target });
           snapped = true;
         }
@@ -145,16 +156,16 @@ export function ReplayViewer({ boardId, onBack }: ReplayViewerProps) {
       return;
     }
 
-    const delay = currentIndex < 0
-      ? 0
-      : Math.min(events[next].ts - events[currentIndex].ts, 2000);
+    const delay = currentIndex < 0 ? 0 : Math.min(events[next].ts - events[currentIndex].ts, 2000);
 
     timerRef.current = setTimeout(() => {
       applyEvent(events[next]);
       setCurrentIndex(next);
     }, delay);
 
-    return () => { if (timerRef.current) clearTimeout(timerRef.current); };
+    return () => {
+      if (timerRef.current) clearTimeout(timerRef.current);
+    };
   }, [playing, currentIndex, events, applyEvent]);
 
   const handlePlayPause = () => {
@@ -179,7 +190,16 @@ export function ReplayViewer({ boardId, onBack }: ReplayViewerProps) {
 
   if (loading) {
     return (
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100vh", background: colors.bg, color: colors.text }}>
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          height: "100vh",
+          background: colors.bg,
+          color: colors.text,
+        }}
+      >
         Loading replay...
       </div>
     );
@@ -187,9 +207,22 @@ export function ReplayViewer({ boardId, onBack }: ReplayViewerProps) {
 
   if (error) {
     return (
-      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", height: "100vh", background: colors.bg, color: colors.text, gap: "1rem" }}>
+      <div
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          justifyContent: "center",
+          height: "100vh",
+          background: colors.bg,
+          color: colors.text,
+          gap: "1rem",
+        }}
+      >
         <span style={{ color: colors.error }}>Failed to load replay: {error}</span>
-        <Button onClick={onBack} style={{ padding: "0.5rem 1rem" }}>Back</Button>
+        <Button onClick={onBack} style={{ padding: "0.5rem 1rem" }}>
+          Back
+        </Button>
       </div>
     );
   }
@@ -197,13 +230,23 @@ export function ReplayViewer({ boardId, onBack }: ReplayViewerProps) {
   return (
     <div style={{ height: "100vh", background: colors.bg, display: "flex", flexDirection: "column" }}>
       {/* Header */}
-      <div style={{
-        height: headerH, display: "flex", alignItems: "center", justifyContent: "space-between",
-        padding: "0 1rem", color: colors.text, fontSize: "0.875rem",
-        background: colors.overlayHeader, borderBottom: `1px solid ${colors.border}`,
-      }}>
+      <div
+        style={{
+          height: headerH,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          padding: "0 1rem",
+          color: colors.text,
+          fontSize: "0.875rem",
+          background: colors.overlayHeader,
+          borderBottom: `1px solid ${colors.border}`,
+        }}
+      >
         <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
-          <Button variant="link" onClick={onBack} style={{ color: colors.textMuted, fontSize: "0.875rem" }}>&larr; Back</Button>
+          <Button variant="link" onClick={onBack} style={{ color: colors.textMuted, fontSize: "0.875rem" }}>
+            &larr; Back
+          </Button>
           <span style={{ fontWeight: 600 }}>Scene Replay</span>
         </div>
         <span style={{ color: colors.textDim }}>
@@ -217,16 +260,25 @@ export function ReplayViewer({ boardId, onBack }: ReplayViewerProps) {
           <Layer>
             {/* Background */}
             <Rect x={0} y={0} width={size.width} height={stageH} fill={colors.bg} listening={false} />
-            {objects.map((obj) => <BoardObjectRenderer key={obj.id} obj={obj} />)}
+            {objects.map((obj) => (
+              <BoardObjectRenderer key={obj.id} obj={obj} />
+            ))}
           </Layer>
         </Stage>
       </div>
 
       {/* Controls bar */}
-      <div style={{
-        height: controlsH, display: "flex", alignItems: "center", gap: "1rem",
-        padding: "0 1rem", background: colors.overlayHeader, borderTop: `1px solid ${colors.border}`,
-      }}>
+      <div
+        style={{
+          height: controlsH,
+          display: "flex",
+          alignItems: "center",
+          gap: "1rem",
+          padding: "0 1rem",
+          background: colors.overlayHeader,
+          borderTop: `1px solid ${colors.border}`,
+        }}
+      >
         <Button
           variant="primary"
           onClick={handlePlayPause}
@@ -238,7 +290,9 @@ export function ReplayViewer({ boardId, onBack }: ReplayViewerProps) {
 
         {/* Progress bar */}
         <div style={{ flex: 1, height: 4, background: colors.border, borderRadius: 2, overflow: "hidden" }}>
-          <div style={{ width: `${progress * 100}%`, height: "100%", background: colors.accent, transition: "width 0.1s" }} />
+          <div
+            style={{ width: `${progress * 100}%`, height: "100%", background: colors.accent, transition: "width 0.1s" }}
+          />
         </div>
 
         <span style={{ color: colors.textDim, fontSize: "0.75rem", minWidth: 60, textAlign: "right" }}>

@@ -27,9 +27,13 @@ export function Modal({ open, onClose, children, width = 520 }: ModalProps) {
     <div
       onClick={onClose}
       style={{
-        position: "absolute", inset: 0, zIndex: 40,
+        position: "absolute",
+        inset: 0,
+        zIndex: 40,
         background: "rgba(0, 0, 0, 0.5)",
-        display: "flex", alignItems: "center", justifyContent: "center",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
         backdropFilter: "blur(4px)",
         animation: "cb-backdrop-in 0.3s ease-out",
       }}
@@ -37,7 +41,8 @@ export function Modal({ open, onClose, children, width = 520 }: ModalProps) {
       <div
         onClick={(e) => e.stopPropagation()}
         style={{
-          width, maxWidth: "calc(100vw - 48px)",
+          width,
+          maxWidth: "calc(100vw - 48px)",
           background: "rgba(15, 23, 42, 0.97)",
           border: `1px solid ${colors.border}`,
           borderRadius: 20,

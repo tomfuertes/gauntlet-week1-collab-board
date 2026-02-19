@@ -109,26 +109,28 @@ export function Cursors({ cursors }: { cursors: Map<string, CursorState> }) {
   return (
     <>
       {/* Trail lines (rendered behind cursor shapes) - skip AI cursor */}
-      {[...cursors.values()].filter(c => c.userId !== AI_USER_ID).map((cursor) => {
-        const color = getUserColor(cursor.userId);
-        return (
-          <Line
-            key={`trail-${cursor.userId}`}
-            ref={(node: Konva.Line | null) => {
-              if (node) trailRefs.current.set(cursor.userId, node);
-              else trailRefs.current.delete(cursor.userId);
-            }}
-            points={[]}
-            stroke={color}
-            strokeWidth={2}
-            opacity={0.3}
-            lineCap="round"
-            lineJoin="round"
-            tension={0.4}
-            listening={false}
-          />
-        );
-      })}
+      {[...cursors.values()]
+        .filter((c) => c.userId !== AI_USER_ID)
+        .map((cursor) => {
+          const color = getUserColor(cursor.userId);
+          return (
+            <Line
+              key={`trail-${cursor.userId}`}
+              ref={(node: Konva.Line | null) => {
+                if (node) trailRefs.current.set(cursor.userId, node);
+                else trailRefs.current.delete(cursor.userId);
+              }}
+              points={[]}
+              stroke={color}
+              strokeWidth={2}
+              opacity={0.3}
+              lineCap="round"
+              lineJoin="round"
+              tension={0.4}
+              listening={false}
+            />
+          );
+        })}
       {/* Cursor shapes */}
       {[...cursors.values()].map((cursor) => {
         const isAi = cursor.userId === AI_USER_ID;
@@ -141,7 +143,10 @@ export function Cursors({ cursors }: { cursors: Map<string, CursorState> }) {
                 groupRefs.current.set(cursor.userId, node);
                 // Set initial position immediately to avoid 0,0 flash
                 const pos = positions.current.get(cursor.userId);
-                if (pos) { node.x(pos.x); node.y(pos.y); }
+                if (pos) {
+                  node.x(pos.x);
+                  node.y(pos.y);
+                }
               } else {
                 groupRefs.current.delete(cursor.userId);
               }
@@ -150,7 +155,9 @@ export function Cursors({ cursors }: { cursors: Map<string, CursorState> }) {
             {isAi ? (
               /* AI cursor: pulsing filled dot */
               <Circle
-                ref={(node: Konva.Circle | null) => { aiDotRef.current = node; }}
+                ref={(node: Konva.Circle | null) => {
+                  aiDotRef.current = node;
+                }}
                 radius={6}
                 fill={colors.aiCursor}
                 opacity={0.85}
@@ -166,14 +173,7 @@ export function Cursors({ cursors }: { cursors: Map<string, CursorState> }) {
               />
             )}
             {/* Name label */}
-            <Text
-              x={isAi ? 10 : 14}
-              y={10}
-              text={cursor.username}
-              fontSize={11}
-              fill="#fff"
-              padding={2}
-            />
+            <Text x={isAi ? 10 : 14} y={10} text={cursor.username} fontSize={11} fill="#fff" padding={2} />
           </Group>
         );
       })}

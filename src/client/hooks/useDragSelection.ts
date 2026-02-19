@@ -51,9 +51,15 @@ export function useDragSelection({ objectsRef, setSelectedIds }: UseDragSelectio
       if (!objectsRef.current) return true;
       for (const obj of objectsRef.current.values()) {
         // Lines/connectors store directional deltas - normalize to positive AABB
-        const bounds = obj.type === "line"
-          ? { x: Math.min(obj.x, obj.x + obj.width), y: Math.min(obj.y, obj.y + obj.height), width: Math.abs(obj.width), height: Math.abs(obj.height) }
-          : obj;
+        const bounds =
+          obj.type === "line"
+            ? {
+                x: Math.min(obj.x, obj.x + obj.width),
+                y: Math.min(obj.y, obj.y + obj.height),
+                width: Math.abs(obj.width),
+                height: Math.abs(obj.height),
+              }
+            : obj;
         if (rectsIntersect(m, bounds)) {
           selected.add(obj.id);
         }

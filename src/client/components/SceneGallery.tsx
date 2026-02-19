@@ -28,7 +28,9 @@ function SceneCard({ scene }: { scene: SceneMeta }) {
 
   return (
     <div
-      onClick={() => { location.hash = `replay/${scene.id}`; }}
+      onClick={() => {
+        location.hash = `replay/${scene.id}`;
+      }}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
       style={{
@@ -42,53 +44,70 @@ function SceneCard({ scene }: { scene: SceneMeta }) {
       }}
     >
       {/* Thumbnail placeholder */}
-      <div style={{
-        height: 120,
-        background: thumbnailGradient(scene.name),
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        position: "relative",
-      }}>
-        <div style={{
-          fontSize: "0.8rem",
-          color: colors.textDim,
-          opacity: 0.6,
-          userSelect: "none",
-        }}>
+      <div
+        style={{
+          height: 120,
+          background: thumbnailGradient(scene.name),
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          position: "relative",
+        }}
+      >
+        <div
+          style={{
+            fontSize: "0.8rem",
+            color: colors.textDim,
+            opacity: 0.6,
+            userSelect: "none",
+          }}
+        >
           {scene.eventCount} events
         </div>
         {scene.game_mode && MODE_BADGES[scene.game_mode] && (
-          <div style={{
-            position: "absolute", top: 8, right: 8,
-            background: "rgba(0,0,0,0.6)", borderRadius: 6,
-            padding: "2px 6px", fontSize: "0.6875rem",
-            color: colors.textMuted, display: "flex", alignItems: "center", gap: 3,
-          }}>
+          <div
+            style={{
+              position: "absolute",
+              top: 8,
+              right: 8,
+              background: "rgba(0,0,0,0.6)",
+              borderRadius: 6,
+              padding: "2px 6px",
+              fontSize: "0.6875rem",
+              color: colors.textMuted,
+              display: "flex",
+              alignItems: "center",
+              gap: 3,
+            }}
+          >
             <span>{MODE_BADGES[scene.game_mode].icon}</span>
             {MODE_BADGES[scene.game_mode].label}
           </div>
         )}
         {/* Play overlay on hover */}
         {hovered && (
-          <div style={{
-            position: "absolute",
-            inset: 0,
-            background: "rgba(0,0,0,0.4)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-          }}>
-            <div style={{
-              width: 48,
-              height: 48,
-              borderRadius: "50%",
-              background: colors.accent,
+          <div
+            style={{
+              position: "absolute",
+              inset: 0,
+              background: "rgba(0,0,0,0.4)",
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
-              boxShadow: `0 0 20px ${colors.accentGlow}`,
-            }}>
+            }}
+          >
+            <div
+              style={{
+                width: 48,
+                height: 48,
+                borderRadius: "50%",
+                background: colors.accent,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                boxShadow: `0 0 20px ${colors.accentGlow}`,
+              }}
+            >
               <svg width="20" height="20" viewBox="0 0 20 20" fill="white">
                 <polygon points="6,3 18,10 6,17" />
               </svg>
@@ -98,23 +117,27 @@ function SceneCard({ scene }: { scene: SceneMeta }) {
       </div>
       {/* Card body */}
       <div style={{ padding: "0.75rem 1rem" }}>
-        <div style={{
-          fontWeight: 600,
-          fontSize: "0.9rem",
-          marginBottom: 4,
-          overflow: "hidden",
-          textOverflow: "ellipsis",
-          whiteSpace: "nowrap",
-        }}>
+        <div
+          style={{
+            fontWeight: 600,
+            fontSize: "0.9rem",
+            marginBottom: 4,
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            whiteSpace: "nowrap",
+          }}
+        >
           {scene.name}
         </div>
-        <div style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          fontSize: "0.75rem",
-          color: colors.textDim,
-        }}>
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            fontSize: "0.75rem",
+            color: colors.textDim,
+          }}
+        >
           <span>{scene.creator}</span>
           <span>{new Date(scene.last_activity_at + "Z").toLocaleDateString()}</span>
         </div>
@@ -141,18 +164,27 @@ export function SceneGallery({ onBack }: { onBack: () => void }) {
         console.error("[SceneGallery] fetch failed", err);
         setError(true);
       })
-      .finally(() => { if (!ac.signal.aborted) setLoading(false); });
+      .finally(() => {
+        if (!ac.signal.aborted) setLoading(false);
+      });
     return () => ac.abort();
   }, []);
 
   return (
     <div style={{ minHeight: "100vh", background: colors.bg, color: colors.text }}>
       {/* Header */}
-      <div style={{
-        height: 48, display: "flex", alignItems: "center", justifyContent: "space-between",
-        padding: "0 1rem", background: colors.overlayHeader, borderBottom: `1px solid ${colors.border}`,
-        fontSize: "0.875rem",
-      }}>
+      <div
+        style={{
+          height: 48,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          padding: "0 1rem",
+          background: colors.overlayHeader,
+          borderBottom: `1px solid ${colors.border}`,
+          fontSize: "0.875rem",
+        }}
+      >
         <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
           <Button variant="link" onClick={onBack} style={{ color: colors.accentLight, fontSize: "0.875rem" }}>
             &larr; Back
@@ -170,25 +202,37 @@ export function SceneGallery({ onBack }: { onBack: () => void }) {
         {loading ? (
           <p style={{ color: colors.textDim }}>Loading scenes...</p>
         ) : error ? (
-          <div style={{
-            textAlign: "center", padding: "3rem", color: colors.error,
-            border: `1px dashed ${colors.borderLight}`, borderRadius: 8,
-          }}>
+          <div
+            style={{
+              textAlign: "center",
+              padding: "3rem",
+              color: colors.error,
+              border: `1px dashed ${colors.borderLight}`,
+              borderRadius: 8,
+            }}
+          >
             Failed to load scenes. Try refreshing the page.
           </div>
         ) : scenes.length === 0 ? (
-          <div style={{
-            textAlign: "center", padding: "3rem", color: colors.textDim,
-            border: `1px dashed ${colors.borderLight}`, borderRadius: 8,
-          }}>
+          <div
+            style={{
+              textAlign: "center",
+              padding: "3rem",
+              color: colors.textDim,
+              border: `1px dashed ${colors.borderLight}`,
+              borderRadius: 8,
+            }}
+          >
             No scenes yet. Create a board and start improvising!
           </div>
         ) : (
-          <div style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))",
-            gap: "1rem",
-          }}>
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))",
+              gap: "1rem",
+            }}
+          >
             {scenes.map((scene) => (
               <SceneCard key={scene.id} scene={scene} />
             ))}

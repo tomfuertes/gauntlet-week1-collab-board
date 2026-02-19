@@ -101,7 +101,8 @@ export function useWebSocket(boardId: string): UseWebSocketReturn {
         let msg: WSServerMessage;
         try {
           msg = JSON.parse(event.data) as WSServerMessage;
-        } catch { // intentional: malformed server messages are non-recoverable
+        } catch {
+          // intentional: malformed server messages are non-recoverable
           console.error("[WS] failed to parse message:", event.data);
           return;
         }
@@ -123,7 +124,13 @@ export function useWebSocket(boardId: string): UseWebSocketReturn {
           case "text:cursor":
             setTextCursors((prev) => {
               const next = new Map(prev);
-              next.set(msg.userId, { userId: msg.userId, username: msg.username, objectId: msg.objectId, position: msg.position, lastSeen: Date.now() });
+              next.set(msg.userId, {
+                userId: msg.userId,
+                username: msg.username,
+                objectId: msg.objectId,
+                position: msg.position,
+                lastSeen: Date.now(),
+              });
               return next;
             });
             break;
@@ -145,7 +152,10 @@ export function useWebSocket(boardId: string): UseWebSocketReturn {
               const next = new Map(prev);
               for (const userId of next.keys()) {
                 if (userId.startsWith("spectator-")) continue;
-                if (!activeIds.has(userId)) { next.delete(userId); changed = true; }
+                if (!activeIds.has(userId)) {
+                  next.delete(userId);
+                  changed = true;
+                }
               }
               return changed ? next : prev;
             });
@@ -242,36 +252,69 @@ export function useWebSocket(boardId: string): UseWebSocketReturn {
     }
   }, []);
 
-  const createObject = useCallback((obj: BoardObject) => {
-    setObjects((prev) => new Map(prev).set(obj.id, obj));
-    send({ type: "obj:create", obj });
-  }, [send]);
+  const createObject = useCallback(
+    (obj: BoardObject) => {
+      setObjects((prev) => new Map(prev).set(obj.id, obj));
+      send({ type: "obj:create", obj });
+    },
+    [send],
+  );
 
-  const updateObject = useCallback((partial: BoardObjectUpdate) => {
-    const now = Date.now();
-    setObjects((prev) => {
-      const next = new Map(prev);
-      const existing = next.get(partial.id);
-      // Cast safe: merging into valid BoardObject preserves discriminant (type unchanged)
-      if (existing) next.set(partial.id, { ...existing, ...partial, props: { ...existing.props, ...(partial.props || {}) }, updatedAt: now } as BoardObject);
-      return next;
-    });
-    send({ type: "obj:update", obj: { ...partial, updatedAt: now } });
-  }, [send]);
+  const updateObject = useCallback(
+    (partial: BoardObjectUpdate) => {
+      const now = Date.now();
+      setObjects((prev) => {
+        const next = new Map(prev);
+        const existing = next.get(partial.id);
+        // Cast safe: merging into valid BoardObject preserves discriminant (type unchanged)
+        if (existing)
+          next.set(partial.id, {
+            ...existing,
+            ...partial,
+            props: { ...existing.props, ...(partial.props || {}) },
+            updatedAt: now,
+          } as BoardObject);
+        return next;
+      });
+      send({ type: "obj:update", obj: { ...partial, updatedAt: now } });
+    },
+    [send],
+  );
 
-  const deleteObject = useCallback((id: string) => {
-    setObjects((prev) => {
-      const next = new Map(prev);
-      next.delete(id);
-      return next;
-    });
-    send({ type: "obj:delete", id });
-  }, [send]);
+  const deleteObject = useCallback(
+    (id: string) => {
+      setObjects((prev) => {
+        const next = new Map(prev);
+        next.delete(id);
+        return next;
+      });
+      send({ type: "obj:delete", id });
+    },
+    [send],
+  );
 
   /** Send batch:undo to Board DO via WS - deletes all objects with matching batchId server-side */
-  const batchUndo = useCallback((batchId: string) => {
-    send({ type: "batch:undo", batchId });
-  }, [send]);
+  const batchUndo = useCallback(
+    (batchId: string) => {
+      send({ type: "batch:undo", batchId });
+    },
+    [send],
+  );
 
-  return { connectionState, initialized, cursors, textCursors, objects, presence, spectatorCount, reactions, send, createObject, updateObject, deleteObject, batchUndo, lastServerMessageAt };
+  return {
+    connectionState,
+    initialized,
+    cursors,
+    textCursors,
+    objects,
+    presence,
+    spectatorCount,
+    reactions,
+    send,
+    createObject,
+    updateObject,
+    deleteObject,
+    batchUndo,
+    lastServerMessageAt,
+  };
 }

@@ -5,7 +5,12 @@ type Size = "sm" | "md";
 
 const VARIANT_STYLES: Record<Variant, React.CSSProperties> = {
   primary: { background: colors.accent, color: "#fff", border: "none", borderRadius: 4 },
-  secondary: { background: "none", color: colors.textMuted, border: `1px solid ${colors.borderLight}`, borderRadius: 4 },
+  secondary: {
+    background: "none",
+    color: colors.textMuted,
+    border: `1px solid ${colors.borderLight}`,
+    borderRadius: 4,
+  },
   danger: { background: "none", color: colors.error, border: `1px solid ${colors.borderLight}`, borderRadius: 4 },
   link: { background: "none", color: colors.textMuted, border: "none", borderRadius: 0, padding: 0 },
 };

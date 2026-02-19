@@ -26,10 +26,7 @@ export function useAIChat(boardId: string, selectedIds?: Set<string>, username?:
     name: boardId,
   });
 
-  const selectedIdsArray = useMemo(
-    () => (selectedIds?.size ? [...selectedIds] : undefined),
-    [selectedIds],
-  );
+  const selectedIdsArray = useMemo(() => (selectedIds?.size ? [...selectedIds] : undefined), [selectedIds]);
 
   const {
     messages: uiMessages,
@@ -79,11 +76,7 @@ export function useAIChat(boardId: string, selectedIds?: Set<string>, username?:
       return {
         id: msg.id,
         role: msg.role as "user" | "assistant",
-        content:
-          displayContent ||
-          (tools.length > 0
-            ? "I performed the requested actions on the board."
-            : ""),
+        content: displayContent || (tools.length > 0 ? "I performed the requested actions on the board." : ""),
         sender,
         tools: tools.length > 0 ? tools : undefined,
       };
@@ -91,13 +84,8 @@ export function useAIChat(boardId: string, selectedIds?: Set<string>, username?:
   }, [uiMessages]);
 
   const loading = sdkStatus === "streaming" || sdkStatus === "submitted";
-  const error = sdkStatus === "error" ? (sdkError?.message || "Something went wrong") : undefined;
-  const status =
-    sdkStatus === "submitted"
-      ? "Thinking..."
-      : sdkStatus === "streaming"
-        ? "Responding..."
-        : "";
+  const error = sdkStatus === "error" ? sdkError?.message || "Something went wrong" : undefined;
+  const status = sdkStatus === "submitted" ? "Thinking..." : sdkStatus === "streaming" ? "Responding..." : "";
 
   // Wrap sendMessage to match old interface (takes a string, not UIMessage)
   // Prefix [username] for multiplayer attribution in persisted history

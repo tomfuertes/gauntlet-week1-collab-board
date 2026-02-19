@@ -15,14 +15,11 @@ export function BoardGrid({
   // Subtle radial glow for canvas depth
   const viewCenterX = (-stagePos.x + size.width / 2) / scale;
   const viewCenterY = (-stagePos.y + size.height / 2) / scale;
-  const glowRadius =
-    (Math.max(size.width, size.height) / scale) * 0.7;
+  const glowRadius = (Math.max(size.width, size.height) / scale) * 0.7;
 
   // Grid dot bounds
-  const startX =
-    Math.floor(-stagePos.x / scale / gridSize) * gridSize - gridSize;
-  const startY =
-    Math.floor(-stagePos.y / scale / gridSize) * gridSize - gridSize;
+  const startX = Math.floor(-stagePos.x / scale / gridSize) * gridSize - gridSize;
+  const startY = Math.floor(-stagePos.y / scale / gridSize) * gridSize - gridSize;
   const endX = startX + size.width / scale + gridSize * 2;
   const endY = startY + size.height / scale + gridSize * 2;
 
@@ -38,14 +35,7 @@ export function BoardGrid({
         fillRadialGradientEndPoint={{ x: glowRadius, y: glowRadius }}
         fillRadialGradientStartRadius={0}
         fillRadialGradientEndRadius={glowRadius}
-        fillRadialGradientColorStops={[
-          0,
-          "rgba(99,102,241,0.06)",
-          0.5,
-          "rgba(99,102,241,0.02)",
-          1,
-          "transparent",
-        ]}
+        fillRadialGradientColorStops={[0, "rgba(99,102,241,0.06)", 0.5, "rgba(99,102,241,0.02)", 1, "transparent"]}
         listening={false}
       />
       <Shape

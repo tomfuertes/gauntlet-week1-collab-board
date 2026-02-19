@@ -73,19 +73,17 @@
 
 ## Key Decisions
 
-| Date | Decision | Rationale |
-|------|----------|-----------|
-| Feb 19 | Rate limit check before _isGenerating mutex | If _checkUserRateLimit throws, mutex won't leak permanently blocking director/reactive. Check first, claim mutex only if passing. |
-| Feb 19 | AiCursor activeTweenRef ownership | Konva Tweens outlive React effect cleanup; single `activeTweenRef` lets any path destroy the in-flight animation. setTimeout uses `groupRef.current` not closed-over node to guard against unmount during delay. |
-| Feb 19 | Global prefix strip over single-slice in ChatPanel | Multi-step streamText produces [NAME] at start of each text part; slice only removed first. Use regex global replace. |
-| Feb 19 | GLM-4.7-flash over Mistral Small 3.1 | Mistral ignores tool_choice:auto in streaming. GLM native tool calling + 6x cheaper. |
-| Feb 19 | Earlier LLM prompt rules dominate later ones | "call ALL creates in SINGLE response" overrode "prefer batchExecute". Fix: name batchExecute in the first rule. |
-| Feb 19 | Killed Contextual AI Actions | Clustering via LLM is unreliable; spatial grouping needs deterministic algorithm. |
-| Feb 19 | Killed Intent Preview | 3x implementation cost vs. batch undo; improv vibe wants immediacy, not approval gates. |
-| Feb 18 | Multiplayer improv canvas as north star | Nobody has multiplayer + AI + canvas + improv |
-| Feb 17 | Template coord injection over LLM geometry | LLM as content generator, not geometry solver |
-| Feb 17 | Overlap score metric over visual QA | Single number for AI layout quality |
-| Feb 16 | AI priority over more shapes | Gauntlet AI exercise - AI is differentiator |
+Decisions now live as `// KEY-DECISION <date>: <rationale>` comments in source code at the exact location.
+Search: `grep -r "KEY-DECISION" src/` or `git log --all --grep="KEY-DECISION"`.
+
+Historical decisions (pre-migration, for reference):
+- Feb 18: Multiplayer improv canvas as north star - nobody has multiplayer + AI + canvas + improv
+- Feb 17: Template coord injection over LLM geometry - LLM as content generator, not geometry solver
+- Feb 17: Overlap score metric over visual QA - single number for AI layout quality
+- Feb 16: AI priority over more shapes - Gauntlet AI exercise, AI is differentiator
+- Feb 19: GLM-4.7-flash over Mistral Small 3.1 - Mistral ignores tool_choice:auto in streaming, GLM native + 6x cheaper
+- Feb 19: Killed Contextual AI Actions - clustering via LLM unreliable
+- Feb 19: Killed Intent Preview - 3x cost vs batch undo, improv wants immediacy
 
 ## AI Model Pricing (Workers AI, $0.011/1K neurons)
 

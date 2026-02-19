@@ -27,13 +27,14 @@ export function AuthForm({ onAuth }: { onAuth: (user: AuthUser) => void }) {
         body: JSON.stringify(body),
       });
 
-      const data = await res.json() as { user?: AuthUser; error?: string };
+      const data = (await res.json()) as { user?: AuthUser; error?: string };
       if (!res.ok) {
         setError(data.error || "Something went wrong");
         return;
       }
       if (data.user) onAuth(data.user);
-    } catch { // intentional: network failures shown to user via setError
+    } catch {
+      // intentional: network failures shown to user via setError
       setError("Network error");
     } finally {
       setSubmitting(false);
@@ -43,21 +44,57 @@ export function AuthForm({ onAuth }: { onAuth: (user: AuthUser) => void }) {
   return (
     <div style={{ display: "flex", height: "100vh", background: colors.bg, color: colors.text }}>
       {/* Left - Brand panel */}
-      <div style={{
-        flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
-        background: `linear-gradient(135deg, ${colors.accent} 0%, ${colors.bg} 100%)`,
-        padding: "2rem", position: "relative", overflow: "hidden",
-      }}>
-        <h1 style={{ fontSize: "2.5rem", fontWeight: 700, margin: 0, letterSpacing: "-0.02em", position: "relative", zIndex: 1 }}>
+      <div
+        style={{
+          flex: 1,
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          justifyContent: "center",
+          background: `linear-gradient(135deg, ${colors.accent} 0%, ${colors.bg} 100%)`,
+          padding: "2rem",
+          position: "relative",
+          overflow: "hidden",
+        }}
+      >
+        <h1
+          style={{
+            fontSize: "2.5rem",
+            fontWeight: 700,
+            margin: 0,
+            letterSpacing: "-0.02em",
+            position: "relative",
+            zIndex: 1,
+          }}
+        >
           CollabBoard
         </h1>
-        <p style={{ color: "rgba(255,255,255,0.7)", fontSize: "1.1rem", marginTop: "0.75rem", textAlign: "center", position: "relative", zIndex: 1 }}>
+        <p
+          style={{
+            color: "rgba(255,255,255,0.7)",
+            fontSize: "1.1rem",
+            marginTop: "0.75rem",
+            textAlign: "center",
+            position: "relative",
+            zIndex: 1,
+          }}
+        >
           Real-time collaborative whiteboard
           <br />
           powered by AI
         </p>
         {/* Decorative dot grid echoing the canvas */}
-        <div style={{ marginTop: "2rem", display: "grid", gridTemplateColumns: "repeat(5, 6px)", gap: 16, opacity: 0.2, position: "relative", zIndex: 1 }}>
+        <div
+          style={{
+            marginTop: "2rem",
+            display: "grid",
+            gridTemplateColumns: "repeat(5, 6px)",
+            gap: 16,
+            opacity: 0.2,
+            position: "relative",
+            zIndex: 1,
+          }}
+        >
           {Array.from({ length: 25 }, (_, i) => (
             <div key={i} style={{ width: 6, height: 6, borderRadius: "50%", background: "#fff" }} />
           ))}
@@ -66,11 +103,19 @@ export function AuthForm({ onAuth }: { onAuth: (user: AuthUser) => void }) {
 
       {/* Right - Form panel */}
       <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", padding: "2rem" }}>
-        <form onSubmit={handleSubmit} style={{
-          display: "flex", flexDirection: "column", gap: "0.75rem",
-          width: 320, padding: "2rem", background: colors.surface, borderRadius: 12,
-          border: `1px solid ${colors.border}`,
-        }}>
+        <form
+          onSubmit={handleSubmit}
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            gap: "0.75rem",
+            width: 320,
+            padding: "2rem",
+            background: colors.surface,
+            borderRadius: 12,
+            border: `1px solid ${colors.border}`,
+          }}
+        >
           <h2 style={{ fontSize: "1.25rem", textAlign: "center", margin: 0, fontWeight: 600 }}>
             {mode === "login" ? "Welcome back" : "Get started"}
           </h2>
@@ -118,12 +163,20 @@ export function AuthForm({ onAuth }: { onAuth: (user: AuthUser) => void }) {
           <Button
             variant="link"
             type="button"
-            onClick={() => { setMode(mode === "login" ? "signup" : "login"); setError(""); }}
+            onClick={() => {
+              setMode(mode === "login" ? "signup" : "login");
+              setError("");
+            }}
             style={{ color: colors.accentLight, fontSize: "0.875rem" }}
           >
             {mode === "login" ? "Need an account? Sign up" : "Have an account? Sign in"}
           </Button>
-          <a href="#privacy" style={{ color: colors.textDim, fontSize: "0.75rem", textAlign: "center", textDecoration: "none" }}>Privacy Policy</a>
+          <a
+            href="#privacy"
+            style={{ color: colors.textDim, fontSize: "0.75rem", textAlign: "center", textDecoration: "none" }}
+          >
+            Privacy Policy
+          </a>
         </form>
       </div>
     </div>

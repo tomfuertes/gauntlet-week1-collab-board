@@ -24,7 +24,9 @@ export function AiCursor({ target }: AiCursorProps) {
   const isVisibleRef = useRef(false);
   const fadeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const rafRef = useRef<number>(0);
-  // Single owner for the current in-flight Tween so any cleanup path can destroy it.
+  // KEY-DECISION 2026-02-19: Single activeTweenRef owns the in-flight Konva Tween. Tweens outlive
+  // React effect cleanup; this ref lets any path (new target, fade-out, unmount) destroy the current one.
+  // setTimeout uses groupRef.current (not closed-over node) to guard against unmount during delay.
   const activeTweenRef = useRef<Konva.Tween | null>(null);
 
   // Destroy any in-flight Tween and cancel fade timer on unmount
@@ -70,7 +72,10 @@ export function AiCursor({ target }: AiCursorProps) {
       return () => {
         activeTweenRef.current?.destroy();
         activeTweenRef.current = null;
-        // Snap to final value so StrictMode double-invocation doesn't leave partial opacity
+        // Snap to final value so StrictMode double-invocation doesn't leave partial opacity.
+        // groupRef.current is intentionally read in cleanup (not a stale capture) - we need the
+        // live node to reset opacity even if the ref has been reassigned by React.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
         groupRef.current?.opacity(1);
       };
     } else {
@@ -129,13 +134,7 @@ export function AiCursor({ target }: AiCursorProps) {
 
   return (
     <Group ref={groupRef} opacity={0} listening={false}>
-      <Circle
-        radius={7}
-        fill={AI_CURSOR_COLOR}
-        shadowColor={AI_CURSOR_COLOR}
-        shadowBlur={14}
-        shadowOpacity={0.8}
-      />
+      <Circle radius={7} fill={AI_CURSOR_COLOR} shadowColor={AI_CURSOR_COLOR} shadowBlur={14} shadowOpacity={0.8} />
       <Text
         text="AI"
         fontSize={9}

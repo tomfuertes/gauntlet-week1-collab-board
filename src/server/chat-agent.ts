@@ -1,10 +1,5 @@
 import { AIChatAgent } from "@cloudflare/ai-chat";
-import {
-  streamText,
-  generateText,
-  convertToModelMessages,
-  stepCountIs,
-} from "ai";
+import { streamText, generateText, convertToModelMessages, stepCountIs } from "ai";
 import type { UIMessage } from "ai";
 import { createWorkersAI } from "workers-ai-provider";
 import { createAnthropic } from "@ai-sdk/anthropic";
@@ -58,12 +53,7 @@ function sanitizeMessages(messages: UIMessage[]): UIMessage[] {
           JSON.stringify({
             event: "ai:sanitize:input",
             tool: p.type.slice(5),
-            inputType:
-              p.input === null
-                ? "null"
-                : Array.isArray(p.input)
-                  ? "array"
-                  : typeof p.input,
+            inputType: p.input === null ? "null" : Array.isArray(p.input) ? "array" : typeof p.input,
             toolCallId: p.toolCallId,
           }),
         );
@@ -77,12 +67,7 @@ function sanitizeMessages(messages: UIMessage[]): UIMessage[] {
           JSON.stringify({
             event: "ai:sanitize:input",
             tool: p.toolName,
-            inputType:
-              p.input === null
-                ? "null"
-                : Array.isArray(p.input)
-                  ? "array"
-                  : typeof p.input,
+            inputType: p.input === null ? "null" : Array.isArray(p.input) ? "array" : typeof p.input,
             toolCallId: p.toolCallId,
           }),
         );
@@ -150,7 +135,10 @@ export class ChatAgent extends AIChatAgent<Bindings> {
   }
 
   /** Rate-limit AI messages per user: 30/min. Returns limited=true with retryAfter seconds. */
-  private _checkUserRateLimit(username: string): { limited: boolean; retryAfter: number } {
+  private _checkUserRateLimit(username: string): {
+    limited: boolean;
+    retryAfter: number;
+  } {
     const LIMIT = 30;
     const WINDOW_MS = 60_000;
     const now = Date.now();
@@ -172,11 +160,19 @@ export class ChatAgent extends AIChatAgent<Bindings> {
   private async _getPersonas(): Promise<Persona[]> {
     try {
       const { results } = await this.env.DB.prepare(
-        "SELECT id, name, trait, color FROM board_personas WHERE board_id = ? ORDER BY created_at"
-      ).bind(this.name).all<Persona>();
+        "SELECT id, name, trait, color FROM board_personas WHERE board_id = ? ORDER BY created_at",
+      )
+        .bind(this.name)
+        .all<Persona>();
       return results.length > 0 ? (results as Persona[]) : [...DEFAULT_PERSONAS];
     } catch (err) {
-      console.error(JSON.stringify({ event: "personas:load-error", boardId: this.name, error: String(err) }));
+      console.error(
+        JSON.stringify({
+          event: "personas:load-error",
+          boardId: this.name,
+          error: String(err),
+        }),
+      );
       return [...DEFAULT_PERSONAS];
     }
   }
@@ -193,22 +189,26 @@ export class ChatAgent extends AIChatAgent<Bindings> {
     }
     // Prefer the per-message requested model; fall back to env default
     const modelId = this._requestedModel
-      ? (AI_MODELS.find((m) => m.id === this._requestedModel)?.modelId ?? this.env.WORKERS_AI_MODEL ?? "@cf/mistralai/mistral-small-3.1-24b-instruct")
-      : (this.env.WORKERS_AI_MODEL || "@cf/mistralai/mistral-small-3.1-24b-instruct");
+      ? (AI_MODELS.find((m) => m.id === this._requestedModel)?.modelId ??
+        this.env.WORKERS_AI_MODEL ??
+        "@cf/mistralai/mistral-small-3.1-24b-instruct")
+      : this.env.WORKERS_AI_MODEL || "@cf/mistralai/mistral-small-3.1-24b-instruct";
     // workers-ai-provider v3.1.1 drops tool_choice from buildRunInputs (only forwards `tools`).
     // All Workers AI models benefit from explicit tool_choice:"auto"; shim applies universally.
     const ai = this.env.AI as any;
     const shimmedBinding = {
       run: (model: string, inputs: Record<string, unknown>, options?: unknown) => {
         const hasTools = !!(inputs?.tools && (inputs.tools as unknown[]).length > 0);
-        console.debug(JSON.stringify({
-          event: "ai:shim",
-          model,
-          hasTools,
-          toolCount: hasTools ? (inputs.tools as unknown[]).length : 0,
-          hadToolChoice: !!inputs?.tool_choice,
-          injecting: hasTools,
-        }));
+        console.debug(
+          JSON.stringify({
+            event: "ai:shim",
+            model,
+            hasTools,
+            toolCount: hasTools ? (inputs.tools as unknown[]).length : 0,
+            hadToolChoice: !!inputs?.tool_choice,
+            injecting: hasTools,
+          }),
+        );
         return ai.run(model, hasTools ? { ...inputs, tool_choice: "auto" } : inputs, options);
       },
     };
@@ -219,7 +219,11 @@ export class ChatAgent extends AIChatAgent<Bindings> {
   private _getModelName(): string {
     if (this._useAnthropic()) return "claude-haiku-4.5";
     if (this._requestedModel) {
-      return AI_MODELS.find((m) => m.id === this._requestedModel)?.modelId.split("/").pop() || this._requestedModel;
+      return (
+        AI_MODELS.find((m) => m.id === this._requestedModel)
+          ?.modelId.split("/")
+          .pop() || this._requestedModel
+      );
     }
     return (this.env.WORKERS_AI_MODEL || "glm-4.7-flash").split("/").pop() || "workers-ai";
   }
@@ -235,7 +239,7 @@ export class ChatAgent extends AIChatAgent<Bindings> {
         trigger,
         persona,
         ...extra,
-      })
+      }),
     );
   }
 
@@ -266,7 +270,7 @@ export class ChatAgent extends AIChatAgent<Bindings> {
         durationMs: Date.now() - startTime,
         dailyNeurons: this._dailySpendNeurons,
         ...extra,
-      })
+      }),
     );
   }
 
@@ -276,17 +280,28 @@ export class ChatAgent extends AIChatAgent<Bindings> {
     // Extract body early - used for rate limiting AND throughout the method
     const body = options && "body" in options ? (options as any).body : undefined;
 
-    // Per-user velocity limit: 30 messages/min per username.
-    // Check BEFORE claiming _isGenerating - if _checkUserRateLimit throws, the mutex won't leak.
+    // KEY-DECISION 2026-02-19: Rate limit check before _isGenerating mutex -
+    // if _checkUserRateLimit throws, mutex won't leak permanently blocking director/reactive.
     // "anonymous" fallback is intentionally a shared bucket (fail-safe direction vs. bypassing limit).
     const userKey = body?.username || "anonymous";
     const rl = this._checkUserRateLimit(userKey);
     if (rl.limited) {
-      console.warn(JSON.stringify({ event: "rate-limit:ai", boardId: this.name, user: userKey }));
+      console.warn(
+        JSON.stringify({
+          event: "rate-limit:ai",
+          boardId: this.name,
+          user: userKey,
+        }),
+      );
       const rlMsg: UIMessage = {
         id: crypto.randomUUID(),
         role: "assistant",
-        parts: [{ type: "text" as const, text: `Too many messages! Please slow down - try again in ${rl.retryAfter}s.` }],
+        parts: [
+          {
+            type: "text" as const,
+            text: `Too many messages! Please slow down - try again in ${rl.retryAfter}s.`,
+          },
+        ],
       };
       this.messages.push(rlMsg);
       await this.persistMessages(this.messages);
@@ -306,16 +321,30 @@ export class ChatAgent extends AIChatAgent<Bindings> {
     // Budget enforcement: count human turns (the message just added is already in this.messages)
     const humanTurns = this.messages.filter((m) => m.role === "user").length;
     const budgetPhase = computeBudgetPhase(humanTurns, SCENE_TURN_BUDGET);
-    this._logRequestStart("chat", activePersona.name, { budgetPhase, humanTurns });
+    this._logRequestStart("chat", activePersona.name, {
+      budgetPhase,
+      humanTurns,
+    });
 
     // Daily spend cap: reject if over budget (Workers AI only - Anthropic has its own billing)
     if (!this._useAnthropic() && this._isOverBudget()) {
       this._isGenerating = false;
-      console.warn(JSON.stringify({ event: "budget:daily-cap", boardId: this.name, neurons: this._dailySpendNeurons }));
+      console.warn(
+        JSON.stringify({
+          event: "budget:daily-cap",
+          boardId: this.name,
+          neurons: this._dailySpendNeurons,
+        }),
+      );
       const capMsg: UIMessage = {
         id: crypto.randomUUID(),
         role: "assistant",
-        parts: [{ type: "text" as const, text: `[${activePersona.name}] The AI has reached its daily budget. Come back tomorrow for more improv!` }],
+        parts: [
+          {
+            type: "text" as const,
+            text: `[${activePersona.name}] The AI has reached its daily budget. Come back tomorrow for more improv!`,
+          },
+        ],
       };
       this.messages.push(capMsg);
       await this.persistMessages(this.messages);
@@ -328,12 +357,24 @@ export class ChatAgent extends AIChatAgent<Bindings> {
     // Reject if scene is over - the last human message pushed us past the budget
     if (humanTurns > SCENE_TURN_BUDGET) {
       this._isGenerating = false;
-      console.debug(JSON.stringify({ event: "budget:reject", boardId: this.name, humanTurns, budget: SCENE_TURN_BUDGET }));
+      console.debug(
+        JSON.stringify({
+          event: "budget:reject",
+          boardId: this.name,
+          humanTurns,
+          budget: SCENE_TURN_BUDGET,
+        }),
+      );
       // Build a "scene is over" assistant message so the client sees feedback
       const overMsg: UIMessage = {
         id: crypto.randomUUID(),
         role: "assistant",
-        parts: [{ type: "text" as const, text: `[${activePersona.name}] Scene's over! That was a great run. Start a new scene to play again.` }],
+        parts: [
+          {
+            type: "text" as const,
+            text: `[${activePersona.name}] Scene's over! That was a great run. Start a new scene to play again.`,
+          },
+        ],
       };
       this.messages.push(overMsg);
       await this.persistMessages(this.messages);
@@ -346,7 +387,13 @@ export class ChatAgent extends AIChatAgent<Bindings> {
     // Record chat activity for async notifications (non-blocking)
     this.ctx.waitUntil(
       recordBoardActivity(this.env.DB, this.name).catch((err: unknown) => {
-        console.error(JSON.stringify({ event: "activity:record", trigger: "chat", error: String(err) }));
+        console.error(
+          JSON.stringify({
+            event: "activity:record",
+            trigger: "chat",
+            error: String(err),
+          }),
+        );
       }),
     );
 
@@ -369,10 +416,11 @@ export class ChatAgent extends AIChatAgent<Bindings> {
     if (this._gameMode === "hat") {
       // Check for [NEXT-HAT-PROMPT] marker to advance prompt
       const lastUserMsg = this.messages[this.messages.length - 1];
-      const lastUserText = lastUserMsg?.parts
-        ?.filter((p) => p.type === "text")
-        .map((p) => (p as { type: "text"; text: string }).text)
-        .join("") ?? "";
+      const lastUserText =
+        lastUserMsg?.parts
+          ?.filter((p) => p.type === "text")
+          .map((p) => (p as { type: "text"; text: string }).text)
+          .join("") ?? "";
       if (lastUserText.includes("[NEXT-HAT-PROMPT]")) {
         const pick = getRandomHatPrompt(this._hatPromptIndex);
         this._hatPromptIndex = pick.index;
@@ -414,9 +462,7 @@ export class ChatAgent extends AIChatAgent<Bindings> {
 
     if (body?.selectedIds?.length) {
       const objects = await boardStub.readObjects();
-      const selected = (objects as BoardObject[]).filter((o: BoardObject) =>
-        body.selectedIds.includes(o.id),
-      );
+      const selected = (objects as BoardObject[]).filter((o: BoardObject) => body.selectedIds.includes(o.id));
       if (selected.length > 0) {
         const desc = selected
           .map(
@@ -430,7 +476,12 @@ export class ChatAgent extends AIChatAgent<Bindings> {
 
     // Show AI in presence bar while responding (best-effort, never blocks AI response)
     await boardStub.setAiPresence(true).catch((err: unknown) => {
-      console.debug(JSON.stringify({ event: "ai:presence:start-error", error: String(err) }));
+      console.debug(
+        JSON.stringify({
+          event: "ai:presence:start-error",
+          error: String(err),
+        }),
+      );
     });
 
     let presenceCleared = false;
@@ -440,7 +491,12 @@ export class ChatAgent extends AIChatAgent<Bindings> {
       try {
         await boardStub.setAiPresence(false);
       } catch (err) {
-        console.debug(JSON.stringify({ event: "ai:presence:cleanup-error", error: String(err) }));
+        console.debug(
+          JSON.stringify({
+            event: "ai:presence:cleanup-error",
+            error: String(err),
+          }),
+        );
       }
     };
 
@@ -451,10 +507,9 @@ export class ChatAgent extends AIChatAgent<Bindings> {
       // Request-level metrics from onFinish
       const finishArg = args[0] as { steps?: { toolCalls?: unknown[] }[] } | undefined;
       const steps = finishArg?.steps?.length ?? 0;
-      const toolCalls = finishArg?.steps?.reduce(
-        (sum: number, s: { toolCalls?: unknown[] }) => sum + (s.toolCalls?.length ?? 0),
-        0,
-      ) ?? 0;
+      const toolCalls =
+        finishArg?.steps?.reduce((sum: number, s: { toolCalls?: unknown[] }) => sum + (s.toolCalls?.length ?? 0), 0) ??
+        0;
       this._logRequestEnd("chat", activePersona.name, startTime, steps, toolCalls);
 
       // Quality telemetry: per-response layout scoring for prompt tuning
@@ -467,13 +522,15 @@ export class ChatAgent extends AIChatAgent<Bindings> {
           // Warn if tools were called but no objects matched this batchId -
           // could indicate a timing/persistence issue rather than a real "zero objects" result
           if (batchObjs.length === 0) {
-            console.warn(JSON.stringify({
-              event: "ai:quality:empty-batch",
-              boardId: this.name,
-              batchId,
-              toolCalls,
-              totalObjects: allObjects.length,
-            }));
+            console.warn(
+              JSON.stringify({
+                event: "ai:quality:empty-batch",
+                boardId: this.name,
+                batchId,
+                toolCalls,
+                totalObjects: allObjects.length,
+              }),
+            );
           } else {
             const otherObjs = allObjects.filter((o) => o.batchId !== batchId);
 
@@ -484,31 +541,34 @@ export class ChatAgent extends AIChatAgent<Bindings> {
 
             let crossOverlap = 0;
             for (const newObj of batchObjs)
-              for (const oldObj of otherObjs)
-                if (rectsOverlap(newObj, oldObj)) crossOverlap++;
+              for (const oldObj of otherObjs) if (rectsOverlap(newObj, oldObj)) crossOverlap++;
 
             const inBounds = batchObjs.filter(
               (o) => o.x >= 50 && o.y >= 60 && o.x + o.width <= 1150 && o.y + o.height <= 780,
             ).length;
 
-            console.debug(JSON.stringify({
-              event: "ai:quality",
-              promptVersion: PROMPT_VERSION,
-              batchOverlap,
-              crossOverlap,
-              objectsCreated: batchObjs.length,
-              inBounds,
-              model: this._getModelName(),
-            }));
+            console.debug(
+              JSON.stringify({
+                event: "ai:quality",
+                promptVersion: PROMPT_VERSION,
+                batchOverlap,
+                crossOverlap,
+                objectsCreated: batchObjs.length,
+                inBounds,
+                model: this._getModelName(),
+              }),
+            );
           }
         } catch (err) {
-          console.error(JSON.stringify({
-            event: "ai:quality:error",
-            boardId: this.name,
-            batchId,
-            error: String(err),
-            stack: err instanceof Error ? err.stack : undefined,
-          }));
+          console.error(
+            JSON.stringify({
+              event: "ai:quality:error",
+              boardId: this.name,
+              batchId,
+              error: String(err),
+              stack: err instanceof Error ? err.stack : undefined,
+            }),
+          );
         }
       }
 
@@ -518,18 +578,28 @@ export class ChatAgent extends AIChatAgent<Bindings> {
       // Trigger reactive persona to "yes, and" the active persona's response
       this.ctx.waitUntil(
         this._triggerReactivePersona(activeIndex, personas).catch((err: unknown) => {
-          console.error(JSON.stringify({ event: "reactive:unhandled", boardId: this.name, error: String(err) }));
-        })
+          console.error(
+            JSON.stringify({
+              event: "reactive:unhandled",
+              boardId: this.name,
+              error: String(err),
+            }),
+          );
+        }),
       );
 
       return onFinish(...args);
     };
 
     // Clean up presence if client disconnects mid-stream
-    options?.abortSignal?.addEventListener("abort", () => {
-      this._isGenerating = false;
-      clearPresence();
-    }, { once: true });
+    options?.abortSignal?.addEventListener(
+      "abort",
+      () => {
+        this._isGenerating = false;
+        clearPresence();
+      },
+      { once: true },
+    );
 
     // Reset the director inactivity timer on every user message
     this._resetDirectorTimer();
@@ -570,7 +640,13 @@ export class ChatAgent extends AIChatAgent<Bindings> {
     const needsFix = !!firstTextPart && !firstTextPart.text.startsWith(`[${personaName}]`);
     if (!needsFix) {
       if (!firstTextPart) {
-        console.warn(JSON.stringify({ event: "persona:prefix:no-text-part", boardId: this.name, persona: personaName }));
+        console.warn(
+          JSON.stringify({
+            event: "persona:prefix:no-text-part",
+            boardId: this.name,
+            persona: personaName,
+          }),
+        );
       }
       return;
     }
@@ -587,15 +663,27 @@ export class ChatAgent extends AIChatAgent<Bindings> {
     this.messages[this.messages.length - 1] = { ...lastMsg, parts: newParts };
     this.ctx.waitUntil(
       this.persistMessages(this.messages).catch((err: unknown) => {
-        console.error(JSON.stringify({ event: "persona:prefix:persist-error", boardId: this.name, error: String(err) }));
-      })
+        console.error(
+          JSON.stringify({
+            event: "persona:prefix:persist-error",
+            boardId: this.name,
+            error: String(err),
+          }),
+        );
+      }),
     );
   }
 
   /** Build a UIMessage from a generateText result with tool-call parts and persona-prefixed text.
    *  Returns null if the result produced no parts (no tools called, no text). */
   private _buildGenerateTextMessage(
-    result: { text: string; steps: { toolCalls: any[]; toolResults: { toolCallId: string; output: unknown }[] }[] },
+    result: {
+      text: string;
+      steps: {
+        toolCalls: any[];
+        toolResults: { toolCallId: string; output: unknown }[];
+      }[];
+    },
     personaName: string,
     fallbackText?: string,
   ): UIMessage | null {
@@ -603,9 +691,7 @@ export class ChatAgent extends AIChatAgent<Bindings> {
 
     for (const step of result.steps) {
       for (const tc of step.toolCalls) {
-        const tr = step.toolResults.find(
-          (r: { toolCallId: string }) => r.toolCallId === tc.toolCallId
-        );
+        const tr = step.toolResults.find((r: { toolCallId: string }) => r.toolCallId === tc.toolCallId);
         const safeInput = isPlainObject(tc.input) ? tc.input : {};
         if (tr) {
           parts.push({
@@ -657,7 +743,7 @@ export class ChatAgent extends AIChatAgent<Bindings> {
     if (!lastAssistantMsg) return "";
 
     const summaries: string[] = [];
-    const getStr = (v: unknown): string => typeof v === "string" && v.length > 0 ? v : "";
+    const getStr = (v: unknown): string => (typeof v === "string" && v.length > 0 ? v : "");
     for (const part of lastAssistantMsg.parts) {
       const p = part as Record<string, unknown>;
       const input = isPlainObject(p.input) ? (p.input as Record<string, unknown>) : {};
@@ -666,7 +752,7 @@ export class ChatAgent extends AIChatAgent<Bindings> {
       // tool-* parts: produced by streamText (primary/chat path)
       if (typeof p.type === "string" && p.type.startsWith("tool-") && p.type !== "dynamic-tool") {
         summaries.push((p.type as string).replace("tool-", "") + (detail ? `: "${detail}"` : ""));
-      // dynamic-tool parts: produced by generateText (_buildGenerateTextMessage / director nudge path)
+        // dynamic-tool parts: produced by generateText (_buildGenerateTextMessage / director nudge path)
       } else if (p.type === "dynamic-tool" && typeof p.toolName === "string") {
         summaries.push(p.toolName + (detail ? `: "${detail}"` : ""));
       }
@@ -675,30 +761,55 @@ export class ChatAgent extends AIChatAgent<Bindings> {
   }
 
   /** After the active persona finishes, trigger the other persona to react.
-   *  Claims _isGenerating mutex BEFORE the delay to prevent TOCTOU races. */
+   *  KEY-DECISION 2026-02-19: Claims _isGenerating mutex BEFORE the 2s UX delay to prevent
+   *  TOCTOU races (human message arriving between check and claim would cause concurrent generation). */
   private async _triggerReactivePersona(activeIndex: number, personas?: Persona[]) {
     // Guard: scene budget exhausted - no reactive exchanges after scene ends
     const reactiveHumanTurns = this.messages.filter((m) => m.role === "user").length;
     if (computeBudgetPhase(reactiveHumanTurns, SCENE_TURN_BUDGET) === "scene-over") {
-      console.debug(JSON.stringify({ event: "reactive:skip", reason: "scene-over", boardId: this.name }));
+      console.debug(
+        JSON.stringify({
+          event: "reactive:skip",
+          reason: "scene-over",
+          boardId: this.name,
+        }),
+      );
       return;
     }
 
     // Guard: cooldown exceeded (check before claiming mutex)
     if (this._autonomousExchangeCount >= MAX_AUTONOMOUS_EXCHANGES) {
-      console.debug(JSON.stringify({ event: "reactive:skip", reason: "cooldown", boardId: this.name }));
+      console.debug(
+        JSON.stringify({
+          event: "reactive:skip",
+          reason: "cooldown",
+          boardId: this.name,
+        }),
+      );
       return;
     }
 
     // Guard: already generating (human message or concurrent caller)
     if (this._isGenerating) {
-      console.debug(JSON.stringify({ event: "reactive:skip", reason: "busy", boardId: this.name }));
+      console.debug(
+        JSON.stringify({
+          event: "reactive:skip",
+          reason: "busy",
+          boardId: this.name,
+        }),
+      );
       return;
     }
 
     // Guard: need at least one assistant message to react to
     if (!this.messages.some((m) => m.role === "assistant")) {
-      console.debug(JSON.stringify({ event: "reactive:skip", reason: "no-assistant-message", boardId: this.name }));
+      console.debug(
+        JSON.stringify({
+          event: "reactive:skip",
+          reason: "no-assistant-message",
+          boardId: this.name,
+        }),
+      );
       return;
     }
 
@@ -712,7 +823,13 @@ export class ChatAgent extends AIChatAgent<Bindings> {
     // Re-check: human may have interrupted during the delay (onChatMessage resets count)
     if (this._autonomousExchangeCount === 0) {
       this._isGenerating = false;
-      console.debug(JSON.stringify({ event: "reactive:skip", reason: "human-interrupted", boardId: this.name }));
+      console.debug(
+        JSON.stringify({
+          event: "reactive:skip",
+          reason: "human-interrupted",
+          boardId: this.name,
+        }),
+      );
       return;
     }
 
@@ -721,16 +838,28 @@ export class ChatAgent extends AIChatAgent<Bindings> {
     // any unexpected throw here would leave _isGenerating stuck at true for the DO lifetime.
     let effectivePersonas: Persona[];
     try {
-      effectivePersonas = personas ?? await this._getPersonas();
+      effectivePersonas = personas ?? (await this._getPersonas());
     } catch (err) {
       this._isGenerating = false;
-      console.error(JSON.stringify({ event: "reactive:personas-error", boardId: this.name, error: String(err) }));
+      console.error(
+        JSON.stringify({
+          event: "reactive:personas-error",
+          boardId: this.name,
+          error: String(err),
+        }),
+      );
       return;
     }
     // Skip reactive if only 1 persona (can't react to yourself)
     if (effectivePersonas.length <= 1) {
       this._isGenerating = false;
-      console.debug(JSON.stringify({ event: "reactive:skip", reason: "single-persona", boardId: this.name }));
+      console.debug(
+        JSON.stringify({
+          event: "reactive:skip",
+          reason: "single-persona",
+          boardId: this.name,
+        }),
+      );
       return;
     }
     const boundActive = activeIndex % effectivePersonas.length;
@@ -766,7 +895,13 @@ export class ChatAgent extends AIChatAgent<Bindings> {
 
     // Show AI presence while generating
     await boardStub.setAiPresence(true).catch((err: unknown) => {
-      console.debug(JSON.stringify({ event: "ai:presence:start-error", trigger: "reactive", error: String(err) }));
+      console.debug(
+        JSON.stringify({
+          event: "ai:presence:start-error",
+          trigger: "reactive",
+          error: String(err),
+        }),
+      );
     });
 
     try {
@@ -780,17 +915,16 @@ export class ChatAgent extends AIChatAgent<Bindings> {
 
       // Build and persist UIMessage from generateText result
       const reactiveMessage = this._buildGenerateTextMessage(
-        result, reactivePersona.name, `[${reactivePersona.name}] ...`
+        result,
+        reactivePersona.name,
+        `[${reactivePersona.name}] ...`,
       );
       if (reactiveMessage) {
         this.messages.push(reactiveMessage);
         await this.persistMessages(this.messages);
       }
 
-      const totalToolCalls = result.steps.reduce(
-        (sum, s) => sum + s.toolCalls.length,
-        0
-      );
+      const totalToolCalls = result.steps.reduce((sum, s) => sum + s.toolCalls.length, 0);
       this._logRequestEnd("reactive", reactivePersona.name, startTime, result.steps.length, totalToolCalls);
     } catch (err) {
       console.error(
@@ -802,14 +936,20 @@ export class ChatAgent extends AIChatAgent<Bindings> {
           error: String(err),
           // Include stack trace to distinguish programming bugs from transient AI/network errors
           stack: err instanceof Error ? err.stack : undefined,
-        })
+        }),
       );
     } finally {
       // Toggle persona regardless of success/failure - prevents getting stuck
       this._activePersonaIndex = reactiveIndex;
       this._isGenerating = false;
       await boardStub.setAiPresence(false).catch((err: unknown) => {
-        console.debug(JSON.stringify({ event: "ai:presence:cleanup-error", trigger: "reactive", error: String(err) }));
+        console.debug(
+          JSON.stringify({
+            event: "ai:presence:cleanup-error",
+            trigger: "reactive",
+            error: String(err),
+          }),
+        );
       });
     }
   }
@@ -855,32 +995,44 @@ export class ChatAgent extends AIChatAgent<Bindings> {
   }
 
   /** Called by DO alarm after 60s of inactivity - generates a proactive scene complication */
-  async onDirectorNudge(
-    _payload: unknown,
-    currentSchedule?: { id: string },
-  ) {
+  async onDirectorNudge(_payload: unknown, currentSchedule?: { id: string }) {
     // Guard: skip if another timer was set after this one fired
     // Note: the SDK deletes the schedule row AFTER the callback returns,
     // so we must exclude the currently-executing schedule by ID
     const lastSchedules = this.getSchedules({ type: "delayed" });
-    const hasPending = lastSchedules.some(
-      (s) =>
-        s.callback === "onDirectorNudge" && s.id !== currentSchedule?.id,
-    );
+    const hasPending = lastSchedules.some((s) => s.callback === "onDirectorNudge" && s.id !== currentSchedule?.id);
     if (hasPending) {
-      console.debug(JSON.stringify({ event: "director:skip", reason: "newer-timer", boardId: this.name }));
+      console.debug(
+        JSON.stringify({
+          event: "director:skip",
+          reason: "newer-timer",
+          boardId: this.name,
+        }),
+      );
       return;
     }
 
     // Guard: skip if AI is already generating a response
     if (this._isGenerating) {
-      console.debug(JSON.stringify({ event: "director:skip", reason: "generating", boardId: this.name }));
+      console.debug(
+        JSON.stringify({
+          event: "director:skip",
+          reason: "generating",
+          boardId: this.name,
+        }),
+      );
       return;
     }
 
     // Guard: skip if no scene started
     if (this.messages.length === 0) {
-      console.debug(JSON.stringify({ event: "director:skip", reason: "no-messages", boardId: this.name }));
+      console.debug(
+        JSON.stringify({
+          event: "director:skip",
+          reason: "no-messages",
+          boardId: this.name,
+        }),
+      );
       return;
     }
 
@@ -888,7 +1040,14 @@ export class ChatAgent extends AIChatAgent<Bindings> {
     const directorHumanTurns = this.messages.filter((m) => m.role === "user").length;
     const directorBudget = computeBudgetPhase(directorHumanTurns, SCENE_TURN_BUDGET);
     if (directorBudget === "scene-over") {
-      console.debug(JSON.stringify({ event: "director:skip", reason: "scene-over", boardId: this.name, humanTurns: directorHumanTurns }));
+      console.debug(
+        JSON.stringify({
+          event: "director:skip",
+          reason: "scene-over",
+          boardId: this.name,
+          humanTurns: directorHumanTurns,
+        }),
+      );
       return;
     }
 
@@ -897,12 +1056,16 @@ export class ChatAgent extends AIChatAgent<Bindings> {
     const directorPersonas = await this._getPersonas();
     const directorIndex = this._activePersonaIndex % directorPersonas.length;
     const directorPersona = directorPersonas[directorIndex];
-    const directorOther = directorPersonas.length > 1 ? directorPersonas[(directorIndex + 1) % directorPersonas.length] : undefined;
+    const directorOther =
+      directorPersonas.length > 1 ? directorPersonas[(directorIndex + 1) % directorPersonas.length] : undefined;
 
     // Determine scene phase from user message count
     const userMessageCount = directorHumanTurns;
     const phase = computeScenePhase(userMessageCount);
-    this._logRequestStart("director", directorPersona.name, { messageCount: this.messages.length, budgetPhase: directorBudget });
+    this._logRequestStart("director", directorPersona.name, {
+      messageCount: this.messages.length,
+      budgetPhase: directorBudget,
+    });
 
     const doId = this.env.BOARD.idFromName(this.name);
     const boardStub = this.env.BOARD.get(doId);
@@ -911,7 +1074,13 @@ export class ChatAgent extends AIChatAgent<Bindings> {
 
     // Show AI presence while generating
     await boardStub.setAiPresence(true).catch((err: unknown) => {
-      console.debug(JSON.stringify({ event: "ai:presence:start-error", trigger: "director", error: String(err) }));
+      console.debug(
+        JSON.stringify({
+          event: "ai:presence:start-error",
+          trigger: "director",
+          error: String(err),
+        }),
+      );
     });
 
     try {
@@ -932,8 +1101,7 @@ export class ChatAgent extends AIChatAgent<Bindings> {
         const yesandKey = this._yesAndCount >= 10 ? "wrapup" : "active";
         directorInstructions = DIRECTOR_PROMPTS_YESAND[yesandKey];
       } else {
-        directorInstructions =
-          `Current scene phase: ${phase.toUpperCase()}. ` + DIRECTOR_PROMPTS[phase];
+        directorInstructions = `Current scene phase: ${phase.toUpperCase()}. ` + DIRECTOR_PROMPTS[phase];
       }
 
       // Director nudge uses the active persona's voice + budget-aware prompts
@@ -962,10 +1130,7 @@ export class ChatAgent extends AIChatAgent<Bindings> {
         await this.persistMessages(this.messages);
       }
 
-      const totalToolCalls = result.steps.reduce(
-        (sum, s) => sum + s.toolCalls.length,
-        0,
-      );
+      const totalToolCalls = result.steps.reduce((sum, s) => sum + s.toolCalls.length, 0);
       this._logRequestEnd("director", directorPersona.name, startTime, result.steps.length, totalToolCalls, { phase });
 
       // Director nudge also triggers the other persona to react
@@ -973,8 +1138,14 @@ export class ChatAgent extends AIChatAgent<Bindings> {
       this._autonomousExchangeCount++;
       this.ctx.waitUntil(
         this._triggerReactivePersona(directorIndex, directorPersonas).catch((err: unknown) => {
-          console.error(JSON.stringify({ event: "reactive:unhandled", boardId: this.name, error: String(err) }));
-        })
+          console.error(
+            JSON.stringify({
+              event: "reactive:unhandled",
+              boardId: this.name,
+              error: String(err),
+            }),
+          );
+        }),
       );
     } catch (err) {
       console.error(
@@ -989,7 +1160,13 @@ export class ChatAgent extends AIChatAgent<Bindings> {
     } finally {
       this._isGenerating = false;
       await boardStub.setAiPresence(false).catch((err: unknown) => {
-        console.debug(JSON.stringify({ event: "ai:presence:cleanup-error", trigger: "director", error: String(err) }));
+        console.debug(
+          JSON.stringify({
+            event: "ai:presence:cleanup-error",
+            trigger: "director",
+            error: String(err),
+          }),
+        );
       });
     }
   }

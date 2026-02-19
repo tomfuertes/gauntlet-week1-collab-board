@@ -37,8 +37,16 @@ export const colors = {
 
 // Stable color per userId via hash (same palette across Board, ChatPanel, Cursors)
 const CURSOR_COLORS = [
-  "#f87171", "#60a5fa", "#4ade80", "#fbbf24", "#a78bfa",
-  "#f472b6", "#34d399", "#fb923c", "#818cf8", "#22d3ee",
+  "#f87171",
+  "#60a5fa",
+  "#4ade80",
+  "#fbbf24",
+  "#a78bfa",
+  "#f472b6",
+  "#34d399",
+  "#fb923c",
+  "#818cf8",
+  "#22d3ee",
 ] as const;
 
 export function getUserColor(userId: string): string {

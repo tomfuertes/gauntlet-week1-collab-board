@@ -28,11 +28,21 @@ export function ConnectionToast({ connectionState }: { connectionState: Connecti
 
   const c = TOAST_CONFIG[connectionState];
   return (
-    <div style={{
-      position: "absolute", top: 56, left: "50%", transform: "translateX(-50%)",
-      background: c.bg, border: `1px solid ${c.border}`, borderRadius: 6,
-      padding: "6px 16px", color: "#fff", fontSize: "0.8rem", zIndex: 30,
-    }}>
+    <div
+      style={{
+        position: "absolute",
+        top: 56,
+        left: "50%",
+        transform: "translateX(-50%)",
+        background: c.bg,
+        border: `1px solid ${c.border}`,
+        borderRadius: 6,
+        padding: "6px 16px",
+        color: "#fff",
+        fontSize: "0.8rem",
+        zIndex: 30,
+      }}
+    >
       {c.label}
     </div>
   );

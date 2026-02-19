@@ -11,22 +11,23 @@ const BASE_STYLE: React.CSSProperties = {
   outline: "none",
 };
 
-export const TextInput = forwardRef<HTMLInputElement, React.InputHTMLAttributes<HTMLInputElement>>(
-  function TextInput({ style, onFocus, onBlur, ...rest }, ref) {
-    return (
-      <input
-        ref={ref}
-        style={{ ...BASE_STYLE, ...style }}
-        onFocus={(e) => {
-          e.currentTarget.style.borderColor = colors.accent;
-          onFocus?.(e);
-        }}
-        onBlur={(e) => {
-          e.currentTarget.style.borderColor = colors.border;
-          onBlur?.(e);
-        }}
-        {...rest}
-      />
-    );
-  }
-);
+export const TextInput = forwardRef<HTMLInputElement, React.InputHTMLAttributes<HTMLInputElement>>(function TextInput(
+  { style, onFocus, onBlur, ...rest },
+  ref,
+) {
+  return (
+    <input
+      ref={ref}
+      style={{ ...BASE_STYLE, ...style }}
+      onFocus={(e) => {
+        e.currentTarget.style.borderColor = colors.accent;
+        onFocus?.(e);
+      }}
+      onBlur={(e) => {
+        e.currentTarget.style.borderColor = colors.border;
+        onBlur?.(e);
+      }}
+      {...rest}
+    />
+  );
+});

@@ -1,26 +1,9 @@
 import React, { useRef, useEffect } from "react";
 import "../styles/animations.css";
 
-const CONFETTI_COLORS = [
-  "#6366f1",
-  "#818cf8",
-  "#f472b6",
-  "#fbbf24",
-  "#4ade80",
-  "#60a5fa",
-  "#f87171",
-  "#a78bfa",
-];
+const CONFETTI_COLORS = ["#6366f1", "#818cf8", "#f472b6", "#fbbf24", "#4ade80", "#60a5fa", "#f87171", "#a78bfa"];
 
-export function ConfettiBurst({
-  x,
-  y,
-  onDone,
-}: {
-  x: number;
-  y: number;
-  onDone: () => void;
-}) {
+export function ConfettiBurst({ x, y, onDone }: { x: number; y: number; onDone: () => void }) {
   const particles = useRef(
     Array.from({ length: 40 }, () => {
       const angle = -Math.PI / 2 + (Math.random() - 0.5) * Math.PI * 1.8;
@@ -28,8 +11,7 @@ export function ConfettiBurst({
       return {
         cx: `${Math.cos(angle) * dist}px`,
         cy: `${Math.sin(angle) * dist + 80}px`, // gravity pull
-        color:
-          CONFETTI_COLORS[Math.floor(Math.random() * CONFETTI_COLORS.length)],
+        color: CONFETTI_COLORS[Math.floor(Math.random() * CONFETTI_COLORS.length)],
         size: 4 + Math.random() * 6,
         delay: Math.random() * 0.15,
       };

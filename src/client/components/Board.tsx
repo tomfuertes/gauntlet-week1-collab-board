@@ -37,10 +37,26 @@ const CURSOR_THROTTLE_MS = 33; // ~30fps
 function getCaretPixelPos(textarea: HTMLTextAreaElement, position: number): { x: number; y: number } {
   const div = document.createElement("div");
   const style = window.getComputedStyle(textarea);
-  (["fontSize", "fontFamily", "fontWeight", "letterSpacing", "lineHeight",
-    "paddingTop", "paddingRight", "paddingBottom", "paddingLeft",
-    "borderTopWidth", "borderRightWidth", "borderBottomWidth", "borderLeftWidth",
-    "boxSizing"] as const).forEach((p) => { div.style[p] = style[p]; });
+  (
+    [
+      "fontSize",
+      "fontFamily",
+      "fontWeight",
+      "letterSpacing",
+      "lineHeight",
+      "paddingTop",
+      "paddingRight",
+      "paddingBottom",
+      "paddingLeft",
+      "borderTopWidth",
+      "borderRightWidth",
+      "borderBottomWidth",
+      "borderLeftWidth",
+      "boxSizing",
+    ] as const
+  ).forEach((p) => {
+    div.style[p] = style[p];
+  });
   div.style.position = "absolute";
   div.style.top = "-9999px";
   div.style.left = "0";
@@ -74,12 +90,24 @@ interface InteractiveBoardObjectProps {
   onDragStart: (e: KonvaEventObject<DragEvent>, id: string) => void;
   onDragMove: (e: KonvaEventObject<DragEvent>, id: string) => void;
   onDragEnd: (e: KonvaEventObject<DragEvent>, id: string) => void;
-  onTransformEnd: (e: KonvaEventObject<Event>, obj: { id: string; type: string; width: number; height: number }) => void;
+  onTransformEnd: (
+    e: KonvaEventObject<Event>,
+    obj: { id: string; type: string; width: number; height: number },
+  ) => void;
   onDblClickEdit: (id: string) => void;
 }
 
 const InteractiveBoardObject = React.memo(function InteractiveBoardObject({
-  obj, hasAiGlow, setShapeRef, onShapeClick, onContextMenu, onDragStart, onDragMove, onDragEnd, onTransformEnd, onDblClickEdit,
+  obj,
+  hasAiGlow,
+  setShapeRef,
+  onShapeClick,
+  onContextMenu,
+  onDragStart,
+  onDragMove,
+  onDragEnd,
+  onTransformEnd,
+  onDblClickEdit,
 }: InteractiveBoardObjectProps) {
   const editable = obj.type === "sticky" || obj.type === "text" || obj.type === "frame";
   const groupProps = {
@@ -91,17 +119,29 @@ const InteractiveBoardObject = React.memo(function InteractiveBoardObject({
     onDragMove: (e: KonvaEventObject<DragEvent>) => onDragMove(e, obj.id),
     onDragEnd: (e: KonvaEventObject<DragEvent>) => onDragEnd(e, obj.id),
     onTransformEnd: (e: KonvaEventObject<Event>) => onTransformEnd(e, obj),
-    ...(editable ? {
-      onDblClick: (e: KonvaEventObject<MouseEvent>) => {
-        e.cancelBubble = true;
-        onDblClickEdit(obj.id);
-      },
-    } : {}),
+    ...(editable
+      ? {
+          onDblClick: (e: KonvaEventObject<MouseEvent>) => {
+            e.cancelBubble = true;
+            onDblClickEdit(obj.id);
+          },
+        }
+      : {}),
   };
   return <BoardObjectRenderer obj={obj} groupProps={groupProps} aiGlow={hasAiGlow} interactive />;
 });
 
-export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boardId: string; onLogout: () => void; onBack: () => void }) {
+export function Board({
+  user,
+  boardId,
+  onLogout,
+  onBack,
+}: {
+  user: AuthUser;
+  boardId: string;
+  onLogout: () => void;
+  onBack: () => void;
+}) {
   const isMobile = useIsMobile();
   const [canvasExpanded, setCanvasExpanded] = useState(false);
 
@@ -122,7 +162,10 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
   useEffect(() => {
     fetch(`/api/boards/${boardId}`)
       .then((r) => {
-        if (r.status === 401) { onLogout(); return null; } // session expired
+        if (r.status === 401) {
+          onLogout();
+          return null;
+        } // session expired
         return r.ok ? (r.json() as Promise<{ game_mode?: string }>) : null;
       })
       .then((data) => {
@@ -142,28 +185,61 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
 
   // Object fade-in animation tracking
   const wasInitializedRef = useRef(false);
-  useEffect(() => { wasInitializedRef.current = initialized; });
+  useEffect(() => {
+    wasInitializedRef.current = initialized;
+  });
   const animatedIdsRef = useRef(new Set<string>());
 
   // Frame drag-to-create state
-  const [frameDraft, setFrameDraft] = useState<{startX: number; startY: number; x: number; y: number; width: number; height: number} | null>(null);
+  const [frameDraft, setFrameDraft] = useState<{
+    startX: number;
+    startY: number;
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  } | null>(null);
   const frameDraftRef = useRef(frameDraft);
   frameDraftRef.current = frameDraft;
-  const [pendingFrame, setPendingFrame] = useState<{x: number; y: number; width: number; height: number} | null>(null);
+  const [pendingFrame, setPendingFrame] = useState<{ x: number; y: number; width: number; height: number } | null>(
+    null,
+  );
   const pendingFrameCancelled = useRef(false);
 
   // Bulk drag state
   const dragStartPositionsRef = useRef<Map<string, { x: number; y: number }>>(new Map());
 
-  const { connectionState, initialized, cursors, textCursors, objects, presence, spectatorCount, reactions, send, createObject: wsCreate, updateObject: wsUpdate, deleteObject: wsDelete, batchUndo, lastServerMessageAt } = useWebSocket(boardId);
+  const {
+    connectionState,
+    initialized,
+    cursors,
+    textCursors,
+    objects,
+    presence,
+    spectatorCount,
+    reactions,
+    send,
+    createObject: wsCreate,
+    updateObject: wsUpdate,
+    deleteObject: wsDelete,
+    batchUndo,
+    lastServerMessageAt,
+  } = useWebSocket(boardId);
 
   const sendCursorThrottled = useThrottledCallback(
     (x: number, y: number) => send({ type: "cursor", x, y }),
-    CURSOR_THROTTLE_MS
+    CURSOR_THROTTLE_MS,
   );
 
-  const { createObject, updateObject, deleteObject, startBatch, commitBatch, undo, redo, pushExternalBatch, topTag } = useUndoRedo(objects, wsCreate, wsUpdate, wsDelete);
-  const { aiGlowIds, confettiPos, confettiKey, clearConfetti, aiCursorTarget } = useAiObjectEffects(objects, initialized, scale, stagePos, size);
+  const { createObject, updateObject, deleteObject, startBatch, commitBatch, undo, redo, pushExternalBatch, topTag } =
+    useUndoRedo(objects, wsCreate, wsUpdate, wsDelete);
+  const { aiGlowIds, confettiPos, confettiKey, clearConfetti, aiCursorTarget } = useAiObjectEffects(
+    objects,
+    initialized,
+    scale,
+    stagePos,
+    size,
+  );
 
   // Stable refs to avoid recreating callbacks on every state change
   const objectsRef = useRef(objects);
@@ -226,7 +302,9 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
 
   // Cleanup undo AI timer on unmount
   useEffect(() => {
-    return () => { if (undoAiTimerRef.current) clearTimeout(undoAiTimerRef.current); };
+    return () => {
+      if (undoAiTimerRef.current) clearTimeout(undoAiTimerRef.current);
+    };
   }, []);
   const stagePosRef = useRef(stagePos);
   stagePosRef.current = stagePos;
@@ -240,7 +318,10 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
   const clipboardRef = useRef<BoardObject[]>([]);
 
   // Marquee selection (extracted to useDragSelection)
-  const { marquee, justFinishedMarqueeRef, startMarquee, updateMarquee, finishMarquee } = useDragSelection({ objectsRef, setSelectedIds });
+  const { marquee, justFinishedMarqueeRef, startMarquee, updateMarquee, finishMarquee } = useDragSelection({
+    objectsRef,
+    setSelectedIds,
+  });
 
   // Shared helper: batch-delete all selected objects
   const deleteSelected = useCallback(() => {
@@ -256,30 +337,33 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
   }, [selectedIds, deleteObject, startBatch, commitBatch]);
 
   // Shared: create offset copies of items, wrap in a batch if >1, select the new set
-  const placeItems = useCallback((items: BoardObject[]) => {
-    if (items.length === 0) return;
-    const isBatch = items.length > 1;
-    if (isBatch) startBatch();
-    const newIds = new Set<string>();
-    try {
-      for (const item of items) {
-        const id = crypto.randomUUID();
-        newIds.add(id);
-        createObject({
-          ...item,
-          id,
-          x: item.x + 20,
-          y: item.y + 20,
-          props: { ...item.props },
-          createdBy: user.id,
-          updatedAt: Date.now(),
-        } as BoardObject);
+  const placeItems = useCallback(
+    (items: BoardObject[]) => {
+      if (items.length === 0) return;
+      const isBatch = items.length > 1;
+      if (isBatch) startBatch();
+      const newIds = new Set<string>();
+      try {
+        for (const item of items) {
+          const id = crypto.randomUUID();
+          newIds.add(id);
+          createObject({
+            ...item,
+            id,
+            x: item.x + 20,
+            y: item.y + 20,
+            props: { ...item.props },
+            createdBy: user.id,
+            updatedAt: Date.now(),
+          } as BoardObject);
+        }
+      } finally {
+        if (isBatch) commitBatch();
       }
-    } finally {
-      if (isBatch) commitBatch();
-    }
-    setSelectedIds(newIds);
-  }, [createObject, startBatch, commitBatch, user.id]);
+      setSelectedIds(newIds);
+    },
+    [createObject, startBatch, commitBatch, user.id],
+  );
 
   // Copy selected objects to in-memory clipboard
   const copySelected = useCallback(() => {
@@ -298,12 +382,15 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
     if (items.length === 0) return;
     placeItems(items);
     // Advance clipboard positions so repeated pastes cascade
-    clipboardRef.current = items.map(item => ({
-      ...item,
-      x: item.x + 20,
-      y: item.y + 20,
-      props: { ...item.props },
-    } as BoardObject));
+    clipboardRef.current = items.map(
+      (item) =>
+        ({
+          ...item,
+          x: item.x + 20,
+          y: item.y + 20,
+          props: { ...item.props },
+        }) as BoardObject,
+    );
   }, [placeItems]);
 
   // Duplicate selected objects with 20px offset without touching the clipboard
@@ -317,25 +404,28 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
   }, [selectedIds, placeItems]);
 
   // Apply a color to all selected objects (used by Toolbar color picker)
-  const handleColorChange = useCallback((color: string) => {
-    const isBatch = selectedIds.size > 1;
-    if (isBatch) startBatch();
-    try {
-      for (const id of selectedIds) {
-        const obj = objects.get(id);
-        if (!obj) continue;
-        const key = obj.type === "sticky" || obj.type === "text" ? "color" : obj.type === "line" ? "stroke" : "fill";
-        updateObject({ id, props: { [key]: color } as BoardObjectProps });
+  const handleColorChange = useCallback(
+    (color: string) => {
+      const isBatch = selectedIds.size > 1;
+      if (isBatch) startBatch();
+      try {
+        for (const id of selectedIds) {
+          const obj = objects.get(id);
+          if (!obj) continue;
+          const key = obj.type === "sticky" || obj.type === "text" ? "color" : obj.type === "line" ? "stroke" : "fill";
+          updateObject({ id, props: { [key]: color } as BoardObjectProps });
+        }
+      } finally {
+        if (isBatch) commitBatch();
       }
-    } finally {
-      if (isBatch) commitBatch();
-    }
-  }, [selectedIds, objects, updateObject, startBatch, commitBatch]);
+    },
+    [selectedIds, objects, updateObject, startBatch, commitBatch],
+  );
 
   // Clear selection if objects were deleted (by another user or AI)
   useEffect(() => {
-    setSelectedIds(prev => {
-      const next = new Set([...prev].filter(id => objects.has(id)));
+    setSelectedIds((prev) => {
+      const next = new Set([...prev].filter((id) => objects.has(id)));
       return next.size === prev.size ? prev : next;
     });
   }, [objects]);
@@ -354,9 +444,18 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
 
   // Keyboard shortcuts for tool switching + delete
   useKeyboardShortcuts({
-    selectedIds, editingId, setSelectedIds, setToolMode,
-    setChatOpen, setShowShortcuts, deleteSelected,
-    copySelected, pasteClipboard, duplicateSelected, undo, redo,
+    selectedIds,
+    editingId,
+    setSelectedIds,
+    setToolMode,
+    setChatOpen,
+    setShowShortcuts,
+    deleteSelected,
+    copySelected,
+    pasteClipboard,
+    duplicateSelected,
+    undo,
+    redo,
   });
 
   // Sync Transformer with selected nodes
@@ -364,9 +463,7 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
     const tr = trRef.current;
     if (!tr) return;
     if (selectedIds.size > 0 && !editingId) {
-      const nodes = [...selectedIds]
-        .map(id => shapeRefs.current.get(id))
-        .filter((n): n is Konva.Group => !!n);
+      const nodes = [...selectedIds].map((id) => shapeRefs.current.get(id)).filter((n): n is Konva.Group => !!n);
       if (nodes.length > 0) {
         tr.nodes(nodes);
         tr.getLayer()?.batchDraw();
@@ -395,7 +492,7 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
   const handleShapeClick = useCallback((e: KonvaEventObject<MouseEvent>, id: string) => {
     e.cancelBubble = true;
     if (e.evt.shiftKey) {
-      setSelectedIds(prev => {
+      setSelectedIds((prev) => {
         const next = new Set(prev);
         if (next.has(id)) next.delete(id);
         else next.add(id);
@@ -421,102 +518,114 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
     }
   }, []);
 
-  const handleShapeDragMove = useCallback((e: KonvaEventObject<DragEvent>, id: string) => {
-    const positions = dragStartPositionsRef.current;
+  const handleShapeDragMove = useCallback(
+    (e: KonvaEventObject<DragEvent>, id: string) => {
+      const positions = dragStartPositionsRef.current;
 
-    // Multi-select: move companion nodes visually
-    if (positions.size > 0) {
-      const startPos = positions.get(id);
-      if (startPos) {
-        const dx = e.target.x() - startPos.x;
-        const dy = e.target.y() - startPos.y;
-        for (const [sid, spos] of positions) {
+      // Multi-select: move companion nodes visually
+      if (positions.size > 0) {
+        const startPos = positions.get(id);
+        if (startPos) {
+          const dx = e.target.x() - startPos.x;
+          const dy = e.target.y() - startPos.y;
+          for (const [sid, spos] of positions) {
+            if (sid === id) continue;
+            const node = shapeRefs.current.get(sid);
+            if (node) {
+              node.x(spos.x + dx);
+              node.y(spos.y + dy);
+            }
+          }
+        }
+      }
+
+      // Throttled WS send for real-time multiplayer + replay recording
+      const now = Date.now();
+      if (now - lastDragSendRef.current < 100) return;
+      lastDragSendRef.current = now;
+
+      // Send primary dragged object position
+      send({ type: "obj:update", obj: { id, x: e.target.x(), y: e.target.y(), updatedAt: now } });
+
+      // Send companion objects in multi-select
+      if (positions.size > 0) {
+        for (const [sid] of positions) {
           if (sid === id) continue;
           const node = shapeRefs.current.get(sid);
           if (node) {
-            node.x(spos.x + dx);
-            node.y(spos.y + dy);
+            send({ type: "obj:update", obj: { id: sid, x: node.x(), y: node.y(), updatedAt: now } });
           }
         }
       }
-    }
+    },
+    [send],
+  );
 
-    // Throttled WS send for real-time multiplayer + replay recording
-    const now = Date.now();
-    if (now - lastDragSendRef.current < 100) return;
-    lastDragSendRef.current = now;
-
-    // Send primary dragged object position
-    send({ type: "obj:update", obj: { id, x: e.target.x(), y: e.target.y(), updatedAt: now } });
-
-    // Send companion objects in multi-select
-    if (positions.size > 0) {
-      for (const [sid] of positions) {
-        if (sid === id) continue;
-        const node = shapeRefs.current.get(sid);
-        if (node) {
-          send({ type: "obj:update", obj: { id: sid, x: node.x(), y: node.y(), updatedAt: now } });
-        }
-      }
-    }
-  }, [send]);
-
-  const handleShapeDragEnd = useCallback((e: KonvaEventObject<DragEvent>, id: string) => {
-    const positions = dragStartPositionsRef.current;
-    if (positions.size > 0) {
-      startBatch();
-      try {
-        for (const sid of positions.keys()) {
-          const node = shapeRefs.current.get(sid);
-          if (node) {
-            updateObject({ id: sid, x: node.x(), y: node.y() });
+  const handleShapeDragEnd = useCallback(
+    (e: KonvaEventObject<DragEvent>, id: string) => {
+      const positions = dragStartPositionsRef.current;
+      if (positions.size > 0) {
+        startBatch();
+        try {
+          for (const sid of positions.keys()) {
+            const node = shapeRefs.current.get(sid);
+            if (node) {
+              updateObject({ id: sid, x: node.x(), y: node.y() });
+            }
           }
+          dragStartPositionsRef.current = new Map();
+        } finally {
+          commitBatch();
         }
-        dragStartPositionsRef.current = new Map();
-      } finally {
-        commitBatch();
+      } else {
+        updateObject({ id, x: e.target.x(), y: e.target.y() });
       }
-    } else {
-      updateObject({ id, x: e.target.x(), y: e.target.y() });
-    }
-  }, [updateObject, startBatch, commitBatch]);
+    },
+    [updateObject, startBatch, commitBatch],
+  );
 
   // Track mouse for cursor sync + marquee (reads stagePos/scale from refs for stability)
-  const handleMouseMove = useCallback((_e: KonvaEventObject<MouseEvent>) => {
-    const stage = stageRef.current;
-    if (!stage) return;
-    const pointer = stage.getPointerPosition();
-    if (!pointer) return;
+  const handleMouseMove = useCallback(
+    (_e: KonvaEventObject<MouseEvent>) => {
+      const stage = stageRef.current;
+      if (!stage) return;
+      const pointer = stage.getPointerPosition();
+      if (!pointer) return;
 
-    const worldX = (pointer.x - stagePosRef.current.x) / scaleRef.current;
-    const worldY = (pointer.y - stagePosRef.current.y) / scaleRef.current;
+      const worldX = (pointer.x - stagePosRef.current.x) / scaleRef.current;
+      const worldY = (pointer.y - stagePosRef.current.y) / scaleRef.current;
 
-    // Update marquee if dragging
-    updateMarquee(worldX, worldY);
+      // Update marquee if dragging
+      updateMarquee(worldX, worldY);
 
-    // Cursor sync (throttled via useThrottledCallback)
-    sendCursorThrottled(worldX, worldY);
-  }, [sendCursorThrottled, updateMarquee]);
+      // Cursor sync (throttled via useThrottledCallback)
+      sendCursorThrottled(worldX, worldY);
+    },
+    [sendCursorThrottled, updateMarquee],
+  );
 
   // Stage mousedown: marquee (select mode) or frame draft (frame mode)
-  const handleStageMouseDown = useCallback((e: KonvaEventObject<MouseEvent>) => {
-    // Dismiss "Undo AI" button on any canvas interaction
-    setUndoAiBatchId(null);
-    if (e.target !== stageRef.current) return;
+  const handleStageMouseDown = useCallback(
+    (e: KonvaEventObject<MouseEvent>) => {
+      // Dismiss "Undo AI" button on any canvas interaction
+      setUndoAiBatchId(null);
+      if (e.target !== stageRef.current) return;
 
-    const stage = stageRef.current;
-    if (!stage) return;
-    const pointer = stage.getPointerPosition();
-    if (!pointer) return;
-    const worldX = (pointer.x - stagePosRef.current.x) / scaleRef.current;
-    const worldY = (pointer.y - stagePosRef.current.y) / scaleRef.current;
+      const stage = stageRef.current;
+      if (!stage) return;
+      const pointer = stage.getPointerPosition();
+      if (!pointer) return;
+      const worldX = (pointer.x - stagePosRef.current.x) / scaleRef.current;
+      const worldY = (pointer.y - stagePosRef.current.y) / scaleRef.current;
 
-    if (toolMode === "select") {
-      startMarquee(worldX, worldY);
-    } else if (toolMode === "frame") {
-      setFrameDraft({ startX: worldX, startY: worldY, x: worldX, y: worldY, width: 0, height: 0 });
-    }
-  }, [toolMode, startMarquee]);
+      if (toolMode === "select") {
+        startMarquee(worldX, worldY);
+      } else if (toolMode === "frame") {
+        setFrameDraft({ startX: worldX, startY: worldY, x: worldX, y: worldY, width: 0, height: 0 });
+      }
+    },
+    [toolMode, startMarquee],
+  );
 
   // Stage mouseup: finish marquee or frame draft
   const handleStageMouseUp = useCallback(() => {
@@ -574,28 +683,31 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
   }, []);
 
   // Handle object transform (resize + rotate) - shared by all object types
-  const handleObjectTransform = useCallback((e: KonvaEventObject<Event>, obj: { id: string; type: string; width: number; height: number }) => {
-    const node = e.target;
-    const sx = node.scaleX();
-    const sy = node.scaleY();
-    node.scaleX(1);
-    node.scaleY(1);
-    // Lines store endpoint delta in width/height - don't clamp to min 20
-    const isLine = obj.type === "line";
-    updateObject({
-      id: obj.id,
-      x: node.x(),
-      y: node.y(),
-      width: isLine ? Math.round(obj.width * sx) : Math.max(20, Math.round(obj.width * sx)),
-      height: isLine ? Math.round(obj.height * sy) : Math.max(20, Math.round(obj.height * sy)),
-      rotation: node.rotation(),
-    });
-    // Re-sync Transformer bounding box after scale reset
-    requestAnimationFrame(() => {
-      trRef.current?.forceUpdate();
-      trRef.current?.getLayer()?.batchDraw();
-    });
-  }, [updateObject]);
+  const handleObjectTransform = useCallback(
+    (e: KonvaEventObject<Event>, obj: { id: string; type: string; width: number; height: number }) => {
+      const node = e.target;
+      const sx = node.scaleX();
+      const sy = node.scaleY();
+      node.scaleX(1);
+      node.scaleY(1);
+      // Lines store endpoint delta in width/height - don't clamp to min 20
+      const isLine = obj.type === "line";
+      updateObject({
+        id: obj.id,
+        x: node.x(),
+        y: node.y(),
+        width: isLine ? Math.round(obj.width * sx) : Math.max(20, Math.round(obj.width * sx)),
+        height: isLine ? Math.round(obj.height * sy) : Math.max(20, Math.round(obj.height * sy)),
+        rotation: node.rotation(),
+      });
+      // Re-sync Transformer bounding box after scale reset
+      requestAnimationFrame(() => {
+        trRef.current?.forceUpdate();
+        trRef.current?.getLayer()?.batchDraw();
+      });
+    },
+    [updateObject],
+  );
 
   // Ref callback to track shape nodes for Transformer + fade-in animation
   const setShapeRef = useCallback((id: string) => {
@@ -632,142 +744,151 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
   }, []);
 
   // Combined stage mouse move: cursor sync + marquee tracking + frame draft
-  const handleStageMouseMove = useCallback((e: KonvaEventObject<MouseEvent>) => {
-    handleMouseMove(e); // cursor sync (throttled) + marquee tracking
-    if (!frameDraftRef.current) return;
-    const stage = stageRef.current;
-    if (!stage) return;
-    const pointer = stage.getPointerPosition();
-    if (!pointer) return;
-    const worldX = (pointer.x - stagePosRef.current.x) / scaleRef.current;
-    const worldY = (pointer.y - stagePosRef.current.y) / scaleRef.current;
-    setFrameDraft(prev => {
-      if (!prev) return null;
-      return {
-        ...prev,
-        x: Math.min(prev.startX, worldX),
-        y: Math.min(prev.startY, worldY),
-        width: Math.abs(worldX - prev.startX),
-        height: Math.abs(worldY - prev.startY),
-      };
-    });
-  }, [handleMouseMove]);
+  const handleStageMouseMove = useCallback(
+    (e: KonvaEventObject<MouseEvent>) => {
+      handleMouseMove(e); // cursor sync (throttled) + marquee tracking
+      if (!frameDraftRef.current) return;
+      const stage = stageRef.current;
+      if (!stage) return;
+      const pointer = stage.getPointerPosition();
+      if (!pointer) return;
+      const worldX = (pointer.x - stagePosRef.current.x) / scaleRef.current;
+      const worldY = (pointer.y - stagePosRef.current.y) / scaleRef.current;
+      setFrameDraft((prev) => {
+        if (!prev) return null;
+        return {
+          ...prev,
+          x: Math.min(prev.startX, worldX),
+          y: Math.min(prev.startY, worldY),
+          width: Math.abs(worldX - prev.startX),
+          height: Math.abs(worldY - prev.startY),
+        };
+      });
+    },
+    [handleMouseMove],
+  );
 
-  const commitPendingFrame = useCallback((title: string) => {
-    if (!pendingFrame) return;
-    createObject({
-      id: crypto.randomUUID(),
-      type: "frame",
-      x: pendingFrame.x,
-      y: pendingFrame.y,
-      width: pendingFrame.width,
-      height: pendingFrame.height,
-      rotation: 0,
-      props: { text: title || "Frame" },
-      createdBy: user.id,
-      updatedAt: Date.now(),
-    });
-    setPendingFrame(null);
-    setToolMode("select");
-  }, [pendingFrame, createObject, user.id]);
+  const commitPendingFrame = useCallback(
+    (title: string) => {
+      if (!pendingFrame) return;
+      createObject({
+        id: crypto.randomUUID(),
+        type: "frame",
+        x: pendingFrame.x,
+        y: pendingFrame.y,
+        width: pendingFrame.width,
+        height: pendingFrame.height,
+        rotation: 0,
+        props: { text: title || "Frame" },
+        createdBy: user.id,
+        updatedAt: Date.now(),
+      });
+      setPendingFrame(null);
+      setToolMode("select");
+    },
+    [pendingFrame, createObject, user.id],
+  );
 
   // Double-click on empty canvas -> create object based on active tool
-  const handleStageDblClick = useCallback((e: KonvaEventObject<MouseEvent>) => {
-    if (e.target !== stageRef.current) return;
-    if (toolMode === "select" || toolMode === "frame") return;
+  const handleStageDblClick = useCallback(
+    (e: KonvaEventObject<MouseEvent>) => {
+      if (e.target !== stageRef.current) return;
+      if (toolMode === "select" || toolMode === "frame") return;
 
-    const stage = stageRef.current;
-    if (!stage) return;
-    const pointer = stage.getPointerPosition();
-    if (!pointer) return;
+      const stage = stageRef.current;
+      if (!stage) return;
+      const pointer = stage.getPointerPosition();
+      if (!pointer) return;
 
-    const worldX = (pointer.x - stagePosRef.current.x) / scaleRef.current;
-    const worldY = (pointer.y - stagePosRef.current.y) / scaleRef.current;
+      const worldX = (pointer.x - stagePosRef.current.x) / scaleRef.current;
+      const worldY = (pointer.y - stagePosRef.current.y) / scaleRef.current;
 
-    setSelectedIds(new Set());
+      setSelectedIds(new Set());
 
-    if (toolMode === "sticky") {
-      createObject({
-        id: crypto.randomUUID(),
-        type: "sticky",
-        x: worldX - 100,
-        y: worldY - 100,
-        width: 200,
-        height: 200,
-        rotation: 0,
-        props: { text: "", color: "#fbbf24" },
-        createdBy: user.id,
-        updatedAt: Date.now(),
-      });
-    } else if (toolMode === "rect") {
-      createObject({
-        id: crypto.randomUUID(),
-        type: "rect",
-        x: worldX - 75,
-        y: worldY - 50,
-        width: 150,
-        height: 100,
-        rotation: 0,
-        props: { fill: "#3b82f6", stroke: "#2563eb" },
-        createdBy: user.id,
-        updatedAt: Date.now(),
-      });
-    } else if (toolMode === "circle") {
-      createObject({
-        id: crypto.randomUUID(),
-        type: "circle",
-        x: worldX - 50,
-        y: worldY - 50,
-        width: 100,
-        height: 100,
-        rotation: 0,
-        props: { fill: "#8b5cf6", stroke: "#7c3aed" },
-        createdBy: user.id,
-        updatedAt: Date.now(),
-      });
-    } else if (toolMode === "line") {
-      createObject({
-        id: crypto.randomUUID(),
-        type: "line",
-        x: worldX - 100,
-        y: worldY,
-        width: 200,
-        height: 0,
-        rotation: 0,
-        props: { stroke: "#f43f5e" },
-        createdBy: user.id,
-        updatedAt: Date.now(),
-      });
-    } else if (toolMode === "arrow") {
-      createObject({
-        id: crypto.randomUUID(),
-        type: "line",
-        x: worldX - 90,
-        y: worldY + 40,
-        width: 180,
-        height: -80,
-        rotation: 0,
-        props: { stroke: "#f43f5e", arrow: "end" },
-        createdBy: user.id,
-        updatedAt: Date.now(),
-      });
-    } else if (toolMode === "text") {
-      const id = crypto.randomUUID();
-      createObject({
-        id,
-        type: "text",
-        x: worldX,
-        y: worldY,
-        width: 200,
-        height: 40,
-        rotation: 0,
-        props: { text: "", color: "#ffffff" },
-        createdBy: user.id,
-        updatedAt: Date.now(),
-      });
-      setEditingId(id);
-    }
-  }, [createObject, user.id, toolMode]);
+      if (toolMode === "sticky") {
+        createObject({
+          id: crypto.randomUUID(),
+          type: "sticky",
+          x: worldX - 100,
+          y: worldY - 100,
+          width: 200,
+          height: 200,
+          rotation: 0,
+          props: { text: "", color: "#fbbf24" },
+          createdBy: user.id,
+          updatedAt: Date.now(),
+        });
+      } else if (toolMode === "rect") {
+        createObject({
+          id: crypto.randomUUID(),
+          type: "rect",
+          x: worldX - 75,
+          y: worldY - 50,
+          width: 150,
+          height: 100,
+          rotation: 0,
+          props: { fill: "#3b82f6", stroke: "#2563eb" },
+          createdBy: user.id,
+          updatedAt: Date.now(),
+        });
+      } else if (toolMode === "circle") {
+        createObject({
+          id: crypto.randomUUID(),
+          type: "circle",
+          x: worldX - 50,
+          y: worldY - 50,
+          width: 100,
+          height: 100,
+          rotation: 0,
+          props: { fill: "#8b5cf6", stroke: "#7c3aed" },
+          createdBy: user.id,
+          updatedAt: Date.now(),
+        });
+      } else if (toolMode === "line") {
+        createObject({
+          id: crypto.randomUUID(),
+          type: "line",
+          x: worldX - 100,
+          y: worldY,
+          width: 200,
+          height: 0,
+          rotation: 0,
+          props: { stroke: "#f43f5e" },
+          createdBy: user.id,
+          updatedAt: Date.now(),
+        });
+      } else if (toolMode === "arrow") {
+        createObject({
+          id: crypto.randomUUID(),
+          type: "line",
+          x: worldX - 90,
+          y: worldY + 40,
+          width: 180,
+          height: -80,
+          rotation: 0,
+          props: { stroke: "#f43f5e", arrow: "end" },
+          createdBy: user.id,
+          updatedAt: Date.now(),
+        });
+      } else if (toolMode === "text") {
+        const id = crypto.randomUUID();
+        createObject({
+          id,
+          type: "text",
+          x: worldX,
+          y: worldY,
+          width: 200,
+          height: 40,
+          rotation: 0,
+          props: { text: "", color: "#ffffff" },
+          createdBy: user.id,
+          updatedAt: Date.now(),
+        });
+        setEditingId(id);
+      }
+    },
+    [createObject, user.id, toolMode],
+  );
 
   const handleLogout = async () => {
     await fetch("/auth/logout", { method: "POST" });
@@ -780,14 +901,30 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
   if (isMobile && !canvasExpanded) {
     const previewHeight = Math.round(size.height * 0.3);
     return (
-      <div style={{ width: "100vw", height: "100vh", display: "flex", flexDirection: "column", background: colors.bg, overflow: "hidden" }}>
+      <div
+        style={{
+          width: "100vw",
+          height: "100vh",
+          display: "flex",
+          flexDirection: "column",
+          background: colors.bg,
+          overflow: "hidden",
+        }}
+      >
         {/* Condensed header: board name + connection dot + spectator count only */}
-        <div style={{
-          height: 48, flexShrink: 0, zIndex: 10,
-          background: colors.overlayHeader, borderBottom: `1px solid ${colors.border}`,
-          display: "flex", alignItems: "center", justifyContent: "space-between",
-          padding: "0 1rem",
-        }}>
+        <div
+          style={{
+            height: 48,
+            flexShrink: 0,
+            zIndex: 10,
+            background: colors.overlayHeader,
+            borderBottom: `1px solid ${colors.border}`,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            padding: "0 1rem",
+          }}
+        >
           <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
             <Button variant="link" onClick={onBack} style={{ color: colors.textMuted, fontSize: "0.875rem" }}>
               &larr; Boards
@@ -797,8 +934,16 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
               data-testid="connection-state"
               data-state={connectionState}
               style={{
-                width: 8, height: 8, borderRadius: "50%", display: "inline-block",
-                background: { connected: colors.success, reconnecting: colors.warning, connecting: colors.info, disconnected: colors.error }[connectionState],
+                width: 8,
+                height: 8,
+                borderRadius: "50%",
+                display: "inline-block",
+                background: {
+                  connected: colors.success,
+                  reconnecting: colors.warning,
+                  connecting: colors.info,
+                  disconnected: colors.error,
+                }[connectionState],
               }}
               title={connectionState}
             />
@@ -811,19 +956,29 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
         {/* Canvas preview strip (~30% height) - tap to expand full-screen */}
         <div
           style={{
-            height: previewHeight, flexShrink: 0, cursor: "pointer",
-            position: "relative", overflow: "hidden",
+            height: previewHeight,
+            flexShrink: 0,
+            cursor: "pointer",
+            position: "relative",
+            overflow: "hidden",
             borderBottom: `1px solid ${colors.border}`,
           }}
           onClick={() => setCanvasExpanded(true)}
         >
           <CanvasPreview objects={objects} width={size.width} height={previewHeight} />
-          <div style={{
-            position: "absolute", bottom: 6, right: 8,
-            background: "rgba(0,0,0,0.55)", borderRadius: 4,
-            padding: "2px 8px", fontSize: "0.6875rem", color: colors.textMuted,
-            pointerEvents: "none",
-          }}>
+          <div
+            style={{
+              position: "absolute",
+              bottom: 6,
+              right: 8,
+              background: "rgba(0,0,0,0.55)",
+              borderRadius: 4,
+              padding: "2px 8px",
+              fontSize: "0.6875rem",
+              color: colors.textMuted,
+              pointerEvents: "none",
+            }}
+          >
             Tap to expand
           </div>
         </div>
@@ -851,38 +1006,78 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
 
   return (
     // cb-canvas-overlay applies slide-in animation when mobile expanded canvas is shown
-    <div className={isMobile && canvasExpanded ? "cb-canvas-overlay" : undefined} style={{ width: "100vw", height: "100vh", overflow: "hidden", background: colors.bg, cursor: toolCursors[toolMode] || "default" }}>
+    <div
+      className={isMobile && canvasExpanded ? "cb-canvas-overlay" : undefined}
+      style={{
+        width: "100vw",
+        height: "100vh",
+        overflow: "hidden",
+        background: colors.bg,
+        cursor: toolCursors[toolMode] || "default",
+      }}
+    >
       {/* Header */}
-      <div style={{
-        position: "absolute", top: 0, left: 0, right: 0, height: 48, zIndex: 10,
-        background: "rgba(22, 33, 62, 0.9)", borderBottom: "1px solid #334155",
-        display: "flex", alignItems: "center", justifyContent: "space-between",
-        padding: "0 1rem", color: "#eee", fontSize: "0.875rem",
-      }}>
+      <div
+        style={{
+          position: "absolute",
+          top: 0,
+          left: 0,
+          right: 0,
+          height: 48,
+          zIndex: 10,
+          background: "rgba(22, 33, 62, 0.9)",
+          borderBottom: "1px solid #334155",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          padding: "0 1rem",
+          color: "#eee",
+          fontSize: "0.875rem",
+        }}
+      >
         <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
           {isMobile && canvasExpanded ? (
-            <Button variant="link" onClick={() => {
-              setCanvasExpanded(false);
-              // Clear canvas interaction state so it doesn't leak back into chat.
-              // selectedIds especially matters: AI uses it to scope operations, and the
-              // user has no way to see or clear the selection from the chat view.
-              setSelectedIds(new Set());
-              setEditingId(null);
-              setFrameDraft(null);
-              setPendingFrame(null);
-              // Prevent chatInitialPrompt from re-firing on ChatPanel remount
-              setChatInitialPrompt(undefined);
-            }} style={{ color: colors.textMuted, fontSize: "0.875rem" }}>
+            <Button
+              variant="link"
+              onClick={() => {
+                setCanvasExpanded(false);
+                // Clear canvas interaction state so it doesn't leak back into chat.
+                // selectedIds especially matters: AI uses it to scope operations, and the
+                // user has no way to see or clear the selection from the chat view.
+                setSelectedIds(new Set());
+                setEditingId(null);
+                setFrameDraft(null);
+                setPendingFrame(null);
+                // Prevent chatInitialPrompt from re-firing on ChatPanel remount
+                setChatInitialPrompt(undefined);
+              }}
+              style={{ color: colors.textMuted, fontSize: "0.875rem" }}
+            >
               &larr; Chat
             </Button>
           ) : (
-            <Button variant="link" onClick={onBack} style={{ color: "#94a3b8", fontSize: "0.875rem" }}>&larr; Boards</Button>
+            <Button variant="link" onClick={onBack} style={{ color: "#94a3b8", fontSize: "0.875rem" }}>
+              &larr; Boards
+            </Button>
           )}
           <span style={{ fontWeight: 600 }}>CollabBoard</span>
-          <span data-testid="connection-state" data-state={connectionState} style={{
-            width: 8, height: 8, borderRadius: "50%", display: "inline-block",
-            background: { connected: colors.success, reconnecting: colors.warning, connecting: colors.info, disconnected: colors.error }[connectionState],
-          }} title={connectionState} />
+          <span
+            data-testid="connection-state"
+            data-state={connectionState}
+            style={{
+              width: 8,
+              height: 8,
+              borderRadius: "50%",
+              display: "inline-block",
+              background: {
+                connected: colors.success,
+                reconnecting: colors.warning,
+                connecting: colors.info,
+                disconnected: colors.error,
+              }[connectionState],
+            }}
+            title={connectionState}
+          />
         </div>
         {/* On mobile expanded canvas, hide desktop-only chrome (presence, zoom, invite, logout) */}
         {isMobile && canvasExpanded ? (
@@ -896,12 +1091,22 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
               {presence.map((p) => {
                 const isAi = p.id === AI_USER_ID;
                 return (
-                  <span key={p.id} style={{
-                    background: isAi ? colors.aiCursor : colors.accent,
-                    borderRadius: "50%", width: 24, height: 24,
-                    display: "flex", alignItems: "center", justifyContent: "center",
-                    fontSize: "0.625rem", fontWeight: 600, color: "#fff",
-                  }} title={p.username}>
+                  <span
+                    key={p.id}
+                    style={{
+                      background: isAi ? colors.aiCursor : colors.accent,
+                      borderRadius: "50%",
+                      width: 24,
+                      height: 24,
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      fontSize: "0.625rem",
+                      fontWeight: 600,
+                      color: "#fff",
+                    }}
+                    title={p.username}
+                  >
                     {isAi ? "AI" : p.username[0].toUpperCase()}
                   </span>
                 );
@@ -929,14 +1134,18 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
               }}
             >
               {AI_MODELS.map((m) => (
-                <option key={m.id} value={m.id}>{m.label}</option>
+                <option key={m.id} value={m.id}>
+                  {m.label}
+                </option>
               ))}
             </select>
-            <Button onClick={() => {
-              navigator.clipboard.writeText(`${location.origin}/#watch/${boardId}`);
-              setCopied(true);
-              setTimeout(() => setCopied(false), 2000);
-            }}>
+            <Button
+              onClick={() => {
+                navigator.clipboard.writeText(`${location.origin}/#watch/${boardId}`);
+                setCopied(true);
+                setTimeout(() => setCopied(false), 2000);
+              }}
+            >
               {copied ? "Copied!" : "Invite Spectators"}
             </Button>
             <Button onClick={handleLogout}>Logout</Button>
@@ -948,23 +1157,34 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
       <ConnectionToast connectionState={connectionState} />
       {/* Loading skeleton while WebSocket connects */}
       {!initialized && connectionState !== "disconnected" && (
-        <div style={{
-          position: "absolute", inset: 0, top: 48, display: "flex",
-          alignItems: "center", justifyContent: "center", zIndex: 5, pointerEvents: "none",
-        }}>
+        <div
+          style={{
+            position: "absolute",
+            inset: 0,
+            top: 48,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 5,
+            pointerEvents: "none",
+          }}
+        >
           <div style={{ textAlign: "center" }}>
             <div style={{ display: "flex", gap: 16, marginBottom: 16 }}>
               {[0, 1, 2].map((i) => (
-                <div key={i} style={{
-                  width: 80, height: 80, borderRadius: 8,
-                  background: "rgba(255,255,255,0.06)",
-                  animation: `cb-pulse 1.5s ease-in-out ${i * 0.2}s infinite`,
-                }} />
+                <div
+                  key={i}
+                  style={{
+                    width: 80,
+                    height: 80,
+                    borderRadius: 8,
+                    background: "rgba(255,255,255,0.06)",
+                    animation: `cb-pulse 1.5s ease-in-out ${i * 0.2}s infinite`,
+                  }}
+                />
               ))}
             </div>
-            <div style={{ color: "rgba(255,255,255,0.3)", fontSize: "0.875rem" }}>
-              Loading board...
-            </div>
+            <div style={{ color: "rgba(255,255,255,0.3)", fontSize: "0.875rem" }}>Loading board...</div>
           </div>
         </div>
       )}
@@ -1021,21 +1241,23 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
           <BoardGrid stagePos={stagePos} scale={scale} size={size} />
 
           {/* Pass 1: frames (behind everything) */}
-          {[...objects.values()].filter(o => o.type === "frame").map((obj) => (
-            <InteractiveBoardObject
-              key={obj.id}
-              obj={obj}
-              hasAiGlow={aiGlowIds.has(obj.id)}
-              setShapeRef={setShapeRef}
-              onShapeClick={handleShapeClick}
-              onContextMenu={handleShapeContextMenu}
-              onDragStart={handleShapeDragStart}
-              onDragMove={handleShapeDragMove}
-              onDragEnd={handleShapeDragEnd}
-              onTransformEnd={handleObjectTransform}
-              onDblClickEdit={handleShapeDblClick}
-            />
-          ))}
+          {[...objects.values()]
+            .filter((o) => o.type === "frame")
+            .map((obj) => (
+              <InteractiveBoardObject
+                key={obj.id}
+                obj={obj}
+                hasAiGlow={aiGlowIds.has(obj.id)}
+                setShapeRef={setShapeRef}
+                onShapeClick={handleShapeClick}
+                onContextMenu={handleShapeContextMenu}
+                onDragStart={handleShapeDragStart}
+                onDragMove={handleShapeDragMove}
+                onDragEnd={handleShapeDragEnd}
+                onTransformEnd={handleObjectTransform}
+                onDblClickEdit={handleShapeDblClick}
+              />
+            ))}
           {/* Frame drag preview */}
           {frameDraft && frameDraft.width > 0 && frameDraft.height > 0 && (
             <Rect
@@ -1052,24 +1274,26 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
             />
           )}
           {/* Pass 2: non-frame objects */}
-          {[...objects.values()].filter(o => o.type !== "frame").map((obj) => (
-            <InteractiveBoardObject
-              key={obj.id}
-              obj={obj}
-              hasAiGlow={aiGlowIds.has(obj.id)}
-              setShapeRef={setShapeRef}
-              onShapeClick={handleShapeClick}
-              onContextMenu={handleShapeContextMenu}
-              onDragStart={handleShapeDragStart}
-              onDragMove={handleShapeDragMove}
-              onDragEnd={handleShapeDragEnd}
-              onTransformEnd={handleObjectTransform}
-              onDblClickEdit={handleShapeDblClick}
-            />
-          ))}
+          {[...objects.values()]
+            .filter((o) => o.type !== "frame")
+            .map((obj) => (
+              <InteractiveBoardObject
+                key={obj.id}
+                obj={obj}
+                hasAiGlow={aiGlowIds.has(obj.id)}
+                setShapeRef={setShapeRef}
+                onShapeClick={handleShapeClick}
+                onContextMenu={handleShapeContextMenu}
+                onDragStart={handleShapeDragStart}
+                onDragMove={handleShapeDragMove}
+                onDragEnd={handleShapeDragEnd}
+                onTransformEnd={handleObjectTransform}
+                onDblClickEdit={handleShapeDblClick}
+              />
+            ))}
 
           {/* Remote editing indicators - colored border + username on objects being edited by others */}
-          {[...textCursors.values()].map(tc => {
+          {[...textCursors.values()].map((tc) => {
             if (tc.objectId === editingId) return null; // local user editing same object - caret shown in textarea overlay
             const obj = objects.get(tc.objectId);
             if (!obj) return null;
@@ -1077,16 +1301,20 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
             return (
               <React.Fragment key={tc.userId}>
                 <Rect
-                  x={obj.x} y={obj.y}
-                  width={obj.width} height={obj.height}
-                  stroke={color} strokeWidth={2 / scale}
+                  x={obj.x}
+                  y={obj.y}
+                  width={obj.width}
+                  height={obj.height}
+                  stroke={color}
+                  strokeWidth={2 / scale}
                   fill="transparent"
                   dash={[6 / scale, 3 / scale]}
                   listening={false}
                   rotation={obj.rotation || 0}
                 />
                 <Text
-                  x={obj.x} y={obj.y - 18 / scale}
+                  x={obj.x}
+                  y={obj.y - 18 / scale}
                   text={tc.username}
                   fontSize={11 / scale}
                   fill="#fff"
@@ -1100,11 +1328,15 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
           {/* Marquee selection visualization */}
           {marquee && (
             <Rect
-              x={marquee.x} y={marquee.y}
-              width={marquee.w} height={marquee.h}
+              x={marquee.x}
+              y={marquee.y}
+              width={marquee.w}
+              height={marquee.h}
               fill={colors.accentSubtle}
-              stroke={colors.accent} strokeWidth={1}
-              dash={[6, 3]} listening={false}
+              stroke={colors.accent}
+              strokeWidth={1}
+              dash={[6, 3]}
+              listening={false}
             />
           )}
 
@@ -1114,7 +1346,9 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
             {...TRANSFORMER_CONFIG}
             boundBoxFunc={(_oldBox, newBox) => {
               // Lines can have near-zero dimensions in one axis - only clamp shapes
-              const hasLineSelected = [...selectedIdsRef.current].some(id => objectsRef.current.get(id)?.type === "line");
+              const hasLineSelected = [...selectedIdsRef.current].some(
+                (id) => objectsRef.current.get(id)?.type === "line",
+              );
               if (!hasLineSelected && (Math.abs(newBox.width) < 20 || Math.abs(newBox.height) < 20)) return _oldBox;
               return newBox;
             }}
@@ -1131,137 +1365,153 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
       </Stage>
 
       {/* Inline text editing overlay */}
-      {editingId && (() => {
-        const obj = objects.get(editingId);
-        if (!obj) return null;
-        if (obj.type === "frame") {
-          return (
-            <input
-              autoFocus
-              defaultValue={obj.props.text || ""}
-              style={{
-                position: "absolute",
-                left: obj.x * scale + stagePos.x,
-                top: obj.y * scale + stagePos.y - 32,
-                width: Math.min(200, obj.width * scale),
-                height: 28,
-                background: "rgba(22, 33, 62, 0.95)",
-                border: "2px solid #6366f1",
-                borderRadius: 4,
-                padding: "0 8px",
-                fontSize: 13,
-                color: "#e0e7ff",
-                outline: "none",
-                zIndex: 20,
-                boxSizing: "border-box" as const,
-                transform: `rotate(${obj.rotation || 0}deg)`,
-                transformOrigin: "0 0",
-              }}
-              onChange={(e) => {
-                updateObject({ id: editingId, props: { ...obj.props, text: e.target.value } });
-                send({ type: "text:cursor", objectId: editingId, position: e.target.selectionStart ?? 0 });
-              }}
-              onBlur={(e) => {
-                updateObject({ id: editingId, props: { ...obj.props, text: e.target.value } });
-                send({ type: "text:blur", objectId: editingId });
-                setEditingId(null);
-              }}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" || e.key === "Escape") {
-                  updateObject({ id: editingId, props: { ...obj.props, text: (e.target as HTMLInputElement).value } });
-                  send({ type: "text:blur", objectId: editingId });
-                  setEditingId(null);
-                }
-              }}
-            />
-          );
-        }
-        const isText = obj.type === "text";
-        // Only sticky/text reach this branch; cast to flat props for field access
-        const p = obj.props as BoardObjectProps;
-        const remoteCarets = [...textCursors.values()].filter(tc => tc.objectId === editingId);
-        return (
-          <>
-            <textarea
-              ref={textareaRef}
-              autoFocus
-              defaultValue={p.text || ""}
-              style={{
-                position: "absolute",
-                left: obj.x * scale + stagePos.x,
-                top: obj.y * scale + stagePos.y,
-                width: obj.width * scale,
-                height: obj.height * scale,
-                background: isText ? "transparent" : (p.color || "#fbbf24"),
-                border: isText ? "2px solid #60a5fa" : "2px solid #f59e0b",
-                borderRadius: isText ? 4 * scale : 8 * scale,
-                padding: isText ? 4 * scale : 10 * scale,
-                fontSize: isText ? 16 * scale : 14 * scale,
-                color: isText ? (p.color || "#ffffff") : "#1a1a2e",
-                resize: "none",
-                outline: "none",
-                zIndex: 20,
-                boxSizing: "border-box" as const,
-                fontFamily: "inherit",
-                transform: `rotate(${obj.rotation || 0}deg)`,
-                transformOrigin: "0 0",
-              }}
-              onChange={(e) => {
-                updateObject({ id: editingId, props: { ...p, text: e.target.value } });
-                send({ type: "text:cursor", objectId: editingId, position: e.target.selectionStart ?? 0 });
-              }}
-              onSelect={(e) => {
-                send({ type: "text:cursor", objectId: editingId, position: (e.target as HTMLTextAreaElement).selectionStart ?? 0 });
-              }}
-              onBlur={(e) => {
-                updateObject({ id: editingId, props: { ...p, text: e.target.value } });
-                send({ type: "text:blur", objectId: editingId });
-                setEditingId(null);
-              }}
-              onKeyDown={(e) => {
-                if (e.key === "Escape") {
-                  updateObject({ id: editingId, props: { ...p, text: (e.target as HTMLTextAreaElement).value } });
-                  send({ type: "text:blur", objectId: editingId });
-                  setEditingId(null);
-                }
-              }}
-            />
-            {/* Remote user carets inside this textarea */}
-            {remoteCarets.map(tc => {
-              const ta = textareaRef.current;
-              if (!ta) return null;
-              const pos = getCaretPixelPos(ta, tc.position);
-              const color = getUserColor(tc.userId);
-              const lineH = parseInt(window.getComputedStyle(ta).lineHeight) || Math.round((isText ? 16 : 14) * scale * 1.4);
-              return (
-                <div key={tc.userId} style={{
+      {editingId &&
+        (() => {
+          const obj = objects.get(editingId);
+          if (!obj) return null;
+          if (obj.type === "frame") {
+            return (
+              <input
+                autoFocus
+                defaultValue={obj.props.text || ""}
+                style={{
                   position: "absolute",
-                  left: obj.x * scale + stagePos.x + pos.x,
-                  top: obj.y * scale + stagePos.y + pos.y,
-                  width: 2,
-                  height: lineH,
-                  background: color,
-                  pointerEvents: "none",
-                  zIndex: 21,
-                }}>
-                  <div style={{
-                    position: "absolute",
-                    bottom: "100%",
-                    left: 0,
-                    background: color,
-                    color: "#fff",
-                    fontSize: 10,
-                    padding: "1px 4px",
-                    borderRadius: 3,
-                    whiteSpace: "nowrap",
-                    fontFamily: "inherit",
-                  }}>{tc.username}</div>
-                </div>
-              );
-            })}
-          </>
-        );
-      })()}
+                  left: obj.x * scale + stagePos.x,
+                  top: obj.y * scale + stagePos.y - 32,
+                  width: Math.min(200, obj.width * scale),
+                  height: 28,
+                  background: "rgba(22, 33, 62, 0.95)",
+                  border: "2px solid #6366f1",
+                  borderRadius: 4,
+                  padding: "0 8px",
+                  fontSize: 13,
+                  color: "#e0e7ff",
+                  outline: "none",
+                  zIndex: 20,
+                  boxSizing: "border-box" as const,
+                  transform: `rotate(${obj.rotation || 0}deg)`,
+                  transformOrigin: "0 0",
+                }}
+                onChange={(e) => {
+                  updateObject({ id: editingId, props: { ...obj.props, text: e.target.value } });
+                  send({ type: "text:cursor", objectId: editingId, position: e.target.selectionStart ?? 0 });
+                }}
+                onBlur={(e) => {
+                  updateObject({ id: editingId, props: { ...obj.props, text: e.target.value } });
+                  send({ type: "text:blur", objectId: editingId });
+                  setEditingId(null);
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === "Escape") {
+                    updateObject({
+                      id: editingId,
+                      props: { ...obj.props, text: (e.target as HTMLInputElement).value },
+                    });
+                    send({ type: "text:blur", objectId: editingId });
+                    setEditingId(null);
+                  }
+                }}
+              />
+            );
+          }
+          const isText = obj.type === "text";
+          // Only sticky/text reach this branch; cast to flat props for field access
+          const p = obj.props as BoardObjectProps;
+          const remoteCarets = [...textCursors.values()].filter((tc) => tc.objectId === editingId);
+          return (
+            <>
+              <textarea
+                ref={textareaRef}
+                autoFocus
+                defaultValue={p.text || ""}
+                style={{
+                  position: "absolute",
+                  left: obj.x * scale + stagePos.x,
+                  top: obj.y * scale + stagePos.y,
+                  width: obj.width * scale,
+                  height: obj.height * scale,
+                  background: isText ? "transparent" : p.color || "#fbbf24",
+                  border: isText ? "2px solid #60a5fa" : "2px solid #f59e0b",
+                  borderRadius: isText ? 4 * scale : 8 * scale,
+                  padding: isText ? 4 * scale : 10 * scale,
+                  fontSize: isText ? 16 * scale : 14 * scale,
+                  color: isText ? p.color || "#ffffff" : "#1a1a2e",
+                  resize: "none",
+                  outline: "none",
+                  zIndex: 20,
+                  boxSizing: "border-box" as const,
+                  fontFamily: "inherit",
+                  transform: `rotate(${obj.rotation || 0}deg)`,
+                  transformOrigin: "0 0",
+                }}
+                onChange={(e) => {
+                  updateObject({ id: editingId, props: { ...p, text: e.target.value } });
+                  send({ type: "text:cursor", objectId: editingId, position: e.target.selectionStart ?? 0 });
+                }}
+                onSelect={(e) => {
+                  send({
+                    type: "text:cursor",
+                    objectId: editingId,
+                    position: (e.target as HTMLTextAreaElement).selectionStart ?? 0,
+                  });
+                }}
+                onBlur={(e) => {
+                  updateObject({ id: editingId, props: { ...p, text: e.target.value } });
+                  send({ type: "text:blur", objectId: editingId });
+                  setEditingId(null);
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === "Escape") {
+                    updateObject({ id: editingId, props: { ...p, text: (e.target as HTMLTextAreaElement).value } });
+                    send({ type: "text:blur", objectId: editingId });
+                    setEditingId(null);
+                  }
+                }}
+              />
+              {/* Remote user carets inside this textarea */}
+              {remoteCarets.map((tc) => {
+                const ta = textareaRef.current;
+                if (!ta) return null;
+                const pos = getCaretPixelPos(ta, tc.position);
+                const color = getUserColor(tc.userId);
+                const lineH =
+                  parseInt(window.getComputedStyle(ta).lineHeight) || Math.round((isText ? 16 : 14) * scale * 1.4);
+                return (
+                  <div
+                    key={tc.userId}
+                    style={{
+                      position: "absolute",
+                      left: obj.x * scale + stagePos.x + pos.x,
+                      top: obj.y * scale + stagePos.y + pos.y,
+                      width: 2,
+                      height: lineH,
+                      background: color,
+                      pointerEvents: "none",
+                      zIndex: 21,
+                    }}
+                  >
+                    <div
+                      style={{
+                        position: "absolute",
+                        bottom: "100%",
+                        left: 0,
+                        background: color,
+                        color: "#fff",
+                        fontSize: 10,
+                        padding: "1px 4px",
+                        borderRadius: 3,
+                        whiteSpace: "nowrap",
+                        fontFamily: "inherit",
+                      }}
+                    >
+                      {tc.username}
+                    </div>
+                  </div>
+                );
+              })}
+            </>
+          );
+        })()}
 
       {/* Pending frame title input */}
       {pendingFrame && (
@@ -1294,7 +1544,10 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
             }
           }}
           onBlur={(e) => {
-            if (pendingFrameCancelled.current) { pendingFrameCancelled.current = false; return; }
+            if (pendingFrameCancelled.current) {
+              pendingFrameCancelled.current = false;
+              return;
+            }
             commitPendingFrame(e.target.value);
           }}
         />
@@ -1303,15 +1556,22 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
       {/* Toolbar hidden on mobile - AI creates objects via chat */}
       {!isMobile && (
         <Toolbar
-          toolMode={toolMode} setToolMode={setToolMode}
-          selectedIds={selectedIds} objects={objects}
-          chatOpen={chatOpen} setChatOpen={setChatOpen}
-          showShortcuts={showShortcuts} setShowShortcuts={setShowShortcuts}
+          toolMode={toolMode}
+          setToolMode={setToolMode}
+          selectedIds={selectedIds}
+          objects={objects}
+          chatOpen={chatOpen}
+          setChatOpen={setChatOpen}
+          showShortcuts={showShortcuts}
+          setShowShortcuts={setShowShortcuts}
           deleteSelected={deleteSelected}
           onColorChange={handleColorChange}
           onZoomIn={() => setScale((s) => Math.min(MAX_ZOOM, s * 1.2))}
           onZoomOut={() => setScale((s) => Math.max(MIN_ZOOM, s / 1.2))}
-          onZoomReset={() => { setScale(1); setStagePos({ x: 0, y: 0 }); }}
+          onZoomReset={() => {
+            setScale(1);
+            setStagePos({ x: 0, y: 0 });
+          }}
         />
       )}
 
@@ -1372,50 +1632,76 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
       )}
 
       {/* Right-click context menu */}
-      {contextMenu && (() => {
-        const obj = objects.get(contextMenu.objId);
-        if (!obj) return null;
-        const cp = obj.props as BoardObjectProps;
-        const items: { label: string; prompt: string }[] = [
-          { label: "Ask AI about this", prompt: `What is this ${obj.type}${cp.text ? ` that says "${cp.text}"` : ""} about?` },
-          { label: "Recolor with AI", prompt: `Change the color of this ${obj.type} (id: ${obj.id}) to a random vibrant color.` },
-        ];
-        if (obj.type === "sticky" || obj.type === "text") {
-          items.push({ label: "Expand on this", prompt: `Create more sticky notes related to: "${obj.props.text || ""}"` });
-        }
-        return (
-          <div
-            onClick={() => setContextMenu(null)}
-            style={{ position: "absolute", inset: 0, zIndex: 40 }}
-          >
-            <div
-              onClick={(e) => e.stopPropagation()}
-              style={{
-                position: "absolute", left: contextMenu.x, top: contextMenu.y,
-                background: colors.surface, border: `1px solid ${colors.border}`,
-                borderRadius: 8, padding: 4, minWidth: 180, zIndex: 41,
-              }}
-            >
-              {items.map((item) => (
-                <button
-                  key={item.label}
-                  onClick={() => { setSelectedIds(new Set([contextMenu.objId])); openChatWithPrompt(item.prompt); }}
-                  style={{
-                    display: "block", width: "100%", textAlign: "left",
-                    background: "none", border: "none", color: colors.text,
-                    padding: "8px 12px", cursor: "pointer", fontSize: "0.8125rem",
-                    borderRadius: 4,
-                  }}
-                  onMouseEnter={(e) => { e.currentTarget.style.background = colors.accentSubtle; }}
-                  onMouseLeave={(e) => { e.currentTarget.style.background = "none"; }}
-                >
-                  {item.label}
-                </button>
-              ))}
+      {contextMenu &&
+        (() => {
+          const obj = objects.get(contextMenu.objId);
+          if (!obj) return null;
+          const cp = obj.props as BoardObjectProps;
+          const items: { label: string; prompt: string }[] = [
+            {
+              label: "Ask AI about this",
+              prompt: `What is this ${obj.type}${cp.text ? ` that says "${cp.text}"` : ""} about?`,
+            },
+            {
+              label: "Recolor with AI",
+              prompt: `Change the color of this ${obj.type} (id: ${obj.id}) to a random vibrant color.`,
+            },
+          ];
+          if (obj.type === "sticky" || obj.type === "text") {
+            items.push({
+              label: "Expand on this",
+              prompt: `Create more sticky notes related to: "${obj.props.text || ""}"`,
+            });
+          }
+          return (
+            <div onClick={() => setContextMenu(null)} style={{ position: "absolute", inset: 0, zIndex: 40 }}>
+              <div
+                onClick={(e) => e.stopPropagation()}
+                style={{
+                  position: "absolute",
+                  left: contextMenu.x,
+                  top: contextMenu.y,
+                  background: colors.surface,
+                  border: `1px solid ${colors.border}`,
+                  borderRadius: 8,
+                  padding: 4,
+                  minWidth: 180,
+                  zIndex: 41,
+                }}
+              >
+                {items.map((item) => (
+                  <button
+                    key={item.label}
+                    onClick={() => {
+                      setSelectedIds(new Set([contextMenu.objId]));
+                      openChatWithPrompt(item.prompt);
+                    }}
+                    style={{
+                      display: "block",
+                      width: "100%",
+                      textAlign: "left",
+                      background: "none",
+                      border: "none",
+                      color: colors.text,
+                      padding: "8px 12px",
+                      cursor: "pointer",
+                      fontSize: "0.8125rem",
+                      borderRadius: 4,
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.background = colors.accentSubtle;
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.background = "none";
+                    }}
+                  >
+                    {item.label}
+                  </button>
+                ))}
+              </div>
             </div>
-          </div>
-        );
-      })()}
+          );
+        })()}
 
       {/* Confetti burst (first object + AI multi-create) */}
       {confettiPos && <ConfettiBurst key={confettiKey} x={confettiPos.x} y={confettiPos.y} onDone={clearConfetti} />}
@@ -1442,5 +1728,3 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
     </div>
   );
 }
-
-

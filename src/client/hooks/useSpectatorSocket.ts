@@ -67,7 +67,8 @@ export function useSpectatorSocket(boardId: string): UseSpectatorSocketReturn {
         let msg: WSServerMessage;
         try {
           msg = JSON.parse(event.data) as WSServerMessage;
-        } catch { // intentional: malformed server messages are non-recoverable
+        } catch {
+          // intentional: malformed server messages are non-recoverable
           console.error("[WS:spectator] failed to parse message:", event.data);
           return;
         }
@@ -95,7 +96,10 @@ export function useSpectatorSocket(boardId: string): UseSpectatorSocketReturn {
               const next = new Map(prev);
               for (const userId of next.keys()) {
                 if (userId.startsWith("spectator-")) continue;
-                if (!activeIds.has(userId)) { next.delete(userId); changed = true; }
+                if (!activeIds.has(userId)) {
+                  next.delete(userId);
+                  changed = true;
+                }
               }
               return changed ? next : prev;
             });
@@ -175,5 +179,15 @@ export function useSpectatorSocket(boardId: string): UseSpectatorSocketReturn {
     }
   }, []);
 
-  return { connectionState, initialized, cursors, objects, presence, spectatorCount, reactions, sendCursor, sendReaction };
+  return {
+    connectionState,
+    initialized,
+    cursors,
+    objects,
+    presence,
+    spectatorCount,
+    reactions,
+    sendCursor,
+    sendReaction,
+  };
 }

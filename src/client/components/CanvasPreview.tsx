@@ -13,14 +13,17 @@ interface CanvasPreviewProps {
 function computeTransform(
   objects: Map<string, BoardObject>,
   width: number,
-  height: number
+  height: number,
 ): { scale: number; x: number; y: number } {
   if (objects.size === 0) return { scale: 1, x: 0, y: 0 };
   // Guard: negative/zero width or height (layout race before resize fires, or test env).
   // A negative scale passed to Konva renders mirrored content with no error thrown.
   if (width <= 0 || height <= 0) return { scale: 1, x: 0, y: 0 };
 
-  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  let minX = Infinity,
+    minY = Infinity,
+    maxX = -Infinity,
+    maxY = -Infinity;
   for (const obj of objects.values()) {
     // Skip objects with NaN coordinates (partial WS delivery during reconnect).
     // NaN propagates silently through all math and produces a blank Konva Stage.
@@ -57,34 +60,37 @@ export function CanvasPreview({ objects, width, height }: CanvasPreviewProps) {
 
   if (objects.size === 0) {
     return (
-      <div style={{
-        width, height, background: colors.bg,
-        display: "flex", alignItems: "center", justifyContent: "center",
-        color: colors.textDim, fontSize: "0.75rem",
-      }}>
+      <div
+        style={{
+          width,
+          height,
+          background: colors.bg,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          color: colors.textDim,
+          fontSize: "0.75rem",
+        }}
+      >
         Canvas is empty - ask the AI to create something!
       </div>
     );
   }
 
   return (
-    <Stage
-      width={width}
-      height={height}
-      x={x}
-      y={y}
-      scaleX={scale}
-      scaleY={scale}
-      listening={false}
-    >
+    <Stage width={width} height={height} x={x} y={y} scaleX={scale} scaleY={scale} listening={false}>
       {/* Frames behind, then objects on top - same render order as interactive Board */}
       <Layer listening={false}>
-        {[...objects.values()].filter(o => o.type === "frame").map((obj) => (
-          <BoardObjectRenderer key={obj.id} obj={obj} aiGlow={false} interactive={false} />
-        ))}
-        {[...objects.values()].filter(o => o.type !== "frame").map((obj) => (
-          <BoardObjectRenderer key={obj.id} obj={obj} aiGlow={false} interactive={false} />
-        ))}
+        {[...objects.values()]
+          .filter((o) => o.type === "frame")
+          .map((obj) => (
+            <BoardObjectRenderer key={obj.id} obj={obj} aiGlow={false} interactive={false} />
+          ))}
+        {[...objects.values()]
+          .filter((o) => o.type !== "frame")
+          .map((obj) => (
+            <BoardObjectRenderer key={obj.id} obj={obj} aiGlow={false} interactive={false} />
+          ))}
       </Layer>
     </Stage>
   );
