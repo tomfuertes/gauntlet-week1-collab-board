@@ -63,9 +63,9 @@ scripts/worktree-prompt-suffix.md      # standard instructions - orchestrator re
 
 When working in a worktree, use absolute paths for file tools. Run git commands directly (not `git -C`) - the working directory is already the repo/worktree.
 
-When printing worktree startup commands for the user: write the prompt to `$TMPDIR/prompt-<branch>.txt` using the Write tool, then print a short launch command. This avoids shell quoting issues and terminal paste buffer limits with long prompts.
+When printing worktree startup commands for the user: write the prompt to `$TMPDIR/prompt-<branch>.txt` using the Write tool, then print a short launch command. **Use `--model sonnet`** for worktree agents - they do implementation, not orchestration, so Sonnet is the right tradeoff (saves Opus quota, still highly capable for multi-file coding).
 ```bash
-cd /path/to/worktree && claude "$(cat /private/tmp/claude-501/prompt-<branch>.txt)"
+cd /path/to/worktree && claude --model sonnet "$(cat /private/tmp/claude-501/prompt-<branch>.txt)"
 ```
 This launches Claude with the prompt pre-loaded so the user just hits enter. Always include a specific, actionable prompt describing the feature to build. **Do NOT use "Enter plan mode first"** - it adds an approval gate that blocks the agent and the context exploration can compress away during implementation. Instead, write detailed prompts that specify the approach, and instruct the agent to read CLAUDE.md and relevant source files before implementing.
 
