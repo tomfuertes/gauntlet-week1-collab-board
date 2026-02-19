@@ -55,6 +55,18 @@
 ### Won't Fix (Week 1)
 - send() silently drops messages during reconnect window
 
+## Exploration: CF Agent Patterns We Could Adopt
+
+*From [CF Agents docs](https://developers.cloudflare.com/agents/), [Code Mode blog](https://blog.cloudflare.com/code-mode/), [patterns](https://developers.cloudflare.com/agents/patterns/). Our core patterns (AIChatAgent, AI SDK v6 tools, scheduling, React hooks) already align well.*
+
+| Pattern | What it is | Our gap | Effort | Priority |
+|---------|-----------|---------|--------|----------|
+| **Code Mode** | LLM writes TypeScript calling tools as APIs, runs in V8 isolate. One "execute code" tool replaces N discrete tools. Eliminates round-trip tax between chained tool calls. | We use 11 discrete `tool()` calls with `stopWhen: stepCountIs(5)` to cap round-trips. Code Mode would let LLM chain all canvas ops in one shot. | Major. Worker Loader API in closed beta. | Watch for GA. Would be transformative for multi-tool scenes. |
+| **Agent state sync** | `this.setState()` + auto-broadcast + `onStateChanged` for reactive client state. | We use raw DO Storage (`obj:{id}` keys) + manual WS broadcast with LWW. | Medium. Full rewrite of Board DO state layer. | Skip. Our LWW approach is simpler for canvas objects with optimistic updates. |
+| **Task queues** | `this.queue()` for reliable async work with auto-dequeue + retry. | We use `ctx.waitUntil()` for fire-and-forget (reactive persona, activity recording). | Low. Drop-in replacement for waitUntil calls. | Low. Our tasks are best-effort. Queues add retry but we don't need guaranteed delivery. |
+| **Tool approval gates** | `needsApproval` function on tools for human-in-the-loop consent. | We auto-execute all 11 tools. | Low. Add `needsApproval` to deleteObject. | Nice-to-have. Could gate destructive tools (delete, bulk updates) behind user OK. |
+| **Evaluator-Optimizer** | Generator LLM produces output; evaluator LLM critiques; loop until quality threshold. | Our AI generates content in one pass (single streamText). | Medium. Add a quality-check step after tool execution. | Interesting for scene setup quality (check layout overlap score, regenerate if bad). |
+
 ## Key Decisions (non-obvious, not already in CLAUDE.md)
 
 | Date | Decision | Rationale |
