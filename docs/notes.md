@@ -2,6 +2,27 @@
 
 *Internal project management scratch. Not a deliverable.*
 
+## Spectator Mode Session (Feb 18, 2026 - worktree)
+
+### What Was Done
+- **Spectator mode:** Live read-only view of active boards via `#watch/{boardId}`. Unauthenticated WebSocket at `/ws/watch/:boardId`. Board DO gates mutations by `ConnectionMeta.role` (discriminated union: player | spectator). Spectators see real-time canvas updates, cursors, and presence.
+- **Emoji reactions:** Spectators (and players) can send emoji reactions that float up and fade out. Server-side whitelist validation (6 allowed emojis) + 1/sec rate limit per user.
+- **Spectator count:** `spectatorCount` added to presence message. Board header shows "N watching" badge. "Invite Spectators" button copies watch URL.
+- **PR review fixes:** 3 specialized agents (code-reviewer, silent-failure-hunter, type-design-analyzer) reviewed in parallel. Fixed 11 issues: emoji validation, rate limiting, cursor cleanup bug, discriminated union for ConnectionMeta, type deduplication, error logging, clipboard error handling, spectator ID collision space, blocked message logging.
+
+### UAT Status
+- **Blocked by wrangler OAuth token expiry** - `npx wrangler login` needed to refresh. Build, typecheck, and lint all pass.
+
+### Key Decisions
+| Date | Decision | Rationale |
+|------|----------|-----------|
+| Feb 18 | Spectators excluded from presence users list (count only) | Anonymous spectators shouldn't leak usernames; count is sufficient for audience awareness |
+| Feb 18 | Emoji whitelist over length validation | Unauthenticated endpoint - belt and suspenders. Whitelist prevents all injection, not just large payloads |
+| Feb 18 | ConnectionMeta discriminated union over flat interface | Prevents editingObjectId on spectator connections at compile time |
+| Feb 18 | spectator-* ID prefix convention | Cursor cleanup skips spectator IDs in presence purge; prevents flickering cursors |
+
+---
+
 ## Session 18 Context (Feb 18, 2026)
 
 ### What Was Done
