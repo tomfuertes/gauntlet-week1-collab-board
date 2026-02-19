@@ -8,7 +8,7 @@
 - **UAT incomplete** - game modes, token budgets, custom AI characters, daily challenges. All tsc-clean, need browser verification.
 - **GLM-4.7-flash unverified in prod** - needs manual chat test confirming tool calls work
 - **CF issue** - [cloudflare/ai#404](https://github.com/cloudflare/ai/issues/404): `workers-ai-provider` drops `tool_choice`. Open.
-- **Upgrade `@cloudflare/ai-chat`** - v0.1.2 -> latest (rewritten in Agents SDK v0.5.0: data parts, persistent tool approvals, `maxPersistedMessages`). Fixes "no upper bound on AI chat history" tech debt.
+- **Upgrade `@cloudflare/ai-chat`** - already on v0.1.2 + agents@0.5.0 (latest). Enable `maxPersistedMessages` to cap SQLite storage. Explore persistent tool approvals for deleteObject.
 - **Run prompt-eval harness** - `npx tsx scripts/prompt-eval.ts` against dev server. Tune LAYOUT RULES based on overlap scores.
 
 ## Roadmap
@@ -32,7 +32,7 @@
 ### Security
 - No rate limiting on auth + AI endpoints
 - AI route accepts arbitrary boardId - can create phantom DOs
-- No upper bound on AI chat history (fix: upgrade `@cloudflare/ai-chat`, use `maxPersistedMessages`)
+- No upper bound on AI chat history (fix: `maxPersistedMessages` in agents@0.5.0)
 - Username enumeration via signup 409
 
 ### Architecture
@@ -43,25 +43,25 @@
 - WS reconnect: no max retry, no non-retryable close code handling
 - No guard against sendMessage when ChatAgent WS disconnected
 
-## Exploration: CF Agent Patterns
+## CF Agent Patterns (exploration summary)
 
-*Deep dives in `docs/exploration-*.md`. Batch tool shipped; others for reference.*
+*From CF Agents docs, Code Mode blog, patterns docs. Full writeups removed - see git history.*
 
-| Pattern | Status | Deep dive |
-|---------|--------|-----------|
-| Code Mode | Watch for Worker Loader API GA | [exploration-code-mode.md](exploration-code-mode.md) |
-| Agent state sync | Skip (our LWW is simpler) | [exploration-state-sync.md](exploration-state-sync.md) |
-| Task queues | Low priority (waitUntil is fine) | [exploration-task-queues.md](exploration-task-queues.md) |
-| Tool approval gates | Nice-to-have for deleteObject | [exploration-tool-approval.md](exploration-tool-approval.md) |
-| Evaluator-Optimizer | Interesting for layout quality | [exploration-evaluator-optimizer.md](exploration-evaluator-optimizer.md) |
-| Batch tool | **Shipped** as tool #12 | [exploration-batch-tool.md](exploration-batch-tool.md) |
+| Pattern | Status | Notes |
+|---------|--------|-------|
+| Code Mode | Watch for GA | LLM writes TS calling tools as APIs in V8 isolate. Worker Loader API in closed beta. Would be transformative for multi-tool scenes. |
+| Agent state sync | Skip | `setState()` auto-persists + broadcasts. Our per-object LWW + optimistic updates is simpler for canvas. |
+| Task queues | Low priority | `this.queue()` with auto-retry. Our `ctx.waitUntil()` is fine for best-effort reactive persona + activity recording. |
+| Tool approval gates | Nice-to-have | `needsApproval` on tools. Could gate deleteObject behind user confirmation. Now first-class in agents@0.5.0. |
+| Evaluator-Optimizer | Interesting | Generate -> evaluate -> loop. Could check layout overlap after scene setup. Prompt-eval harness is the offline version. |
+| Batch tool | **Shipped** | Tool #12 batchExecute. N round trips -> 1. GLM uses it unprompted. |
 
 ## Key Decisions
 
 | Date | Decision | Rationale |
 |------|----------|-----------|
 | Feb 19 | GLM-4.7-flash over Mistral Small 3.1 | Mistral ignores tool_choice:auto in streaming. GLM native tool calling + 6x cheaper. |
-| Feb 19 | Contradictory LLM prompt rules: earlier rules dominate | "call ALL creates in SINGLE response" overrode "prefer batchExecute". Fix: name batchExecute in the first rule. |
+| Feb 19 | Earlier LLM prompt rules dominate later ones | "call ALL creates in SINGLE response" overrode "prefer batchExecute". Fix: name batchExecute in the first rule. |
 | Feb 18 | Multiplayer improv canvas as north star | Nobody has multiplayer + AI + canvas + improv |
 | Feb 17 | Template coord injection over LLM geometry | LLM as content generator, not geometry solver |
 | Feb 17 | Overlap score metric over visual QA | Single number for AI layout quality |
@@ -78,3 +78,21 @@
 | Claude Haiku 4.5 (Anthropic) | $1.00 | $5.00 | $0.26 | Excellent | Behind ENABLE_ANTHROPIC_API toggle. |
 
 *Scene estimate: ~200K input + ~12K output tokens per 20-turn scene. `stopWhen: stepCountIs(5)` caps round-trips. $5/day budget per DO.*
+
+## Archived Docs (in git history)
+
+| File | Contents | Removed |
+|------|----------|---------|
+| `docs/ai-architecture.md` | AI request lifecycle diagram | pre-session |
+| `docs/ai-cost-analysis.md` | Token cost estimates | pre-session |
+| `docs/ai-dev-log.md` | AI development session log | pre-session |
+| `docs/social-post.md` | Social media draft | pre-session |
+| `docs/thurs-am.md` | Thu AM pickup context (all items shipped/merged) | Feb 19 |
+| `docs/tomorrow.md` | Sprint plan for 5 features (all shipped or killed) | Feb 19 |
+| `docs/ux-intents-exploration.md` | Dynamic intent chip design (shipped) | Feb 19 |
+| `docs/exploration-code-mode.md` | CF Code Mode deep dive | Feb 19 |
+| `docs/exploration-state-sync.md` | Agent SDK state sync analysis | Feb 19 |
+| `docs/exploration-task-queues.md` | Task queues vs ctx.waitUntil | Feb 19 |
+| `docs/exploration-tool-approval.md` | Tool approval gates pattern | Feb 19 |
+| `docs/exploration-evaluator-optimizer.md` | Evaluator-optimizer loop pattern | Feb 19 |
+| `docs/exploration-batch-tool.md` | Batch tool design (shipped as tool #12) | Feb 19 |
