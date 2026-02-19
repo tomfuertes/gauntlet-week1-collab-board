@@ -5,6 +5,7 @@ import { getCookie } from "hono/cookie";
 import { routeAgentRequest } from "agents";
 import { auth, getSessionUser } from "./auth";
 import { getRandomHatPrompt } from "./hat-prompts";
+import { computeOverlapScore } from "./ai-tools-sdk";
 
 import type { Bindings } from "./env";
 import { recordBoardActivity, markBoardSeen } from "./env";
@@ -109,6 +110,28 @@ app.get("/api/boards/:boardId", async (c) => {
     .bind(boardId).first();
   if (!row) return c.text("Not found", 404);
   return c.json(row);
+});
+
+// Board objects endpoint for eval harness (auth-protected)
+// Canvas usable area bounds from LAYOUT RULES in prompts.ts
+const CANVAS_MIN_X = 50, CANVAS_MIN_Y = 60, CANVAS_MAX_X = 1150, CANVAS_MAX_Y = 780;
+
+app.get("/api/boards/:boardId/objects", async (c) => {
+  const user = await requireAuth(c);
+  if (!user) return c.text("Unauthorized", 401);
+
+  const boardId = c.req.param("boardId");
+  const objects = await getBoardStub(c.env, boardId).readObjects();
+
+  const overlapScore = computeOverlapScore(objects);
+  const outOfBounds = objects.filter(
+    (o) => o.x < CANVAS_MIN_X || o.y < CANVAS_MIN_Y || o.x + o.width > CANVAS_MAX_X || o.y + o.height > CANVAS_MAX_Y,
+  ).length;
+
+  return c.json({
+    objects,
+    metrics: { total: objects.length, overlapScore, outOfBounds },
+  });
 });
 
 // Update board game mode (auth-protected, ownership check)

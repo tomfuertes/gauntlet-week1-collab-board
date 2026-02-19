@@ -8,7 +8,7 @@ import {
 import type { UIMessage } from "ai";
 import { createWorkersAI } from "workers-ai-provider";
 import { createAnthropic } from "@ai-sdk/anthropic";
-import { createSDKTools, isPlainObject } from "./ai-tools-sdk";
+import { createSDKTools, isPlainObject, rectsOverlap } from "./ai-tools-sdk";
 import {
   SYSTEM_PROMPT,
   DIRECTOR_PROMPTS,
@@ -413,6 +413,61 @@ export class ChatAgent extends AIChatAgent<Bindings> {
         0,
       ) ?? 0;
       this._logRequestEnd("chat", activePersona.name, startTime, steps, toolCalls);
+
+      // Quality telemetry: per-response layout scoring for prompt tuning
+      // Canvas bounds mirror LAYOUT RULES in prompts.ts: (50,60) to (1150,780)
+      if (toolCalls > 0) {
+        try {
+          const allObjects: BoardObject[] = await boardStub.readObjects();
+          const batchObjs = allObjects.filter((o) => o.batchId === batchId);
+
+          // Warn if tools were called but no objects matched this batchId -
+          // could indicate a timing/persistence issue rather than a real "zero objects" result
+          if (batchObjs.length === 0) {
+            console.warn(JSON.stringify({
+              event: "ai:quality:empty-batch",
+              boardId: this.name,
+              batchId,
+              toolCalls,
+              totalObjects: allObjects.length,
+            }));
+          } else {
+            const otherObjs = allObjects.filter((o) => o.batchId !== batchId);
+
+            let batchOverlap = 0;
+            for (let i = 0; i < batchObjs.length; i++)
+              for (let j = i + 1; j < batchObjs.length; j++)
+                if (rectsOverlap(batchObjs[i], batchObjs[j])) batchOverlap++;
+
+            let crossOverlap = 0;
+            for (const newObj of batchObjs)
+              for (const oldObj of otherObjs)
+                if (rectsOverlap(newObj, oldObj)) crossOverlap++;
+
+            const inBounds = batchObjs.filter(
+              (o) => o.x >= 50 && o.y >= 60 && o.x + o.width <= 1150 && o.y + o.height <= 780,
+            ).length;
+
+            console.debug(JSON.stringify({
+              event: "ai:quality",
+              promptVersion: PROMPT_VERSION,
+              batchOverlap,
+              crossOverlap,
+              objectsCreated: batchObjs.length,
+              inBounds,
+              model: this._getModelName(),
+            }));
+          }
+        } catch (err) {
+          console.error(JSON.stringify({
+            event: "ai:quality:error",
+            boardId: this.name,
+            batchId,
+            error: String(err),
+            stack: err instanceof Error ? err.stack : undefined,
+          }));
+        }
+      }
 
       // Ensure active persona's message has the [NAME] prefix (LLMs sometimes forget)
       this._ensurePersonaPrefix(activePersona.name);

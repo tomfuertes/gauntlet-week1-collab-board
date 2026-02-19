@@ -17,3 +17,4 @@ worktree.ports
 .dev.vars
 worker-configuration.d.ts
 .worktree-prompt-suffix.md
+scripts/eval-results/

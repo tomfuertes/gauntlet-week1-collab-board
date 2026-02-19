@@ -15,7 +15,8 @@ CollabBoard - multiplayer improv canvas with AI agent integration. Real-time col
 - **Database:** DO Storage (board objects as KV) + D1 (users/sessions/board metadata)
 - **AI:** Cloudflare Agents SDK (`AIChatAgent` DO) + Vercel AI SDK v6 (`streamText`, `generateText`, `tool()`). See `docs/ai-architecture.md` for full request lifecycle.
   - **ChatAgent DO:** One per board (instance name = boardId). WebSocket streaming, server-side chat persistence (DO SQLite). Models: selectable via header dropdown (GLM 4.7 Flash default) or `WORKERS_AI_MODEL` in wrangler.toml; or Claude Haiku 4.5 (if `ENABLE_ANTHROPIC_API=true` + `ANTHROPIC_API_KEY` secret). `AIModel` type + `AI_MODELS` config array in `shared/types.ts` (shared client/server). Selected model sent per-message in `body.model` (like `gameMode`) so it survives DO hibernation; validated against `AI_MODELS` before use. `workers-ai-provider` shim in `_getModel()` injects `tool_choice: "auto"` as belt-and-suspenders (GLM calls tools natively). Daily budget cap (`DAILY_AI_BUDGET_USD`, default $5) tracked per DO instance (Workers AI only). All AI config in wrangler.toml `[vars]`. See `docs/notes.md` AI Model Pricing table for cost comparison.
-  - **Tools:** 12 tools in `src/server/ai-tools-sdk.ts` (Zod schemas, `instrumentExecute` wrapper). Tool #12 is `batchExecute` - accepts an ordered array of up to 10 operations and executes them sequentially in one LLM round-trip, eliminating N-round-trip tax for scene setup. Display metadata in `ChatPanel.tsx` (was `ai-tool-meta.ts`). Prompts in `src/server/prompts.ts` (versioned via `PROMPT_VERSION`).
+  - **Tools:** 12 tools in `src/server/ai-tools-sdk.ts` (Zod schemas, `instrumentExecute` wrapper). Tool #12 is `batchExecute` - accepts an ordered array of up to 10 operations and executes them sequentially in one LLM round-trip, eliminating N-round-trip tax for scene setup. `rectsOverlap` + `computeOverlapScore` exported for reuse by objects API and quality telemetry. Display metadata in `ChatPanel.tsx` (was `ai-tool-meta.ts`). Prompts in `src/server/prompts.ts` (versioned via `PROMPT_VERSION`).
+  - **Quality telemetry:** After every `streamText` with tool calls, `wrappedOnFinish` in `chat-agent.ts` calls `boardStub.readObjects()`, filters to the current `batchId`, and logs `{ event: "ai:quality", promptVersion, batchOverlap, crossOverlap, objectsCreated, inBounds, model }`. Canvas bounds (50,60)-(1150,780) mirror LAYOUT RULES in `prompts.ts` - keep in sync. Used by prompt-eval harness to tune LAYOUT RULES.
   - **Multi-agent Personas:** Dynamic per-board AI characters. Default SPARK (energetic) + SAGE (grounded); custom personas stored in D1 `board_personas` table. `Persona { id, name, trait, color }` in `shared/types.ts`. `DEFAULT_PERSONAS` fallback when no custom personas. `ChatAgent._getPersonas()` loads from D1 on each request (never throws - D1 errors log + degrade to defaults). `buildPersonaSystemPrompt(active, other, basePrompt, gameModeBlock)` in `prompts.ts` takes Persona objects. Human message -> active persona -> other reacts autonomously via `_triggerReactivePersona` (`ctx.waitUntil`). `MAX_AUTONOMOUS_EXCHANGES` caps auto-exchanges; resets on human message. Turn-taking state is class-level (resets on DO hibernation, defaults work). TOCTOU: claim `_isGenerating` mutex BEFORE 2s UX delay, re-check after. `_ensurePersonaPrefix(personaName)` patches LLM responses missing `[NAME]` prefix. Skips reactive if only 1 persona. CRUD API: `GET/POST/DELETE /api/boards/:boardId/personas` (auth required; POST/DELETE require ownership; max 10 per board). `ChatPanel` "AI Characters" modal lets board owner add/delete custom characters.
   - **AI Director:** After 60s inactivity, `onDirectorNudge` fires via DO schedule alarm. Uses `generateText` (non-streaming) with scene-phase-specific prompts.
   - **AI Image Generation:** `generateImage` tool calls CF Workers AI SDXL (512x512), base64 data URL in `props.src`, Konva `Image` rendering.
@@ -40,6 +41,11 @@ npx wrangler d1 migrations create collabboard-db "describe_change"  # create new
 npm run migrate              # apply pending to local + remote
 npm run migrate:local        # apply pending to local only
 npm run migrate:remote       # apply pending to remote only
+
+# Prompt Eval Harness (requires dev server running)
+npx tsx scripts/prompt-eval.ts            # run all scenarios, output pass/fail + JSON report
+# EVAL_USERNAME/EVAL_PASSWORD/EVAL_MODEL env vars override defaults (eval/eval123/glm-4.7-flash)
+# JSON reports written to scripts/eval-results/<timestamp>.json (gitignored)
 
 # Lint & Format
 npm run lint             # eslint
@@ -190,6 +196,7 @@ migrations/             # D1 SQL migrations (tracked via d1_migrations table, np
 8. Scene replay: Board DO records mutations as `evt:{ts}:{rand}` keys in storage (debounced 500ms for updates, 2000 cap). Public `GET /api/boards/:id/replay` returns sorted events. `#replay/{id}` route renders read-only ReplayViewer (no auth required).
 9. Scene gallery: Public `GET /api/boards/public` returns boards with activity (D1 join: boards + users + board_activity). `#gallery` route renders SceneGallery grid (no auth). Cards link to `#replay/{id}`.
 10. Live spectator: Public `GET /ws/watch/:boardId` upgrades to spectator WebSocket (no auth). DO tags connection as `role: "spectator"` via `ConnectionMeta` discriminated union. Spectators receive all broadcasts but can only send cursor + reaction messages. `#watch/{id}` route renders read-only SpectatorView with emoji reaction bar.
+11. Prompt eval API: Auth-protected `GET /api/boards/:boardId/objects` returns all board objects + metrics (`total`, `overlapScore`, `outOfBounds`). Used by `scripts/prompt-eval.ts` to score AI layout quality without needing a WS connection. Canvas bounds match LAYOUT RULES in `prompts.ts`.
 
 ### WebSocket Protocol
 

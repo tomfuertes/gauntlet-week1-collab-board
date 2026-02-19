@@ -10,7 +10,6 @@
 - **No UAT on custom AI characters** - wrangler dev D1 was returning 500s on signup; feature code is clean (tsc passes), needs manual verification
 - **CF issue filed** - [cloudflare/ai#404](https://github.com/cloudflare/ai/issues/404): `workers-ai-provider` drops `tool_choice` from `buildRunInputs`. Open, no response yet.
 - **GLM-4.7-flash tool calling unverified in prod** - switched from Mistral; shim + native tool calling confirmed locally. Needs manual chat test.
-- **Prompt eval worktree in-flight** - `feat/prompt-eval` at `../gauntlet-week1-collab-board-prompt-eval`. Quality harness for AI layout tuning.
 
 ## Roadmap
 

@@ -1,0 +1,70 @@
+[
+  {
+    "id": "scene-setup",
+    "prompt": "Set up a dentist office scene with a frame and 3 character stickies inside it",
+    "expectedMinObjects": 4,
+    "expectedTypes": ["frame", "sticky", "sticky", "sticky"],
+    "description": "Tests frame + child positioning (stickies inside frame at inset coords)"
+  },
+  {
+    "id": "row-layout",
+    "prompt": "Create 3 stickies in a row: a detective, a suspect, and a witness",
+    "expectedMinObjects": 3,
+    "expectedTypes": ["sticky", "sticky", "sticky"],
+    "description": "Tests horizontal layout using 3-object grid slots (x=100, x=420, x=740)"
+  },
+  {
+    "id": "complication",
+    "prompt": "Add a dramatic complication to the scene - something that raises the stakes",
+    "expectedMinObjects": 1,
+    "description": "Tests creative placement relative to empty board; no overlap expected"
+  },
+  {
+    "id": "image-gen",
+    "prompt": "Generate a backdrop image for a haunted library",
+    "expectedMinObjects": 1,
+    "expectedTypes": ["image"],
+    "description": "Tests generateImage tool - image must land in canvas bounds"
+  },
+  {
+    "id": "grid-2x2",
+    "prompt": "Create 4 character stickies in a 2x2 grid: a king, a jester, a knight, and a dragon",
+    "expectedMinObjects": 4,
+    "expectedTypes": ["sticky", "sticky", "sticky", "sticky"],
+    "description": "Tests 2x2 grid layout slots: (100,100), (520,100), (100,420), (520,420)"
+  },
+  {
+    "id": "connector-link",
+    "prompt": "Create two stickies - a hero and a villain - then draw a connector arrow between them",
+    "expectedMinObjects": 3,
+    "expectedTypes": ["sticky", "sticky", "line"],
+    "description": "Tests createConnector resolving object IDs from prior tool results"
+  },
+  {
+    "id": "color-variety",
+    "prompt": "Create 4 stickies showing different emotions: joy (yellow), danger (red), hope (green), and mystery (purple)",
+    "expectedMinObjects": 4,
+    "expectedTypes": ["sticky", "sticky", "sticky", "sticky"],
+    "description": "Tests color rule adherence - each sticky should use a distinct palette color"
+  },
+  {
+    "id": "mixed-types",
+    "prompt": "Set up a crime scene: a red rectangle for the crime area, a sticky for the victim, and a frame labeled Evidence",
+    "expectedMinObjects": 3,
+    "expectedTypes": ["rect", "sticky", "frame"],
+    "description": "Tests multi-tool scene with rect + sticky + frame, no overlaps expected"
+  },
+  {
+    "id": "character-intro",
+    "prompt": "A stranger walks in",
+    "expectedMinObjects": 1,
+    "expectedTypes": ["sticky"],
+    "description": "Tests 'a stranger walks in' intent pattern - one character sticky placed near canvas center"
+  },
+  {
+    "id": "stakes-escalation",
+    "prompt": "Complicate everything",
+    "expectedMinObjects": 2,
+    "description": "Tests 'complicate everything' intent pattern - expects 2-3 RED stickies scattered across canvas"
+  }
+]

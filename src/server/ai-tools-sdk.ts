@@ -136,7 +136,7 @@ async function readAndCenter(stub: BoardStub, id: string): Promise<BoardObject |
 }
 
 /** Check if two board objects overlap (axis-aligned bounding boxes) */
-function rectsOverlap(a: BoardObject, b: BoardObject): boolean {
+export function rectsOverlap(a: BoardObject, b: BoardObject): boolean {
   return (
     a.x < b.x + b.width &&
     a.x + a.width > b.x &&
@@ -146,7 +146,7 @@ function rectsOverlap(a: BoardObject, b: BoardObject): boolean {
 }
 
 /** Count pairwise overlaps among objects (0 = perfect layout) */
-function computeOverlapScore(objects: BoardObject[]): number {
+export function computeOverlapScore(objects: BoardObject[]): number {
   let overlaps = 0;
   for (let i = 0; i < objects.length; i++)
     for (let j = i + 1; j < objects.length; j++)
