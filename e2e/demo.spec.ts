@@ -1,6 +1,6 @@
 import { test, type Page } from "@playwright/test";
 
-const baseURL = `http://localhost:${process.env.VITE_PORT || 5173}`;
+const baseURL = `http://localhost:${process.env.WRANGLER_PORT || process.env.VITE_PORT || 5173}`;
 
 /**
  * Visual demo: Alice and Bob collaborate on a board using AI commands.

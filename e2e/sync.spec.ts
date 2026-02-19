@@ -8,7 +8,7 @@ import {
   getObjectCount,
 } from "./helpers";
 
-const baseURL = `http://localhost:${process.env.VITE_PORT || 5173}`;
+const baseURL = `http://localhost:${process.env.WRANGLER_PORT || process.env.VITE_PORT || 5173}`;
 
 test.describe("Real-time sync", () => {
   test.setTimeout(45_000);

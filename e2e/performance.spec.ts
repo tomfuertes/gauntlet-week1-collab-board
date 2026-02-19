@@ -8,6 +8,8 @@ import {
   getObjectCount,
 } from "./helpers";
 
+const baseURL = `http://localhost:${process.env.WRANGLER_PORT || process.env.VITE_PORT || 5173}`;
+
 test.describe("Performance", () => {
   test.setTimeout(60_000);
 
@@ -40,7 +42,7 @@ test.describe("Performance", () => {
   test("5 concurrent users on same board", { tag: "@heavy" }, async ({ browser }) => {
     const contexts = await Promise.all(
       Array.from({ length: 5 }, () =>
-        browser.newContext({ baseURL: "http://localhost:5175" }),
+        browser.newContext({ baseURL }),
       ),
     );
 
