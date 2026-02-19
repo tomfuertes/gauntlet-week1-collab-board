@@ -127,8 +127,13 @@ src/
     App.tsx             # App shell + hash routing (#board/{id}, #replay/{id}, #watch/{id})
     theme.ts            # Shared color constants (accent, surfaces, borders, cursors)
     components/
-      Board.tsx         # Canvas + chat panel integration (~1530 lines)
+      Board.tsx         # Canvas + chat panel integration
       Toolbar.tsx       # Floating toolbar - tool buttons, mode switching (extracted from Board)
+      BoardObjectRenderer.tsx # Shared Konva shape renderer (sticky, rect, circle, line, text, image)
+      ConnectionToast.tsx     # WS connection status toast (extracted from Board)
+      Button.tsx        # Shared button component (primary, secondary, icon, danger variants)
+      Modal.tsx         # Shared modal overlay component
+      TextInput.tsx     # Shared text input component
       BoardList.tsx     # Board grid (CRUD) - landing page after login
       ChatPanel.tsx     # AI chat sidebar (dynamic intent chips, improv scene interaction)
       ReplayViewer.tsx  # Read-only scene replay player (public, no auth)
