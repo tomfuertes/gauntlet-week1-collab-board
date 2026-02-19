@@ -79,6 +79,8 @@ cd /path/to/worktree && claude --model sonnet "$(cat /private/tmp/claude-501/pro
 ```
 This launches Claude with the prompt pre-loaded so the user just hits enter. Always include a specific, actionable prompt describing the feature to build. **Do NOT use "Enter plan mode first"** - it adds an approval gate that blocks the agent and the context exploration can compress away during implementation. Instead, write detailed prompts that specify the approach, and instruct the agent to read CLAUDE.md and relevant source files before implementing.
 
+**NEVER delegate merging to sub-agents.** Always merge worktree branches in main context (the orchestrator). Worktree branches fork from a point-in-time snapshot of main. If other branches merge first, a sub-agent's squash merge will silently revert the intervening changes (the branch diff includes deletions it never made). The orchestrator must: (1) check `git diff main..feat/<branch>` for unexpected reversions, (2) rebase onto current main if needed, (3) resolve conflicts with full project context, (4) typecheck after merge.
+
 ## Browser Testing (playwright-cli)
 
 The `playwright-cli` skill is available for automated browser testing. **Use it proactively** for UAT, smoke tests, and verifying features - don't stop to ask, just run it.
@@ -121,7 +123,7 @@ npx playwright test --reporter=dot     # minimal output (default 'list' floods c
 
 ### Worktree Agent Conventions
 
-Worktree agent lifecycle: **implement -> PR review -> fix review issues -> UAT -> commit -> /last-call**. PR review gates UAT. After UAT passes, commit all changes to the feature branch (no PR - the orchestrator merges from main). After committing, run `/last-call` for an end-of-session summary. The branch must be clean-committed when the agent finishes so `git merge feat/<branch>` works from main.
+Worktree agent lifecycle: **implement -> PR review -> fix review issues -> UAT -> commit -> /recap -> /last-call**. PR review gates UAT. After UAT passes, commit all changes to the feature branch (no PR - the orchestrator merges from main). After committing, run `/recap` (analyze session, extract learnings) then `/last-call` (dump learnings to disk, then commit). The branch must be clean-committed when the agent finishes so `git merge feat/<branch>` works from main.
 
 Worktree prompts must explicitly mention:
 - `npm run dev` for all development (build once + serve, no HMR/watchers). Kill and rebuild between test rounds.
@@ -278,6 +280,11 @@ Main context is the orchestrator. Delegate execution to custom agents (`.claude/
 Task(subagent_type="uat", run_in_background=true,
      prompt="Smoke test: auth + create board + one of each object type. Dev server on localhost:5173.")
 ```
+
+**Before spawning UAT agents, always print a status summary for the user:**
+- What scenarios will be tested (bulleted list)
+- How many agents / sessions (single vs parallel)
+- Expected complexity (quick smoke ~2min, full feature ~5min, multi-browser sync ~5-8min)
 
 Never run playwright-cli sessions or full test suites in main Opus context. Always delegate.
 
