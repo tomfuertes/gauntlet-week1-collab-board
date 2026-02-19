@@ -1,6 +1,8 @@
 import { useState } from "react";
 import type { AuthUser } from "../App";
 import { colors } from "../theme";
+import { Button } from "./Button";
+import { TextInput } from "./TextInput";
 
 export function AuthForm({ onAuth }: { onAuth: (user: AuthUser) => void }) {
   const [mode, setMode] = useState<"login" | "signup">("login");
@@ -76,72 +78,54 @@ export function AuthForm({ onAuth }: { onAuth: (user: AuthUser) => void }) {
             {mode === "login" ? "Sign in to your account" : "Create a new account"}
           </p>
 
-          <input
+          <TextInput
             type="text"
             placeholder="Username"
             value={username}
             onChange={(e) => setUsername(e.target.value)}
             required
-            style={inputStyle}
           />
 
           {mode === "signup" && (
-            <input
+            <TextInput
               type="text"
               placeholder="Display name (optional)"
               value={displayName}
               onChange={(e) => setDisplayName(e.target.value)}
-              style={inputStyle}
             />
           )}
 
-          <input
+          <TextInput
             type="password"
             placeholder="Password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             required
-            style={inputStyle}
           />
 
           {error && <p style={{ color: colors.error, fontSize: "0.875rem", margin: 0 }}>{error}</p>}
 
-          <button type="submit" disabled={submitting} style={btnStyle}>
+          <Button
+            variant="primary"
+            size="md"
+            type="submit"
+            disabled={submitting}
+            style={{ borderRadius: 6, fontSize: "1rem", fontWeight: 600, transition: "background 0.15s ease" }}
+          >
             {submitting ? "..." : mode === "login" ? "Sign In" : "Sign Up"}
-          </button>
+          </Button>
 
-          <button
+          <Button
+            variant="link"
             type="button"
             onClick={() => { setMode(mode === "login" ? "signup" : "login"); setError(""); }}
-            style={{ background: "none", border: "none", color: colors.accentLight, cursor: "pointer", fontSize: "0.875rem" }}
+            style={{ color: colors.accentLight, fontSize: "0.875rem" }}
           >
             {mode === "login" ? "Need an account? Sign up" : "Have an account? Sign in"}
-          </button>
+          </Button>
           <a href="#privacy" style={{ color: colors.textDim, fontSize: "0.75rem", textAlign: "center", textDecoration: "none" }}>Privacy Policy</a>
         </form>
       </div>
     </div>
   );
 }
-
-const inputStyle: React.CSSProperties = {
-  padding: "0.5rem 0.75rem",
-  borderRadius: 6,
-  border: `1px solid ${colors.border}`,
-  background: colors.surfaceAlt,
-  color: colors.text,
-  fontSize: "1rem",
-  outline: "none",
-};
-
-const btnStyle: React.CSSProperties = {
-  padding: "0.6rem",
-  borderRadius: 6,
-  border: "none",
-  background: colors.accent,
-  color: "#fff",
-  fontSize: "1rem",
-  cursor: "pointer",
-  fontWeight: 600,
-  transition: "background 0.15s ease",
-};

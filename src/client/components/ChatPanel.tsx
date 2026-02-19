@@ -4,6 +4,7 @@ import { useAgentChat } from "@cloudflare/ai-chat/react";
 import { isToolUIPart, getToolName } from "ai";
 import type { UIMessage } from "ai";
 import { colors, getUserColor } from "../theme";
+import { Button } from "./Button";
 import { PERSONA_COLORS } from "../../shared/types";
 import "../styles/animations.css";
 import { BOARD_TEMPLATES } from "../../shared/board-templates";
@@ -469,18 +470,18 @@ export function ChatPanel({ boardId, username, onClose, initialPrompt, selectedI
             maxHeight: 120, overflowY: "auto",
           }}
         />
-        <button
+        <Button
+          variant="primary"
+          size="md"
           onClick={handleSubmit}
           disabled={loading}
           style={{
             background: loading ? colors.accentDark : colors.accent,
-            border: "none", borderRadius: 8, color: "#fff",
-            padding: "0.5rem 0.75rem", cursor: loading ? "not-allowed" : "pointer",
-            fontSize: "0.8125rem", fontWeight: 600, flexShrink: 0,
+            borderRadius: 8, fontSize: "0.8125rem", fontWeight: 600, flexShrink: 0,
           }}
         >
           Send
-        </button>
+        </Button>
       </div>
     </div>
   );

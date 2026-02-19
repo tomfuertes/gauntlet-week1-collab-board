@@ -67,3 +67,18 @@ export interface ReplayEvent {
   obj?: BoardObject; // present for create/update
   id?: string; // present for delete
 }
+
+/** Result from Board DO mutations (mutate RPC) */
+export type MutateResult = { ok: boolean; error?: string };
+
+/**
+ * Minimal interface for the Board DO stub methods used by AI tools.
+ * mutate() intentionally narrows to BoardMutation (vs WSClientMessage in Board DO)
+ * for AI tool safety - prevents tools from sending cursor/reaction messages.
+ */
+export interface BoardStub {
+  readObjects(): Promise<BoardObject[]>;
+  readObject(id: string): Promise<BoardObject | null>;
+  mutate(msg: BoardMutation): Promise<MutateResult>;
+  injectCursor(x: number, y: number): Promise<void>;
+}

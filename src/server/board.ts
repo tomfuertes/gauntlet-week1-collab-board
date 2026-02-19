@@ -1,7 +1,7 @@
 import { DurableObject } from "cloudflare:workers";
 import { AI_USER_ID, AI_USERNAME } from "../shared/types";
-import type { BoardObject, ReplayEvent, WSClientMessage, WSServerMessage } from "../shared/types";
-import type { Bindings, MutateResult } from "./env";
+import type { BoardObject, MutateResult, ReplayEvent, WSClientMessage, WSServerMessage } from "../shared/types";
+import type { Bindings } from "./env";
 import { recordBoardActivity, markBoardSeen } from "./env";
 
 type ConnectionMeta =
@@ -39,6 +39,7 @@ export class Board extends DurableObject<Bindings> {
   private eventCount = -1; // -1 = not yet loaded
 
   // --- RPC methods (called by Worker via stub) ---
+  // readObjects, readObject, mutate, injectCursor implement the BoardStub contract (shared/types.ts)
 
   async getStats(): Promise<{ objectCount: number; eventCount: number }> {
     const [objs, evts] = await Promise.all([

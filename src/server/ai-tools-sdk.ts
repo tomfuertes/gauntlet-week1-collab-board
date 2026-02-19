@@ -1,16 +1,7 @@
 import { tool } from "ai";
 import { z } from "zod";
 import { AI_USER_ID } from "../shared/types";
-import type { BoardObject, BoardMutation } from "../shared/types";
-import type { MutateResult } from "./env";
-
-/** Minimal interface for the Board DO stub methods used by tools */
-interface BoardStub {
-  readObjects(): Promise<BoardObject[]>;
-  readObject(id: string): Promise<BoardObject | null>;
-  mutate(msg: BoardMutation): Promise<MutateResult>;
-  injectCursor(x: number, y: number): Promise<void>;
-}
+import type { BoardObject, MutateResult, BoardStub } from "../shared/types";
 
 // ---------------------------------------------------------------------------
 // Constants

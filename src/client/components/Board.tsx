@@ -20,6 +20,7 @@ import { OnboardModal } from "./OnboardModal";
 import { ConfettiBurst } from "./ConfettiBurst";
 import { BoardGrid } from "./BoardGrid";
 import { PerfOverlay } from "./PerfOverlay";
+import { Button } from "./Button";
 import "../styles/animations.css";
 
 const MIN_ZOOM = 0.1;
@@ -849,10 +850,7 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
         padding: "0 1rem", color: "#eee", fontSize: "0.875rem",
       }}>
         <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
-          <button onClick={onBack} style={{
-            background: "none", border: "none", color: "#94a3b8", cursor: "pointer",
-            fontSize: "0.875rem", padding: 0,
-          }}>&larr; Boards</button>
+          <Button variant="link" onClick={onBack} style={{ color: "#94a3b8", fontSize: "0.875rem" }}>&larr; Boards</Button>
           <span style={{ fontWeight: 600 }}>CollabBoard</span>
           <span data-testid="connection-state" data-state={connectionState} style={{
             width: 8, height: 8, borderRadius: "50%", display: "inline-block",
@@ -883,16 +881,14 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
           </div>
           <span style={{ color: "#888" }}>{Math.round(scale * 100)}%</span>
           <span>{user.displayName}</span>
-          <button onClick={() => {
+          <Button onClick={() => {
             navigator.clipboard.writeText(`${location.origin}/#watch/${boardId}`);
             setCopied(true);
             setTimeout(() => setCopied(false), 2000);
-          }} style={{ background: "none", border: "1px solid #475569", borderRadius: 4, color: "#94a3b8", padding: "0.25rem 0.5rem", cursor: "pointer", fontSize: "0.75rem" }}>
+          }}>
             {copied ? "Copied!" : "Invite Spectators"}
-          </button>
-          <button onClick={handleLogout} style={{ background: "none", border: "1px solid #475569", borderRadius: 4, color: "#94a3b8", padding: "0.25rem 0.5rem", cursor: "pointer", fontSize: "0.75rem" }}>
-            Logout
-          </button>
+          </Button>
+          <Button onClick={handleLogout}>Logout</Button>
         </div>
       </div>
 

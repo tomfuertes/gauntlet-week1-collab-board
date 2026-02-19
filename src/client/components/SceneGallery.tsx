@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { colors } from "../theme";
+import { Button } from "./Button";
 
 interface SceneMeta {
   id: string;
@@ -136,15 +137,9 @@ export function SceneGallery({ onBack }: { onBack: () => void }) {
         fontSize: "0.875rem",
       }}>
         <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
-          <button
-            onClick={onBack}
-            style={{
-              background: "none", border: "none", color: colors.accentLight,
-              cursor: "pointer", fontSize: "0.875rem", padding: 0,
-            }}
-          >
+          <Button variant="link" onClick={onBack} style={{ color: colors.accentLight, fontSize: "0.875rem" }}>
             &larr; Back
-          </button>
+          </Button>
           <span style={{ fontWeight: 600 }}>Scene Gallery</span>
         </div>
       </div>

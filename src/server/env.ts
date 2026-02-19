@@ -11,9 +11,6 @@ export type Bindings = {
   ANTHROPIC_API_KEY: string;
 };
 
-/** Result from Board DO mutations (mutate RPC) */
-export type MutateResult = { ok: boolean; error?: string };
-
 /** Increment activity counter for a board (obj:create, obj:delete, chat message) */
 export function recordBoardActivity(db: D1Database, boardId: string): Promise<D1Response> {
   return db.prepare(
