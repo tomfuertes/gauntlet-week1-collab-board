@@ -4,11 +4,14 @@ import type { BoardObject, ReplayEvent, WSClientMessage, WSServerMessage } from 
 import type { Bindings, MutateResult } from "./env";
 import { recordBoardActivity, markBoardSeen } from "./env";
 
-interface ConnectionMeta {
-  userId: string;
-  username: string;
-  editingObjectId?: string;
-}
+type ConnectionMeta =
+  | { role: "player"; userId: string; username: string; editingObjectId?: string }
+  | { role: "spectator"; userId: string; username: string };
+
+// Allowed emoji set for spectator reactions (must match client REACTION_EMOJIS)
+const ALLOWED_REACTION_EMOJIS = new Set([
+  "\uD83D\uDC4F", "\uD83D\uDE02", "\uD83D\uDD25", "\u2764\uFE0F", "\uD83D\uDE2E", "\uD83C\uDFAD",
+]);
 
 export class Board extends DurableObject<Bindings> {
   // Timestamp when AI presence expires. Class properties reset on DO hibernation,
@@ -16,6 +19,8 @@ export class Board extends DurableObject<Bindings> {
   private aiActiveUntil = 0;
   // Cached boardId (lazy-loaded from DO Storage, set on first WS connect)
   private _boardId: string | null = null;
+  // Rate limit: last reaction timestamp per userId (resets on hibernation, which is fine)
+  private lastReactionAt = new Map<string, number>();
 
   private async getBoardId(): Promise<string | null> {
     if (!this._boardId) {
@@ -88,8 +93,8 @@ export class Board extends DurableObject<Bindings> {
   /** Set AI presence visibility in the presence list */
   async setAiPresence(active: boolean): Promise<void> {
     this.aiActiveUntil = active ? Date.now() + 60_000 : 0;
-    const users = this.getPresenceList();
-    this.broadcast({ type: "presence", users });
+    const { users, spectatorCount } = this.getPresenceList();
+    this.broadcast({ type: "presence", users, spectatorCount });
   }
 
   /** Delete all objects created by a specific AI batch, broadcast deletions */
@@ -118,6 +123,7 @@ export class Board extends DurableObject<Bindings> {
     const userId = url.searchParams.get("userId");
     const username = url.searchParams.get("username");
     const boardId = url.searchParams.get("boardId");
+    const role = url.searchParams.get("role") === "spectator" ? "spectator" as const : "player" as const;
     if (!userId || !username) {
       return new Response("Missing user info", { status: 400 });
     }
@@ -129,13 +135,13 @@ export class Board extends DurableObject<Bindings> {
     const [client, server] = [pair[0], pair[1]];
 
     this.ctx.acceptWebSocket(server);
-    server.serializeAttachment({ userId, username } satisfies ConnectionMeta);
+    server.serializeAttachment({ userId, username, role } satisfies ConnectionMeta);
 
     const objects = await this.getAllObjects();
-    const users = this.getPresenceList();
+    const { users, spectatorCount } = this.getPresenceList();
     server.send(JSON.stringify({ type: "init", objects } satisfies WSServerMessage));
-    server.send(JSON.stringify({ type: "presence", users } satisfies WSServerMessage));
-    this.broadcast({ type: "presence", users }, server);
+    server.send(JSON.stringify({ type: "presence", users, spectatorCount } satisfies WSServerMessage));
+    this.broadcast({ type: "presence", users, spectatorCount }, server);
 
     // Mark board as seen for connecting user (non-blocking)
     if (boardId) {
@@ -163,6 +169,12 @@ export class Board extends DurableObject<Bindings> {
       return;
     }
 
+    // Spectators can only send cursor updates and reactions
+    if (meta.role === "spectator" && msg.type !== "cursor" && msg.type !== "reaction") {
+      console.warn(JSON.stringify({ event: "spectator:blocked", type: msg.type, userId: meta.userId }));
+      return;
+    }
+
     if (msg.type === "cursor") {
       this.broadcast(
         { type: "cursor", userId: meta.userId, username: meta.username, x: msg.x, y: msg.y },
@@ -171,8 +183,22 @@ export class Board extends DurableObject<Bindings> {
       return;
     }
 
-    if (msg.type === "text:cursor") {
-      ws.serializeAttachment({ ...meta, editingObjectId: msg.objectId } satisfies ConnectionMeta);
+    if (msg.type === "reaction") {
+      if (!ALLOWED_REACTION_EMOJIS.has(msg.emoji)) return;
+      // Rate limit: 1 reaction per second per user
+      const now = Date.now();
+      const last = this.lastReactionAt.get(meta.userId) ?? 0;
+      if (now - last < 1000) return;
+      this.lastReactionAt.set(meta.userId, now);
+      this.broadcast(
+        { type: "reaction", userId: meta.userId, emoji: msg.emoji, x: msg.x, y: msg.y }
+      );
+      return;
+    }
+
+    if (msg.type === "text:cursor" && meta.role === "player") {
+      const updated: ConnectionMeta = { role: "player", userId: meta.userId, username: meta.username, editingObjectId: msg.objectId };
+      ws.serializeAttachment(updated);
       this.broadcast(
         { type: "text:cursor", userId: meta.userId, username: meta.username, objectId: msg.objectId, position: msg.position },
         ws
@@ -180,8 +206,9 @@ export class Board extends DurableObject<Bindings> {
       return;
     }
 
-    if (msg.type === "text:blur") {
-      ws.serializeAttachment({ ...meta, editingObjectId: undefined } satisfies ConnectionMeta);
+    if (msg.type === "text:blur" && meta.role === "player") {
+      const updated: ConnectionMeta = { role: "player", userId: meta.userId, username: meta.username };
+      ws.serializeAttachment(updated);
       this.broadcast({ type: "text:blur", userId: meta.userId, objectId: msg.objectId }, ws);
       return;
     }
@@ -208,11 +235,11 @@ export class Board extends DurableObject<Bindings> {
 
   private handleDisconnect(ws: WebSocket): void {
     const meta = ws.deserializeAttachment() as ConnectionMeta | null;
-    if (meta?.editingObjectId) {
+    if (meta && meta.role === "player" && meta.editingObjectId) {
       this.broadcast({ type: "text:blur", userId: meta.userId, objectId: meta.editingObjectId });
     }
-    const users = this.getPresenceList();
-    this.broadcast({ type: "presence", users });
+    const { users, spectatorCount } = this.getPresenceList();
+    this.broadcast({ type: "presence", users, spectatorCount });
 
     // Mark board as seen on disconnect (catches activity created during the session)
     if (meta) {
@@ -242,12 +269,18 @@ export class Board extends DurableObject<Bindings> {
     return [...entries.values()];
   }
 
-  private getPresenceList(): { id: string; username: string }[] {
+  private getPresenceList(): { users: { id: string; username: string }[]; spectatorCount: number } {
     const seen = new Set<string>();
     const users: { id: string; username: string }[] = [];
+    let spectatorCount = 0;
     for (const ws of this.getWebSockets()) {
       const meta = ws.deserializeAttachment() as ConnectionMeta | null;
-      if (meta && !seen.has(meta.userId)) {
+      if (!meta) continue;
+      if (meta.role === "spectator") {
+        spectatorCount++;
+        continue;
+      }
+      if (!seen.has(meta.userId)) {
         seen.add(meta.userId);
         users.push({ id: meta.userId, username: meta.username });
       }
@@ -255,7 +288,7 @@ export class Board extends DurableObject<Bindings> {
     if (this.aiActiveUntil > Date.now()) {
       users.push({ id: AI_USER_ID, username: AI_USERNAME });
     }
-    return users;
+    return { users, spectatorCount };
   }
 
   private async recordEvent(event: ReplayEvent, debounceMs = 500): Promise<void> {

@@ -124,7 +124,7 @@ src/
   client/               # React SPA
     index.html          # Vite entry
     main.tsx            # React root
-    App.tsx             # App shell + hash routing (#board/{id}, #replay/{id})
+    App.tsx             # App shell + hash routing (#board/{id}, #replay/{id}, #watch/{id})
     theme.ts            # Shared color constants (accent, surfaces, borders, cursors)
     components/
       Board.tsx         # Canvas + chat panel integration (~1530 lines)
@@ -132,21 +132,23 @@ src/
       BoardList.tsx     # Board grid (CRUD) - landing page after login
       ChatPanel.tsx     # AI chat sidebar (dynamic intent chips, improv scene interaction)
       ReplayViewer.tsx  # Read-only scene replay player (public, no auth)
+      SpectatorView.tsx # Live read-only board view with emoji reactions (public, no auth)
       SceneGallery.tsx  # Public gallery grid of replayable scenes (#gallery route)
       PerfOverlay.tsx   # Dev performance overlay (FPS, msg age, nodes, connection state)
       ConfettiBurst.tsx # Confetti particle burst animation (extracted from Board)
       BoardGrid.tsx     # Dot grid + radial glow background (extracted from Board)
     hooks/
-      useWebSocket.ts   # WebSocket state management (Board DO)
+      useWebSocket.ts   # WebSocket state management (Board DO, player connections)
+      useSpectatorSocket.ts # WebSocket for spectators (read-only, cursor + reactions only)
       useUndoRedo.ts    # Local undo/redo stack (max 50, Cmd+Z/Cmd+Shift+Z)
       useThrottledCallback.ts  # Generic throttle hook (drag, cursor sends)
       useAiObjectEffects.ts  # AI glow + confetti trigger logic (extracted from Board)
       useKeyboardShortcuts.ts  # Keyboard handlers: Cmd+Z, Cmd+C, Delete, Escape (extracted from Board)
       useDragSelection.ts      # Marquee/rubber-band selection logic (extracted from Board)
     styles/
-      animations.css    # Shared CSS keyframes (cb-pulse, cb-confetti)
+      animations.css    # Shared CSS keyframes (cb-pulse, cb-confetti, cb-reaction-float)
   server/               # CF Worker
-    index.ts            # Hono app - routes, board CRUD, DO exports, agent routing, WS upgrade, public replay + gallery API
+    index.ts            # Hono app - routes, board CRUD, DO exports, agent routing, WS upgrade (player + spectator), public replay + gallery API
     auth.ts             # Auth routes + PBKDF2 hashing + session helpers
     env.ts              # Bindings type, D1 helpers (recordBoardActivity, markBoardSeen)
     prompts.ts          # All LLM prompt content + scene phases + PROMPT_VERSION constant
@@ -168,21 +170,23 @@ migrations/             # D1 SQL migrations (tracked via d1_migrations table, np
 7. AI commands: client connects to ChatAgent DO via WebSocket (`/agents/ChatAgent/<boardId>`) -> `useAgentChat` sends messages -> ChatAgent runs `streamText()` with tools -> tool callbacks via Board DO RPC (`readObject`/`mutate`) -> Board DO persists + broadcasts to all board WebSocket clients
 8. Scene replay: Board DO records mutations as `evt:{ts}:{rand}` keys in storage (debounced 500ms for updates, 2000 cap). Public `GET /api/boards/:id/replay` returns sorted events. `#replay/{id}` route renders read-only ReplayViewer (no auth required).
 9. Scene gallery: Public `GET /api/boards/public` returns boards with activity (D1 join: boards + users + board_activity). `#gallery` route renders SceneGallery grid (no auth). Cards link to `#replay/{id}`.
+10. Live spectator: Public `GET /ws/watch/:boardId` upgrades to spectator WebSocket (no auth). DO tags connection as `role: "spectator"` via `ConnectionMeta` discriminated union. Spectators receive all broadcasts but can only send cursor + reaction messages. `#watch/{id}` route renders read-only SpectatorView with emoji reaction bar.
 
 ### WebSocket Protocol
 
 ```
-Client -> DO: cursor | obj:create | obj:update | obj:delete | batch:undo
-DO -> Client: cursor | obj:create | obj:update | obj:delete | presence | init
+Player -> DO:    cursor | obj:create | obj:update | obj:delete | batch:undo | reaction
+Spectator -> DO: cursor | reaction (all other messages silently dropped)
+DO -> Client:    cursor | obj:create | obj:update | obj:delete | presence | init | reaction
 ```
 
-DO echoes mutations to OTHER clients only (sender already applied optimistically).
+DO echoes mutations to OTHER clients only (sender already applied optimistically). Presence messages include `spectatorCount` (number of anonymous spectator connections). Reactions are broadcast to ALL clients (including sender - no optimistic apply). Reaction emoji whitelist + 1/sec rate limit enforced server-side.
 
 **IMPORTANT:** The WS message field for objects is `obj` (not `object`). Example: `{ type: "obj:create", obj: { id, type, x, y, ... } }`. Using `object` instead of `obj` silently fails - the DO ignores the message.
 
 **Ephemeral state TTL pattern:** For cursor-like state that relies on explicit cleanup messages (e.g. `text:blur`), also track `lastSeen` + sweep with `setInterval`. Messages can be dropped on WS disconnect; TTL ensures eventual consistency without server changes.
 
-**DO hibernation:** Class-level properties reset on hibernation. Store ephemeral per-connection state in `ws.serializeAttachment()` - survives hibernation and is readable in `webSocketClose`.
+**DO hibernation:** Class-level properties reset on hibernation. Store ephemeral per-connection state in `ws.serializeAttachment()` - survives hibernation and is readable in `webSocketClose`. Rate-limit maps (e.g. `lastReactionAt`) reset on hibernation, which is correct - the cooldown is short-lived and doesn't need persistence.
 
 ### Board Object Shape
 
@@ -206,7 +210,7 @@ Each object stored as separate DO Storage key (`obj:{uuid}`, ~200 bytes). LWW vi
 - Build: Vite `manualChunks` splits vendor-react, vendor-canvas, vendor-ai. All chunks <500KB. Vendor chunks are long-term cacheable.
 - Dev: `scripts/dev.sh` raises `ulimit -n 10240` for multi-worktree setups (macOS default 256 causes EMFILE). Vite uses chokidar + FSEvents on macOS (NOT watchman - chokidar has no watchman support). `server.watch.ignored` excludes dist/.wrangler/.playwright-cli to reduce FD usage.
 - Two-browser test is the primary validation method throughout development
-- Hash-based routing (`#board/{id}`, `#replay/{id}`, `#gallery`, `#privacy`) - no React Router, no server-side routing needed
+- Hash-based routing (`#board/{id}`, `#replay/{id}`, `#watch/{id}`, `#gallery`, `#privacy`) - no React Router, no server-side routing needed
 - Board list shows user's own boards + system boards; any auth'd user can access any board via URL
 - AI tool helpers: `randomPos()`, `makeObject()`, `createAndMutate()` in `ai-tools-sdk.ts` - all create tools use these. `createAndMutate` handles error logging and returns `{x, y, width, height}` for LLM chaining.
 - Cursor colors: `getUserColor(userId)` uses hash-based assignment (same palette in Board.tsx and Cursors.tsx). Never use array-index-based color assignment - it produces inconsistent colors across components.

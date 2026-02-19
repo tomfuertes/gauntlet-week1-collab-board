@@ -33,18 +33,20 @@ export type WSClientMessage =
   | { type: "obj:delete"; id: string }
   | { type: "text:cursor"; objectId: string; position: number }
   | { type: "text:blur"; objectId: string }
-  | { type: "batch:undo"; batchId: string };
+  | { type: "batch:undo"; batchId: string }
+  | { type: "reaction"; emoji: string; x: number; y: number };
 
 export type WSServerMessage =
   | { type: "cursor"; userId: string; username: string; x: number; y: number }
   | { type: "obj:create"; obj: BoardObject }
   | { type: "obj:update"; obj: BoardObject }
   | { type: "obj:delete"; id: string }
-  | { type: "presence"; users: { id: string; username: string }[] }
+  | { type: "presence"; users: { id: string; username: string }[]; spectatorCount: number }
   | { type: "init"; objects: BoardObject[] }
   | { type: "board:deleted" }
   | { type: "text:cursor"; userId: string; username: string; objectId: string; position: number }
-  | { type: "text:blur"; userId: string; objectId: string };
+  | { type: "text:blur"; userId: string; objectId: string }
+  | { type: "reaction"; userId: string; emoji: string; x: number; y: number };
 
 export const AI_USER_ID = "ai-agent" as const;
 export const AI_USERNAME = "AI Assistant" as const;

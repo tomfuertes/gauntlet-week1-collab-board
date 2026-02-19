@@ -163,6 +163,31 @@ app.all("/agents/*", async (c) => {
   return (await routeAgentRequest(c.req.raw, c.env)) || c.text("Not found", 404);
 });
 
+// WebSocket upgrade for spectators - no auth required (public, like replay)
+app.get("/ws/watch/:boardId", async (c) => {
+  const upgradeHeader = c.req.header("Upgrade");
+  if (upgradeHeader !== "websocket") {
+    return c.text("Expected WebSocket", 426);
+  }
+
+  const boardId = c.req.param("boardId");
+  const doId = c.env.BOARD.idFromName(boardId);
+  const stub = c.env.BOARD.get(doId);
+
+  // Generate a unique spectator identity (no auth - anonymous viewer)
+  const spectatorId = `spectator-${crypto.randomUUID()}`;
+
+  const url = new URL(c.req.url);
+  url.searchParams.set("userId", spectatorId);
+  url.searchParams.set("username", "Spectator");
+  url.searchParams.set("boardId", boardId);
+  url.searchParams.set("role", "spectator");
+
+  return stub.fetch(new Request(url.toString(), {
+    headers: c.req.raw.headers,
+  }));
+});
+
 // WebSocket upgrade - authenticate then forward to Board DO
 app.get("/ws/board/:boardId", async (c) => {
   const upgradeHeader = c.req.header("Upgrade");
