@@ -1,5 +1,5 @@
 import React, { useState, useRef, useCallback, useEffect } from "react";
-import { Stage, Layer, Rect, Text, Group, Transformer, Ellipse, Line as KonvaLine, Arrow } from "react-konva";
+import { Stage, Layer, Rect, Text, Group, Transformer, Ellipse, Line as KonvaLine, Arrow, Image as KonvaImage } from "react-konva";
 import type { KonvaEventObject } from "konva/lib/Node";
 import Konva from "konva";
 import type { AuthUser } from "../App";
@@ -73,6 +73,30 @@ function rectsIntersect(
   b: { x: number; y: number; width: number; height: number },
 ): boolean {
   return a.x < b.x + b.width && a.x + a.w > b.x && a.y < b.y + b.height && a.y + a.h > b.y;
+}
+
+// Renders a base64 image using Konva's Image component, handling async loading
+function KonvaImageRenderer({ src, width, height, aiGlowProps }: { src: string; width: number; height: number; aiGlowProps: Record<string, unknown> }) {
+  const [img, setImg] = useState<HTMLImageElement | null>(null);
+  const [error, setError] = useState(false);
+  useEffect(() => {
+    if (!src) { setError(true); return; }
+    setError(false);
+    setImg(null);
+    let cancelled = false;
+    const image = new window.Image();
+    image.onload = () => { if (!cancelled) setImg(image); };
+    image.onerror = () => { if (!cancelled) setError(true); };
+    image.src = src;
+    return () => { cancelled = true; };
+  }, [src]);
+  if (error) {
+    return <Rect width={width} height={height} fill="rgba(239,68,68,0.08)" stroke="#ef4444" strokeWidth={1} dash={[4, 4]} cornerRadius={4} />;
+  }
+  if (!img) {
+    return <Rect width={width} height={height} fill="rgba(99,102,241,0.08)" stroke="#6366f1" strokeWidth={1} dash={[4, 4]} cornerRadius={4} />;
+  }
+  return <KonvaImage image={img} width={width} height={height} cornerRadius={4} {...aiGlowProps} />;
 }
 
 // Memoized object renderer - prevents re-rendering unchanged objects when Board state changes
@@ -171,6 +195,13 @@ const BoardObjectRenderer = React.memo(function BoardObjectRenderer({
     return (
       <Group {...groupProps}>
         <Text text={obj.props.text || ""} fontSize={16} fill={obj.props.color || "#ffffff"} width={obj.width} />
+      </Group>
+    );
+  }
+  if (obj.type === "image") {
+    return (
+      <Group {...groupProps}>
+        <KonvaImageRenderer src={obj.props.src || ""} width={obj.width} height={obj.height} aiGlowProps={aiGlowProps} />
       </Group>
     );
   }

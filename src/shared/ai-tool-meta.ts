@@ -14,6 +14,7 @@ export const TOOL_ICONS: Record<ToolName, string> = {
   changeColor: "\u{1F3A8}",
   getBoardState: "\u{1F440}",
   deleteObject: "\u{1F5D1}",
+  generateImage: "\u{2728}",
 };
 
 export const TOOL_LABELS: Record<ToolName, string> = {
@@ -27,6 +28,7 @@ export const TOOL_LABELS: Record<ToolName, string> = {
   changeColor: "Changing color",
   getBoardState: "Reading board",
   deleteObject: "Deleting object",
+  generateImage: "Generating image",
 };
 
 /** Lookup icon by dynamic string key (SSE events have untyped name) */
@@ -48,6 +50,7 @@ export function toolSummary(t: { name: string; label: string; args?: Record<stri
     case "changeColor": return `Changed color to ${a.color || "..."}`;
     case "getBoardState": return `Read board${a.filter ? ` (${a.filter}s)` : ""}`;
     case "deleteObject": return "Deleted object";
+    case "generateImage": return `Generated image: "${a.prompt || "..."}"`;
     default: return t.label;
   }
 }

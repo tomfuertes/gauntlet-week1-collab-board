@@ -133,7 +133,7 @@ export class ChatAgent extends AIChatAgent<Bindings> {
     const doId = this.env.BOARD.idFromName(this.name);
     const boardStub = this.env.BOARD.get(doId);
     const batchId = crypto.randomUUID();
-    const tools = createSDKTools(boardStub, batchId);
+    const tools = createSDKTools(boardStub, batchId, this.env.AI);
 
     // Build system prompt with optional selection + multiplayer context
     let systemPrompt = SYSTEM_PROMPT;
@@ -308,7 +308,7 @@ export class ChatAgent extends AIChatAgent<Bindings> {
     const doId = this.env.BOARD.idFromName(this.name);
     const boardStub = this.env.BOARD.get(doId);
     const batchId = crypto.randomUUID();
-    const tools = createSDKTools(boardStub, batchId);
+    const tools = createSDKTools(boardStub, batchId, this.env.AI);
 
     // Determine scene phase from user message count
     const userMessageCount = this.messages.filter(
