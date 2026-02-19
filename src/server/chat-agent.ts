@@ -16,7 +16,6 @@ import {
   DIRECTOR_PROMPTS_YESAND,
   PROMPT_VERSION,
   computeScenePhase,
-  PERSONAS,
   MAX_AUTONOMOUS_EXCHANGES,
   buildPersonaSystemPrompt,
   computeBudgetPhase,
@@ -27,8 +26,8 @@ import type { GameModeState } from "./prompts";
 import { HAT_PROMPTS, getRandomHatPrompt } from "./hat-prompts";
 import type { Bindings } from "./env";
 import { recordBoardActivity } from "./env";
-import type { BoardObject, BoardObjectProps, GameMode } from "../shared/types";
-import { SCENE_TURN_BUDGET } from "../shared/types";
+import type { BoardObject, BoardObjectProps, GameMode, Persona } from "../shared/types";
+import { SCENE_TURN_BUDGET, DEFAULT_PERSONAS } from "../shared/types";
 
 /**
  * Sanitize UIMessages to ensure all tool invocation inputs are valid objects.
@@ -143,6 +142,20 @@ export class ChatAgent extends AIChatAgent<Bindings> {
     this._dailySpendNeurons += inputTokens + outputTokens;
   }
 
+  /** Load board personas from D1, falling back to defaults on error or empty result.
+   *  Never throws - D1 failures degrade gracefully to defaults with a logged warning. */
+  private async _getPersonas(): Promise<Persona[]> {
+    try {
+      const { results } = await this.env.DB.prepare(
+        "SELECT id, name, trait, color FROM board_personas WHERE board_id = ? ORDER BY created_at"
+      ).bind(this.name).all<Persona>();
+      return results.length > 0 ? (results as Persona[]) : [...DEFAULT_PERSONAS];
+    } catch (err) {
+      console.error(JSON.stringify({ event: "personas:load-error", boardId: this.name, error: String(err) }));
+      return [...DEFAULT_PERSONAS];
+    }
+  }
+
   private _useAnthropic(): boolean {
     // Cast: wrangler types generate literal "false" but value is overridable at runtime
     return String(this.env.ENABLE_ANTHROPIC_API) === "true" && !!this.env.ANTHROPIC_API_KEY;
@@ -217,7 +230,10 @@ export class ChatAgent extends AIChatAgent<Bindings> {
     this._isGenerating = true;
     this._autonomousExchangeCount = 0; // human spoke - reset cooldown
     const startTime = Date.now();
-    const activePersona = PERSONAS[this._activePersonaIndex];
+    const personas = await this._getPersonas();
+    const activeIndex = this._activePersonaIndex % personas.length;
+    const activePersona = personas[activeIndex];
+    const otherPersona = personas.length > 1 ? personas[(activeIndex + 1) % personas.length] : undefined;
     // Budget enforcement: count human turns (the message just added is already in this.messages)
     const humanTurns = this.messages.filter((m) => m.role === "user").length;
     const budgetPhase = computeBudgetPhase(humanTurns, SCENE_TURN_BUDGET);
@@ -313,7 +329,7 @@ export class ChatAgent extends AIChatAgent<Bindings> {
     const gameModeBlock = buildGameModePromptBlock(this._gameMode, gameModeState);
 
     // Build persona-aware system prompt with optional selection + multiplayer context
-    let systemPrompt = buildPersonaSystemPrompt(this._activePersonaIndex, SYSTEM_PROMPT, gameModeBlock);
+    let systemPrompt = buildPersonaSystemPrompt(activePersona, otherPersona, SYSTEM_PROMPT, gameModeBlock);
 
     // Inject budget phase prompt when not in normal phase
     if (budgetPhase !== "normal") {
@@ -357,9 +373,6 @@ export class ChatAgent extends AIChatAgent<Bindings> {
       }
     };
 
-    // Capture persona index for the reactive trigger (before it might change)
-    const activeIndex = this._activePersonaIndex;
-
     const wrappedOnFinish: typeof onFinish = async (...args: Parameters<typeof onFinish>) => {
       this._isGenerating = false;
       await clearPresence();
@@ -374,11 +387,11 @@ export class ChatAgent extends AIChatAgent<Bindings> {
       this._logRequestEnd("chat", activePersona.name, startTime, steps, toolCalls);
 
       // Ensure active persona's message has the [NAME] prefix (LLMs sometimes forget)
-      this._ensurePersonaPrefix(activeIndex);
+      this._ensurePersonaPrefix(activePersona.name);
 
       // Trigger reactive persona to "yes, and" the active persona's response
       this.ctx.waitUntil(
-        this._triggerReactivePersona(activeIndex).catch((err: unknown) => {
+        this._triggerReactivePersona(activeIndex, personas).catch((err: unknown) => {
           console.error(JSON.stringify({ event: "reactive:unhandled", boardId: this.name, error: String(err) }));
         })
       );
@@ -420,24 +433,23 @@ export class ChatAgent extends AIChatAgent<Bindings> {
 
   /** Ensure the last assistant message starts with [PERSONA_NAME] prefix.
    *  Uses immutable update + persist to avoid mutating SDK-owned objects. */
-  private _ensurePersonaPrefix(personaIndex: number) {
-    const persona = PERSONAS[personaIndex];
+  private _ensurePersonaPrefix(personaName: string) {
     const lastMsg = this.messages[this.messages.length - 1];
     if (!lastMsg || lastMsg.role !== "assistant") return;
 
     const needsFix = lastMsg.parts.some(
-      (p) => p.type === "text" && !p.text.startsWith(`[${persona.name}]`)
+      (p) => p.type === "text" && !p.text.startsWith(`[${personaName}]`)
     );
     if (!needsFix) {
       if (!lastMsg.parts.some((p) => p.type === "text")) {
-        console.warn(JSON.stringify({ event: "persona:prefix:no-text-part", boardId: this.name, persona: persona.name }));
+        console.warn(JSON.stringify({ event: "persona:prefix:no-text-part", boardId: this.name, persona: personaName }));
       }
       return;
     }
 
     const newParts = lastMsg.parts.map((part) => {
-      if (part.type === "text" && !part.text.startsWith(`[${persona.name}]`)) {
-        return { ...part, text: `[${persona.name}] ${part.text}` };
+      if (part.type === "text" && !part.text.startsWith(`[${personaName}]`)) {
+        return { ...part, text: `[${personaName}] ${part.text}` };
       }
       return part;
     });
@@ -509,7 +521,7 @@ export class ChatAgent extends AIChatAgent<Bindings> {
 
   /** After the active persona finishes, trigger the other persona to react.
    *  Claims _isGenerating mutex BEFORE the delay to prevent TOCTOU races. */
-  private async _triggerReactivePersona(activeIndex: number) {
+  private async _triggerReactivePersona(activeIndex: number, personas?: Persona[]) {
     // Guard: scene budget exhausted - no reactive exchanges after scene ends
     const reactiveHumanTurns = this.messages.filter((m) => m.role === "user").length;
     if (computeBudgetPhase(reactiveHumanTurns, SCENE_TURN_BUDGET) === "scene-over") {
@@ -549,9 +561,18 @@ export class ChatAgent extends AIChatAgent<Bindings> {
       return;
     }
 
-    const reactiveIndex = activeIndex === 0 ? 1 : 0;
-    const reactivePersona = PERSONAS[reactiveIndex];
-    const activePersona = PERSONAS[activeIndex];
+    // Load personas if not passed in (director nudge path)
+    const effectivePersonas = personas ?? await this._getPersonas();
+    // Skip reactive if only 1 persona (can't react to yourself)
+    if (effectivePersonas.length <= 1) {
+      this._isGenerating = false;
+      console.debug(JSON.stringify({ event: "reactive:skip", reason: "single-persona", boardId: this.name }));
+      return;
+    }
+    const boundActive = activeIndex % effectivePersonas.length;
+    const reactiveIndex = (boundActive + 1) % effectivePersonas.length;
+    const reactivePersona = effectivePersonas[reactiveIndex];
+    const activePersona = effectivePersonas[boundActive];
     const startTime = Date.now();
     this._logRequestStart("reactive", reactivePersona.name);
 
@@ -569,7 +590,7 @@ export class ChatAgent extends AIChatAgent<Bindings> {
     const reactiveGameModeBlock = buildGameModePromptBlock(this._gameMode, reactiveGameModeState);
 
     const reactiveSystem =
-      buildPersonaSystemPrompt(reactiveIndex, SYSTEM_PROMPT, reactiveGameModeBlock) +
+      buildPersonaSystemPrompt(reactivePersona, activePersona, SYSTEM_PROMPT, reactiveGameModeBlock) +
       `\n\n[REACTIVE MODE] You are responding autonomously to what just happened. ` +
       `Your improv partner ${activePersona.name} just made their move. ` +
       `React to it and the human's prompt. Keep it brief - 1 sentence of chat and 1-2 canvas actions max. ` +
@@ -705,8 +726,10 @@ export class ChatAgent extends AIChatAgent<Bindings> {
 
     this._isGenerating = true;
     const startTime = Date.now();
-    const directorPersona = PERSONAS[this._activePersonaIndex];
-    const directorIndex = this._activePersonaIndex;
+    const directorPersonas = await this._getPersonas();
+    const directorIndex = this._activePersonaIndex % directorPersonas.length;
+    const directorPersona = directorPersonas[directorIndex];
+    const directorOther = directorPersonas.length > 1 ? directorPersonas[(directorIndex + 1) % directorPersonas.length] : undefined;
 
     // Determine scene phase from user message count
     const userMessageCount = directorHumanTurns;
@@ -747,7 +770,7 @@ export class ChatAgent extends AIChatAgent<Bindings> {
 
       // Director nudge uses the active persona's voice + budget-aware prompts
       let directorSystem =
-        buildPersonaSystemPrompt(directorIndex, SYSTEM_PROMPT, directorGameModeBlock) +
+        buildPersonaSystemPrompt(directorPersona, directorOther, SYSTEM_PROMPT, directorGameModeBlock) +
         `\n\n[DIRECTOR MODE] You are the scene director. The players have been quiet for a while. ` +
         directorInstructions +
         `\n\nAct NOW - add something to the canvas to restart momentum. ` +
@@ -778,9 +801,10 @@ export class ChatAgent extends AIChatAgent<Bindings> {
       this._logRequestEnd("director", directorPersona.name, startTime, result.steps.length, totalToolCalls, { phase });
 
       // Director nudge also triggers the other persona to react
+      // Pass directorPersonas to avoid a redundant second D1 query
       this._autonomousExchangeCount++;
       this.ctx.waitUntil(
-        this._triggerReactivePersona(directorIndex).catch((err: unknown) => {
+        this._triggerReactivePersona(directorIndex, directorPersonas).catch((err: unknown) => {
           console.error(JSON.stringify({ event: "reactive:unhandled", boardId: this.name, error: String(err) }));
         })
       );

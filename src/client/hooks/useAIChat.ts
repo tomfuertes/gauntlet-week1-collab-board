@@ -3,8 +3,6 @@ import { useAgent } from "agents/react";
 import { useAgentChat } from "@cloudflare/ai-chat/react";
 import { isToolUIPart, getToolName } from "ai";
 import type { UIMessage } from "ai";
-import { PERSONA_META } from "../../shared/types";
-
 interface ToolCall {
   name: string;
   label: string;
@@ -20,7 +18,6 @@ export interface AIChatMessage {
 }
 
 const SENDER_RE = /^\[([^\]]+)\]\s*/;
-const PERSONA_NAMES: Set<string> = new Set(PERSONA_META.map((p) => p.name));
 
 export function useAIChat(boardId: string, selectedIds?: Set<string>, username?: string) {
   // Connect to ChatAgent DO instance named by boardId
@@ -71,9 +68,9 @@ export function useAIChat(boardId: string, selectedIds?: Set<string>, username?:
       const match = content.match(SENDER_RE);
       if (match) {
         const extracted = match[1];
-        // For assistant messages, only strip known persona prefixes to avoid
-        // false positives on text that happens to start with brackets
-        if (msg.role === "user" || PERSONA_NAMES.has(extracted)) {
+        // For assistant messages, any [WORD] prefix is a persona name -
+        // the AI is always instructed to prefix responses with [NAME]
+        if (msg.role === "user" || msg.role === "assistant") {
           sender = extracted;
           displayContent = content.slice(match[0].length);
         }

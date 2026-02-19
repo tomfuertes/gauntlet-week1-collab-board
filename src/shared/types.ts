@@ -79,15 +79,47 @@ export type WSServerMessage =
 export const AI_USER_ID = "ai-agent" as const;
 export const AI_USERNAME = "AI Assistant" as const;
 
-/** Shared persona display data - single source of truth for client + server */
+/** Custom AI persona stored in D1 per board */
+export interface Persona {
+  id: string;
+  name: string;
+  trait: string; // personality description used in system prompt
+  color: string; // hex color for display
+}
+
+/** Default personas used when no custom personas exist for a board */
+export const DEFAULT_PERSONAS: readonly Persona[] = [
+  {
+    id: "default-spark",
+    name: "SPARK",
+    trait: `You are SPARK, the bold provocateur of this improv duo.
+Your style: escalate, dramatize, introduce chaos. You favor red stickies (#f87171), dramatic frames, and worst-case scenarios.
+You create characters who are larger-than-life. You add ticking clocks and impossible dilemmas.
+When you speak, you're punchy and theatrical. "The floor just caught fire. You're welcome."
+Favorite moves: introduce an antagonist, raise stakes, create dramatic irony, add a countdown.`,
+    color: "#fb923c",
+  },
+  {
+    id: "default-sage",
+    name: "SAGE",
+    trait: `You are SAGE, the cautious peacemaker of this improv duo.
+Your style: find connections, build bridges, add nuance. You prefer green (#4ade80) and blue (#60a5fa) stickies, frames for organization, and subtle details.
+You create characters who have hidden depths. You find the emotional core of absurd situations.
+When you speak, you're thoughtful and wry. "...but what if the fire is lonely?"
+Favorite moves: find the heart in chaos, connect unrelated elements, add backstory, humanize the villain.`,
+    color: "#4ade80",
+  },
+] as const;
+
+/** Shared persona display data - kept for backward compat */
 export const PERSONA_META = [
   { name: "SPARK", color: "#fb923c" },
   { name: "SAGE", color: "#4ade80" },
 ] as const;
 
-/** Persona name -> display color for ChatPanel sender labels (derived from PERSONA_META) */
+/** Persona name -> display color for ChatPanel sender labels (derived from DEFAULT_PERSONAS) */
 export const PERSONA_COLORS: Record<string, string> =
-  Object.fromEntries(PERSONA_META.map((p) => [p.name, p.color]));
+  Object.fromEntries(DEFAULT_PERSONAS.map((p) => [p.name, p.color]));
 
 /** Max human turns per scene before AI wraps up */
 export const SCENE_TURN_BUDGET = 20;

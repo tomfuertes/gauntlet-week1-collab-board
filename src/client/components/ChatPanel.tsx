@@ -5,8 +5,9 @@ import { isToolUIPart, getToolName } from "ai";
 import type { UIMessage } from "ai";
 import { colors, getUserColor } from "../theme";
 import { Button } from "./Button";
-import { PERSONA_COLORS, SCENE_TURN_BUDGET } from "../../shared/types";
-import type { GameMode } from "../../shared/types";
+import { Modal } from "./Modal";
+import { SCENE_TURN_BUDGET, DEFAULT_PERSONAS } from "../../shared/types";
+import type { GameMode, Persona } from "../../shared/types";
 import "../styles/animations.css";
 import { BOARD_TEMPLATES } from "../../shared/board-templates";
 import type { ToolName } from "../../server/ai-tools-sdk";
@@ -216,11 +217,110 @@ function ToolHistory({ tools }: { tools: ToolCallDisplay[] }) {
 // Regex to extract [username] prefix from user messages for multiplayer attribution
 const SENDER_RE = /^\[([^\]]+)\]\s*/;
 
+const PERSONA_COLOR_PRESETS = ["#fb923c", "#4ade80", "#f87171", "#60a5fa", "#c084fc", "#fbbf24"];
+
 export function ChatPanel({ boardId, username, gameMode, onClose, initialPrompt, selectedIds, onAIComplete, mobileMode = false }: ChatPanelProps) {
   const selectedIdsArray = useMemo(
     () => (selectedIds?.size ? [...selectedIds] : undefined),
     [selectedIds],
   );
+
+  // Persona management state
+  const [personas, setPersonas] = useState<Persona[]>([...DEFAULT_PERSONAS]);
+  const [showPersonaModal, setShowPersonaModal] = useState(false);
+  const [newName, setNewName] = useState("");
+  const [newTrait, setNewTrait] = useState("");
+  const [newColor, setNewColor] = useState(PERSONA_COLOR_PRESETS[0]);
+  const [isCreating, setIsCreating] = useState(false);
+  const [isUsingDefaults, setIsUsingDefaults] = useState(true);
+  const [createError, setCreateError] = useState<string | null>(null);
+
+  // Dynamic color map from loaded personas
+  const personaColorMap = useMemo(() => {
+    const map: Record<string, string> = {};
+    for (const p of personas) map[p.name] = p.color;
+    return map;
+  }, [personas]);
+
+  // Fetch personas from API on mount
+  useEffect(() => {
+    refreshPersonas();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [boardId]);
+
+  const refreshPersonas = useCallback(() => {
+    fetch(`/api/boards/${boardId}/personas`, { credentials: "include" })
+      .then((r) => {
+        if (!r.ok) {
+          console.warn(`[ChatPanel] persona load: ${r.status}`);
+          return null;
+        }
+        return r.json() as Promise<Persona[] | null>;
+      })
+      .then((data) => {
+        if (data && data.length > 0) {
+          setPersonas(data);
+          setIsUsingDefaults(false);
+        } else {
+          setPersonas([...DEFAULT_PERSONAS]);
+          setIsUsingDefaults(true);
+        }
+      })
+      .catch((err: unknown) => {
+        console.warn("[ChatPanel] refreshPersonas failed, using defaults:", err);
+      });
+  }, [boardId]);
+
+  const handleCreatePersona = useCallback(async () => {
+    const name = newName.trim();
+    const trait = newTrait.trim();
+    if (!name || !trait || isCreating) return;
+    setIsCreating(true);
+    setCreateError(null);
+    try {
+      const r = await fetch(`/api/boards/${boardId}/personas`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name, trait, color: newColor }),
+      });
+      if (r.ok) {
+        setNewName("");
+        setNewTrait("");
+        setNewColor(PERSONA_COLOR_PRESETS[0]);
+        refreshPersonas();
+      } else {
+        const msg = r.status === 403
+          ? "Only the board owner can add characters."
+          : r.status === 401
+            ? "Session expired. Please refresh the page."
+            : `Failed to add character (${r.status}).`;
+        setCreateError(msg);
+        console.error(`[ChatPanel] handleCreatePersona: ${r.status}`);
+      }
+    } catch (err) {
+      setCreateError("Network error. Check your connection and try again.");
+      console.error("[ChatPanel] handleCreatePersona network error:", err);
+    } finally {
+      setIsCreating(false);
+    }
+  }, [boardId, newName, newTrait, newColor, isCreating, refreshPersonas]);
+
+  const handleDeletePersona = useCallback(async (personaId: string) => {
+    try {
+      const r = await fetch(`/api/boards/${boardId}/personas/${personaId}`, {
+        method: "DELETE",
+        credentials: "include",
+      });
+      if (!r.ok) {
+        console.error(`[ChatPanel] handleDeletePersona: ${r.status}`);
+      }
+    } catch (err) {
+      console.error("[ChatPanel] handleDeletePersona network error:", err);
+    } finally {
+      refreshPersonas(); // always refresh - shows current state regardless of delete result
+    }
+  }, [boardId, refreshPersonas]);
 
   // Connect to ChatAgent DO instance named by boardId
   const agent = useAgent({ agent: "ChatAgent", name: boardId });
@@ -336,11 +436,23 @@ export function ChatPanel({ boardId, username, gameMode, onClose, initialPrompt,
         borderRadius: "12px 12px 0 0",
       }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <span style={{ color: "#e2e8f0", fontWeight: 600, fontSize: "0.875rem" }}>
-            <span style={{ color: PERSONA_COLORS.SPARK }}>SPARK</span>
-            {" & "}
-            <span style={{ color: PERSONA_COLORS.SAGE }}>SAGE</span>
-          </span>
+          <button
+            onClick={() => setShowPersonaModal(true)}
+            title="Manage AI characters"
+            style={{
+              background: "none", border: "none", cursor: "pointer",
+              color: "#e2e8f0", fontWeight: 600, fontSize: "0.875rem", padding: 0,
+              display: "flex", alignItems: "center", gap: 4,
+            }}
+          >
+            {personas.map((p, i) => (
+              <React.Fragment key={p.id}>
+                {i > 0 && <span style={{ color: "#475569" }}> & </span>}
+                <span style={{ color: p.color }}>{p.name}</span>
+              </React.Fragment>
+            ))}
+            <span style={{ color: "#475569", fontSize: "0.75rem", marginLeft: 2 }}>⚙</span>
+          </button>
           {budgetLabel && (
             <span style={{
               fontSize: "0.625rem",
@@ -418,7 +530,7 @@ export function ChatPanel({ boardId, username, gameMode, onClose, initialPrompt,
             const extracted = match[1];
             // For assistant messages, only strip known persona prefixes to avoid
             // false positives on text that happens to start with brackets
-            if (msg.role === "user" || PERSONA_COLORS[extracted]) {
+            if (msg.role === "user" || personaColorMap[extracted]) {
               sender = extracted;
               displayText = displayText.slice(match[0].length);
             }
@@ -430,7 +542,7 @@ export function ChatPanel({ boardId, username, gameMode, onClose, initialPrompt,
 
           const isMe = sender === username;
           const senderColor = msg.role === "assistant"
-            ? (sender && PERSONA_COLORS[sender]) || colors.aiCursor
+            ? (sender && personaColorMap[sender]) || colors.aiCursor
             : sender
               ? getUserColor(sender)
               : colors.accent;
@@ -594,6 +706,104 @@ export function ChatPanel({ boardId, username, gameMode, onClose, initialPrompt,
           </Button>
         </div>
       )}
+
+      {/* Persona management modal */}
+      <Modal open={showPersonaModal} onClose={() => setShowPersonaModal(false)} width={400}>
+        <div style={{ color: "#e2e8f0" }}>
+          <h3 style={{ margin: "0 0 1rem", fontSize: "1rem", fontWeight: 700 }}>AI Characters</h3>
+          {isUsingDefaults && (
+            <p style={{ margin: "0 0 1rem", fontSize: "0.75rem", color: "#64748b" }}>
+              Using default SPARK &amp; SAGE. Add custom characters to replace them for this board.
+            </p>
+          )}
+
+          {/* Existing custom personas */}
+          {!isUsingDefaults && (
+            <div style={{ marginBottom: "1rem", display: "flex", flexDirection: "column", gap: 6 }}>
+              {personas.map((p) => (
+                <div key={p.id} style={{
+                  display: "flex", alignItems: "center", gap: 8,
+                  background: "#1e293b", borderRadius: 8, padding: "6px 10px",
+                }}>
+                  <span style={{
+                    width: 10, height: 10, borderRadius: "50%", background: p.color, flexShrink: 0,
+                  }} />
+                  <span style={{ fontWeight: 600, color: p.color, minWidth: 60 }}>{p.name}</span>
+                  <span style={{ fontSize: "0.75rem", color: "#94a3b8", flex: 1, overflow: "hidden",
+                    textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.trait}</span>
+                  <button
+                    onClick={() => handleDeletePersona(p.id)}
+                    style={{
+                      background: "none", border: "none", color: "#64748b", cursor: "pointer",
+                      fontSize: "0.875rem", padding: "2px 4px", flexShrink: 0,
+                    }}
+                    title="Delete character"
+                  >✕</button>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Add character form */}
+          <div style={{ borderTop: "1px solid #334155", paddingTop: "1rem" }}>
+            <p style={{ margin: "0 0 0.75rem", fontSize: "0.8125rem", fontWeight: 600, color: "#94a3b8" }}>
+              Add Character
+            </p>
+            <div style={{ marginBottom: 8 }}>
+              <input
+                placeholder="Name (e.g. CHAOS)"
+                value={newName}
+                onChange={(e) => setNewName(e.target.value.toUpperCase().slice(0, 20))}
+                style={{
+                  width: "100%", boxSizing: "border-box", background: "#1e293b",
+                  border: "1px solid #334155", borderRadius: 8,
+                  padding: "0.4rem 0.6rem", color: "#e2e8f0", fontSize: "0.8125rem", outline: "none",
+                }}
+              />
+            </div>
+            <textarea
+              placeholder="Personality (e.g. You are CHAOS, a reckless wildcard who ignores all rules...)"
+              value={newTrait}
+              onChange={(e) => setNewTrait(e.target.value.slice(0, 500))}
+              rows={3}
+              style={{
+                width: "100%", boxSizing: "border-box", resize: "vertical", background: "#1e293b",
+                border: "1px solid #334155", borderRadius: 8, padding: "0.4rem 0.6rem",
+                color: "#e2e8f0", fontSize: "0.8125rem", outline: "none", fontFamily: "inherit",
+                marginBottom: 8,
+              }}
+            />
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
+              <span style={{ fontSize: "0.75rem", color: "#64748b" }}>Color:</span>
+              {PERSONA_COLOR_PRESETS.map((c) => (
+                <button
+                  key={c}
+                  onClick={() => setNewColor(c)}
+                  style={{
+                    width: 20, height: 20, borderRadius: "50%", background: c, border: "none",
+                    cursor: "pointer", outline: newColor === c ? `2px solid ${c}` : "none",
+                    outlineOffset: 2,
+                  }}
+                />
+              ))}
+            </div>
+            <Button
+              variant="primary"
+              size="md"
+              onClick={handleCreatePersona}
+              disabled={!newName.trim() || !newTrait.trim() || isCreating}
+              style={{ fontSize: "0.8125rem", fontWeight: 600, width: "100%" }}
+            >
+              {isCreating ? "Adding..." : "Add Character"}
+            </Button>
+            {createError && (
+              <p style={{ margin: "0.5rem 0 0", fontSize: "0.75rem", color: "#f87171" }}>
+                {createError}
+              </p>
+            )}
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 }

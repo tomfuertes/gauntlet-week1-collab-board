@@ -4,9 +4,10 @@
 
 ## Loose Ends
 
-- **Remote D1 migrations 0004 + 0005 pending** - `npx wrangler login` then `npm run migrate:remote`
-- **Daily challenges UAT incomplete** - API smoke tests passed; browser UAT (challenge card, accept flow, leaderboard view, spectator reaction → leaderboard increment) not yet verified
+- **Remote D1 migrations 0004-0006 pending** - `npx wrangler login` then `npm run migrate:remote`
+- **Daily challenges UAT incomplete** - API smoke tests passed; browser UAT not yet verified
 - **No UAT on game modes or token budgets** - verify: hat prompt card + "Next prompt" advances, yes-and beat counter, budget phases + "New Scene" button, gallery badges, two-browser sync
+- **No UAT on custom AI characters** - wrangler dev D1 was returning 500s on signup; feature code is clean (tsc passes), needs manual verification
 - **5 worktrees need cleanup** - all merged, run `scripts/worktree.sh remove <branch>` for each
 - **`feat/mobile-chat` ready to merge** - branch clean-committed, run `scripts/merge.sh mobile-chat` from main, then update Shipped list
 
@@ -18,7 +19,7 @@
 
 **AI agent:** 11 tools (Zod schemas, DRY helpers), chat panel (chips, templates, typing, server-side history), selection-aware AI, AI object glow/confetti, batch undo, AI presence (cursor dot, bar), board generation (overlay + suggestion chips), AI image generation (SDXL), defensive tool validation.
 
-**Multiplayer improv:** Multi-agent personas (SPARK + SAGE, autonomous "yes, and", 3-exchange cooldown), AI Director (scene phases, 60s inactivity nudge, DO schedule alarms), dynamic intent chips, improv game modes (Scenes From a Hat, Yes-And Chain), per-scene token budgets (20-turn, 4 dramatic arc phases).
+**Multiplayer improv:** Multi-agent personas (SPARK + SAGE defaults, custom AI characters with CRUD API + modal UI, autonomous "yes, and", 3-exchange cooldown), AI Director (scene phases, 60s inactivity nudge, DO schedule alarms), dynamic intent chips, improv game modes (Scenes From a Hat, Yes-And Chain), per-scene token budgets (20-turn, 4 dramatic arc phases).
 
 **Sharing/discovery:** Scene playback (event recording, public replay, ReplayViewer), scene gallery (public grid, gradient thumbnails), spectator mode (#watch, emoji reactions, spectator count), async notifications (unread badges).
 
@@ -31,8 +32,7 @@
 | Feature | Notes |
 |---------|-------|
 | Narrative/relationship state | Formalize who-hates-whom graph. Makes multi-agent structural, not emergent. |
-| Custom AI characters | Replace fixed SPARK/SAGE with user-uploaded personalities. |
-| Daily scene challenges + leaderboard | Shipped (feat/daily-challenges branch). Pending merge + remote migration. |
+| Daily scene challenges + leaderboard | Shipped. Pending remote migration. |
 
 ## Open Tech Debt
 

@@ -277,6 +277,77 @@ app.get("/api/challenges/:id/leaderboard", async (c) => {
   }
 });
 
+// Custom persona CRUD (auth-protected)
+
+app.get("/api/boards/:boardId/personas", async (c) => {
+  const user = await requireAuth(c);
+  if (!user) return c.text("Unauthorized", 401);
+  // Any authenticated user can read personas - consistent with board content access model
+  const boardId = c.req.param("boardId");
+  try {
+    const { results } = await c.env.DB.prepare(
+      "SELECT id, name, trait, color FROM board_personas WHERE board_id = ? ORDER BY created_at"
+    ).bind(boardId).all();
+    return c.json(results.length > 0 ? results : null); // null = use defaults
+  } catch (err) {
+    console.error(JSON.stringify({ event: "personas:get-error", boardId, error: String(err) }));
+    return c.json({ error: "Failed to load personas" }, 500);
+  }
+});
+
+app.post("/api/boards/:boardId/personas", async (c) => {
+  const user = await requireAuth(c);
+  if (!user) return c.text("Unauthorized", 401);
+  const boardId = c.req.param("boardId");
+  const ownership = await checkBoardOwnership(c.env.DB, boardId, user.id);
+  if (ownership === "not_found") return c.text("Not found", 404);
+  if (ownership === "forbidden") return c.text("Forbidden", 403);
+
+  const body = await c.req.json<{ name?: string; trait?: string; color?: string }>();
+  // Strip non-alphanumeric chars from name (name used as [NAME] prefix in LLM protocol)
+  const name = (body.name ?? "").trim().replace(/[^A-Z0-9 _-]/gi, "").toUpperCase().slice(0, 30);
+  const trait = (body.trait ?? "").trim().slice(0, 500);
+  const color = /^#[0-9a-fA-F]{6}$/.test(body.color ?? "") ? body.color! : "#fb923c";
+  if (!name || !trait) return c.text("name and trait are required", 400);
+
+  try {
+    // Limit to 10 personas per board to prevent unbounded growth
+    const existing = await c.env.DB.prepare(
+      "SELECT COUNT(*) as count FROM board_personas WHERE board_id = ?"
+    ).bind(boardId).first<{ count: number }>();
+    if ((existing?.count ?? 0) >= 10) return c.text("Maximum 10 characters per board", 400);
+
+    const id = crypto.randomUUID();
+    await c.env.DB.prepare(
+      "INSERT INTO board_personas (id, board_id, name, trait, color) VALUES (?, ?, ?, ?, ?)"
+    ).bind(id, boardId, name, trait, color).run();
+    return c.json({ id, name, trait, color }, 201);
+  } catch (err) {
+    console.error(JSON.stringify({ event: "personas:post-error", boardId, error: String(err) }));
+    return c.json({ error: "Failed to create persona" }, 500);
+  }
+});
+
+app.delete("/api/boards/:boardId/personas/:personaId", async (c) => {
+  const user = await requireAuth(c);
+  if (!user) return c.text("Unauthorized", 401);
+  const boardId = c.req.param("boardId");
+  const ownership = await checkBoardOwnership(c.env.DB, boardId, user.id);
+  if (ownership === "not_found") return c.text("Not found", 404);
+  if (ownership === "forbidden") return c.text("Forbidden", 403);
+
+  const personaId = c.req.param("personaId");
+  try {
+    await c.env.DB.prepare(
+      "DELETE FROM board_personas WHERE id = ? AND board_id = ?"
+    ).bind(personaId, boardId).run();
+    return c.json({ deleted: true });
+  } catch (err) {
+    console.error(JSON.stringify({ event: "personas:delete-error", boardId, personaId, error: String(err) }));
+    return c.json({ error: "Failed to delete persona" }, 500);
+  }
+});
+
 // Public gallery endpoint - boards with replay events (no auth)
 app.get("/api/boards/public", async (c) => {
   try {
