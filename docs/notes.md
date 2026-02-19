@@ -4,12 +4,26 @@
 
 ## Loose Ends
 
-- **Remote D1 migrations 0004-0006 pending** - `npx wrangler login` then `npm run migrate:remote`
-- **UAT incomplete** - game modes, token budgets, custom AI characters, daily challenges. All tsc-clean, need browser verification.
-- **GLM-4.7-flash unverified in prod** - needs manual chat test confirming tool calls work
-- **CF issue** - [cloudflare/ai#404](https://github.com/cloudflare/ai/issues/404): `workers-ai-provider` drops `tool_choice`. Open.
+- **UAT backlog** - all features are code-shipped but browser-unverified. Needs two-browser smoke test:
+  1. AI tool calls / batchExecute - "Create a yellow sticky" should produce a board object with glow
+  2. Daily challenges - challenge card in BoardList, accept flow, leaderboard, spectator reactions increment score
+  3. Game modes - hat prompt card + "Next prompt" advances, yes-and beat counter, gallery badges
+  4. Token budgets - Act 3/Finale badges visible, "New Scene" button at scene-over phase
+  5. Custom AI characters - create persona, see it respond with correct name/color, delete reverts to defaults
+  6. Mobile chat - resize browser to <768px, chat becomes primary, canvas preview strip at top, tap to expand
+- **AI canvas cursor animation** - "AI presence (cursor dot, bar)" shipped. Full canvas robot cursor (purple, animates to each creation point) from sprint plan unclear - verify or add to unshipped.
+- **GLM-4.7-flash unverified in prod** - needs manual chat test confirming tool calls work end-to-end
+- **CF issue** - [cloudflare/ai#404](https://github.com/cloudflare/ai/issues/404): `workers-ai-provider` drops `tool_choice`. Open. `tool_choice: "auto"` shim added as belt-and-suspenders.
 - **Upgrade `@cloudflare/ai-chat`** - already on v0.1.2 + agents@0.5.0 (latest). Enable `maxPersistedMessages` to cap SQLite storage. Explore persistent tool approvals for deleteObject.
-- **Run prompt-eval harness** - `npx tsx scripts/prompt-eval.ts` against dev server. Tune LAYOUT RULES based on overlap scores.
+- **Run prompt-eval harness** - `npx tsx scripts/prompt-eval.ts` against dev server. Tune LAYOUT RULES based on overlap/inBounds scores.
+
+## Next / Unshipped Features
+
+| Feature | Priority | Notes |
+|---------|----------|-------|
+| AI canvas cursor presence | High | Cursor animates to each creation point (purple, robot icon). Presence bar shipped; canvas animation TBD. |
+| Narrative/relationship state | Medium | Who-hates-whom graph, structural multi-agent memory. Architectural - needs opus worktree. |
+| Rate limiting (auth + AI) | Medium | Security tech debt. No rate limiting on auth or AI endpoints. |
 
 ## Roadmap
 
@@ -21,7 +35,7 @@
 
 **Multiplayer improv:** Multi-agent personas (SPARK + SAGE defaults, custom AI characters with CRUD API + modal UI, autonomous "yes, and", 3-exchange cooldown), AI Director (scene phases, 60s inactivity nudge, DO schedule alarms), dynamic intent chips, improv game modes (Scenes From a Hat, Yes-And Chain), per-scene token budgets (20-turn, 4 dramatic arc phases).
 
-**Sharing/discovery:** Scene playback (event recording, public replay, ReplayViewer), scene gallery (public grid, gradient thumbnails), spectator mode (#watch, emoji reactions, spectator count), async notifications (unread badges), daily scene challenges + leaderboard (pending remote migration).
+**Sharing/discovery:** Scene playback (event recording, public replay, ReplayViewer), scene gallery (public grid, gradient thumbnails), spectator mode (#watch, emoji reactions, spectator count), async notifications (unread badges), daily scene challenges + leaderboard.
 
 **Infra/DX:** Custom auth (PBKDF2, D1 sessions), hash routing, onboard modal, connection toasts, perf overlay (always-on, Shift+P toggle), AI architecture audit (prompt versioning, structured logging, quality telemetry), vendor chunk splitting, Board.tsx decomposition, code cleanup sprint (16 items), AI model upgrade (GLM-4.7-flash default, runtime model selector dropdown, $5/day cap, Anthropic toggle), tool_choice shim (belt-and-suspenders for Workers AI models).
 
@@ -62,6 +76,8 @@
 |------|----------|-----------|
 | Feb 19 | GLM-4.7-flash over Mistral Small 3.1 | Mistral ignores tool_choice:auto in streaming. GLM native tool calling + 6x cheaper. |
 | Feb 19 | Earlier LLM prompt rules dominate later ones | "call ALL creates in SINGLE response" overrode "prefer batchExecute". Fix: name batchExecute in the first rule. |
+| Feb 19 | Killed Contextual AI Actions | Clustering via LLM is unreliable; spatial grouping needs deterministic algorithm. |
+| Feb 19 | Killed Intent Preview | 3x implementation cost vs. batch undo; improv vibe wants immediacy, not approval gates. |
 | Feb 18 | Multiplayer improv canvas as north star | Nobody has multiplayer + AI + canvas + improv |
 | Feb 17 | Template coord injection over LLM geometry | LLM as content generator, not geometry solver |
 | Feb 17 | Overlap score metric over visual QA | Single number for AI layout quality |
@@ -87,8 +103,8 @@
 | `docs/ai-cost-analysis.md` | Token cost estimates | pre-session |
 | `docs/ai-dev-log.md` | AI development session log | pre-session |
 | `docs/social-post.md` | Social media draft | pre-session |
-| `docs/thurs-am.md` | Thu AM pickup context (all items shipped/merged) | Feb 19 |
-| `docs/tomorrow.md` | Sprint plan for 5 features (all shipped or killed) | Feb 19 |
+| `docs/thurs-am.md` | Thu AM pickup: what shipped, ai-tools-fix in-progress, UAT backlog (6 items), unshipped roadmap | Feb 19 |
+| `docs/tomorrow.md` | Sprint plan for 5 features: AI cursor (partial), contextual actions (killed), batch undo (shipped), intent preview (killed), board generation (shipped) | Feb 19 |
 | `docs/ux-intents-exploration.md` | Dynamic intent chip design (shipped) | Feb 19 |
 | `docs/exploration-code-mode.md` | CF Code Mode deep dive | Feb 19 |
 | `docs/exploration-state-sync.md` | Agent SDK state sync analysis | Feb 19 |
@@ -96,4 +112,4 @@
 | `docs/exploration-tool-approval.md` | Tool approval gates pattern | Feb 19 |
 | `docs/exploration-evaluator-optimizer.md` | Evaluator-optimizer loop pattern | Feb 19 |
 | `docs/exploration-batch-tool.md` | Batch tool design (shipped as tool #12) | Feb 19 |
-| `follow-ups.md` (root) | Code cleanup sprint + feature priorities (all shipped) | Feb 19 |
+| `follow-ups.md` (root) | 16-item code cleanup sprint (all shipped) + feature priority list | Feb 19 |
