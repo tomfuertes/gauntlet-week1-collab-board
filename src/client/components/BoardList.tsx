@@ -50,7 +50,13 @@ export function BoardList({ user, onSelectBoard, onLogout }: {
       body: JSON.stringify({}),
     });
     if (res.ok) {
-      const { id } = await res.json() as { id: string };
+      const { id, name } = await res.json() as { id: string; name: string };
+      // Optimistic update - avoids D1 read replication lag on re-fetch
+      const now = new Date().toISOString().replace("T", " ").split(".")[0];
+      setBoards((prev) => [{
+        id, name, created_by: user.id,
+        created_at: now, updated_at: now, unseen_count: 0,
+      }, ...prev]);
       onSelectBoard(id);
     }
   };

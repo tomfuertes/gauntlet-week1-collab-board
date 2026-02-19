@@ -6,6 +6,7 @@ import { routeAgentRequest } from "agents";
 import { auth, getSessionUser } from "./auth";
 
 import type { Bindings } from "./env";
+import { recordBoardActivity, markBoardSeen } from "./env";
 export { Board } from "./board";
 export { ChatAgent } from "./chat-agent";
 
@@ -74,6 +75,10 @@ app.post("/api/boards", async (c) => {
   await c.env.DB.prepare(
     "INSERT INTO boards (id, name, created_by, created_at, updated_at) VALUES (?, ?, ?, datetime('now'), datetime('now'))"
   ).bind(id, name, user.id).run();
+  // Seed activity + seen so the board appears immediately in GET /api/boards
+  // (avoids D1 read replication lag - board is visible before any WS activity)
+  await recordBoardActivity(c.env.DB, id);
+  await markBoardSeen(c.env.DB, user.id, id);
   return c.json({ id, name }, 201);
 });
 
@@ -134,11 +139,10 @@ app.get("/api/boards/public", async (c) => {
   try {
     const { results } = await c.env.DB.prepare(
       `SELECT b.id, b.name, u.display_name AS creator,
-              a.last_activity_at, a.activity_count AS eventCount
+              a.last_activity_at, COALESCE(a.activity_count, 0) AS eventCount
        FROM boards b
        JOIN users u ON u.id = b.created_by
-       JOIN board_activity a ON a.board_id = b.id
-       WHERE a.activity_count > 0
+       LEFT JOIN board_activity a ON a.board_id = b.id
        ORDER BY a.last_activity_at DESC
        LIMIT 50`
     ).all<{ id: string; name: string; creator: string; last_activity_at: string; eventCount: number }>();

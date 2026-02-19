@@ -8,4 +8,4 @@ for arg in "$@"; do
     exit 1
   fi
 done
-exec curl "$@"
+exec curl -s "$@"
