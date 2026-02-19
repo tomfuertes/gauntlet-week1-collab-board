@@ -138,7 +138,7 @@ Coworker's prompts: demon face -> unicorn -> GOOSE ATTACKING -> penguin fleeing 
 - No React error boundary
 
 **UX/Polish:**
-- Vite build >500KB chunk - needs code splitting
+- ~~Vite build >500KB chunk~~ Fixed: manualChunks splits vendor-react/canvas/ai
 - Circles have no resize handles
 - WS reconnect: no max retry, no non-retryable close code handling
 - Undo stack not cleared on WS reconnect

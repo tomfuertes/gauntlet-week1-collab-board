@@ -201,6 +201,8 @@ Each object stored as separate DO Storage key (`obj:{uuid}`, ~200 bytes). LWW vi
 - D1 migrations tracked via `d1_migrations` table. Use `npm run migrate` (not raw `wrangler d1 execute`). Create new: `wrangler d1 migrations create collabboard-db "name"`
 - WebSocket reconnect with exponential backoff (1s-10s cap), `disconnected` after 5 initial failures
 - Performance targets: 60fps canvas, <100ms object sync, <50ms cursor sync, 500+ objects, 5+ users
+- Build: Vite `manualChunks` splits vendor-react, vendor-canvas, vendor-ai. All chunks <500KB. Vendor chunks are long-term cacheable.
+- Dev: `scripts/dev.sh` raises `ulimit -n 10240` for multi-worktree setups (macOS default 256 causes EMFILE). Vite uses chokidar + FSEvents on macOS (NOT watchman - chokidar has no watchman support). `server.watch.ignored` excludes dist/.wrangler/.playwright-cli to reduce FD usage.
 - Two-browser test is the primary validation method throughout development
 - Hash-based routing (`#board/{id}`, `#replay/{id}`, `#gallery`, `#privacy`) - no React Router, no server-side routing needed
 - Board list shows user's own boards + system boards; any auth'd user can access any board via URL
