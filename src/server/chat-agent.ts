@@ -170,11 +170,21 @@ export class ChatAgent extends AIChatAgent<Bindings> {
     // Mistral Small 3.1 requires explicit tool_choice:"auto" to call tools; shim it in.
     const ai = this.env.AI as any;
     const shimmedBinding = {
-      run: (model: string, inputs: Record<string, unknown>, options?: unknown) =>
-        ai.run(model, inputs?.tools ? { ...inputs, tool_choice: "auto" } : inputs, options),
+      run: (model: string, inputs: Record<string, unknown>, options?: unknown) => {
+        const hasTools = !!(inputs?.tools && (inputs.tools as unknown[]).length > 0);
+        console.debug(JSON.stringify({
+          event: "ai:shim",
+          model,
+          hasTools,
+          toolCount: hasTools ? (inputs.tools as unknown[]).length : 0,
+          hadToolChoice: !!inputs?.tool_choice,
+          injecting: hasTools,
+        }));
+        return ai.run(model, hasTools ? { ...inputs, tool_choice: "auto" } : inputs, options);
+      },
     };
     return (createWorkersAI({ binding: shimmedBinding as any }) as any)(
-      this.env.WORKERS_AI_MODEL || "@cf/mistralai/mistral-small-3.1-24b-instruct"
+      this.env.WORKERS_AI_MODEL || "@cf/zai-org/glm-4.7-flash"
     );
   }
 
@@ -182,7 +192,7 @@ export class ChatAgent extends AIChatAgent<Bindings> {
   private _getModelName(): string {
     return this._useAnthropic()
       ? "claude-haiku-4.5"
-      : (this.env.WORKERS_AI_MODEL || "mistral-small-3.1").split("/").pop() || "workers-ai";
+      : (this.env.WORKERS_AI_MODEL || "glm-4.7-flash").split("/").pop() || "workers-ai";
   }
 
   /** Structured log: AI request started */

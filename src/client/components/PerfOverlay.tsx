@@ -7,8 +7,8 @@ const TARGETS = {
   msgAge: { green: 500, yellow: 2000 }, // ms since last server message
 };
 
-const IS_DEV =
-  location.hostname === "localhost" || location.hostname === "127.0.0.1";
+// Always visible by default (Shift+P or backtick to toggle off)
+const SHOW_BY_DEFAULT = true;
 
 function statusColor(
   value: number,
@@ -51,7 +51,7 @@ export function PerfOverlay({
   stageRef,
   lastServerMessageAt,
 }: PerfOverlayProps) {
-  const [visible, setVisible] = useState(IS_DEV);
+  const [visible, setVisible] = useState(SHOW_BY_DEFAULT);
   const [fps, setFps] = useState<number | null>(null);
   const [msgAge, setMsgAge] = useState<number | null>(null);
   const [konvaNodes, setKonvaNodes] = useState(0);

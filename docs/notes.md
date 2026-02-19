@@ -8,10 +8,7 @@
 - **Daily challenges UAT incomplete** - API smoke tests passed; browser UAT not yet verified
 - **No UAT on game modes or token budgets** - verify: hat prompt card + "Next prompt" advances, yes-and beat counter, budget phases + "New Scene" button, gallery badges, two-browser sync
 - **No UAT on custom AI characters** - wrangler dev D1 was returning 500s on signup; feature code is clean (tsc passes), needs manual verification
-- **5 worktrees need cleanup** - all merged, run `scripts/worktree.sh remove <branch>` for each
-- **`feat/mobile-chat` ready to merge** - branch clean-committed, run `scripts/merge.sh mobile-chat` from main, then update Shipped list
-- **`feat/ai-tools-fix` ready to merge** - branch clean-committed, run `scripts/merge.sh ai-tools-fix` from main
-- **CF issue to file** - `workers-ai-provider` drops `tool_choice` from `buildRunInputs`, breaking Mistral tool calling. Repo: github.com/cloudflare/ai. No existing issue found.
+- **CF issue filed** - [cloudflare/ai#404](https://github.com/cloudflare/ai/issues/404): `workers-ai-provider` drops `tool_choice` from `buildRunInputs`. Open, no response yet.
 
 ## Roadmap
 
@@ -62,7 +59,7 @@
 
 | Date | Decision | Rationale |
 |------|----------|-----------|
-| Feb 19 | Shim Workers AI binding vs switching model | workers-ai-provider v3.1.1 drops tool_choice from buildRunInputs; shim injects tool_choice:auto at binding.run() level - minimal fix, preserves Mistral quality |
+| Feb 19 | GLM-4.7-flash over Mistral Small 3.1 | Mistral ignores tool_choice:auto in streaming (0 tool calls despite 11 tools + shim). GLM has native tool calling + 6x cheaper input ($0.06 vs $0.35/M). Shim kept for safety. |
 | Feb 16 | AI priority over more shapes | Gauntlet AI exercise - AI is differentiator |
 | Feb 17 | Template coord injection over LLM geometry | LLM as content generator, not geometry solver |
 | Feb 17 | Overlap score metric over visual QA | Single number for AI layout quality |
@@ -78,11 +75,18 @@
 | Feb 19 | userId (not displayName) for current-user highlighting | displayName is mutable + non-unique; userId is stable identity |
 | Feb 19 | Mobile early-return pattern in Board | Two layouts share all WS hooks; conditional return before final JSX keeps desktop path unchanged |
 
-## AI Model Pricing
+## AI Model Pricing (Workers AI, $0.011/1K neurons)
 
-| Model | Cost | Tool-use | Notes |
-|-------|------|----------|-------|
-| Mistral Small 3.1 24B (Workers AI) | $0.011/1K neurons | Good | Default. 131K context, creative. $5/day app cap. |
-| Claude Haiku 4.5 (Anthropic) | $1/$5 per 1M in/out | Excellent | Behind ENABLE_ANTHROPIC_API toggle (default off). |
+| Model | Input $/M tok | Output $/M tok | ~$/scene | Tool calling | Notes |
+|-------|---------------|----------------|----------|--------------|-------|
+| **GLM-4.7-flash** | $0.06 | $0.40 | **$0.02** | Native (no shim needed) | **Current default.** Cheapest input, optimized for multi-turn tool calling. |
+| GPT-OSS-20B | $0.20 | $0.30 | $0.04 | Good (agentic tuning) | Cheapest output. OpenAI open model, designed for agentic tasks. |
+| Mistral Small 3.1 24B | $0.35 | $0.56 | $0.08 | Broken (needs shim) | Previous default. Ignores tool_choice:auto in streaming. |
+| Llama 4 Scout 17B MoE | $0.27 | $0.85 | $0.06 | Supported | Most expensive output. 16 experts, multimodal. |
+| Claude Haiku 4.5 (Anthropic) | $1.00 | $5.00 | $0.26 | Excellent | Behind ENABLE_ANTHROPIC_API toggle (default off). |
 
-`streamText` with `stopWhen: stepCountIs(5)` limits to 5 LLM round-trips. Daily budget tracked per ChatAgent DO instance.
+*Scene estimate: 20 human turns, ~40 LLM calls (chat + reactive), ~200K input + ~12K output tokens total.*
+
+**Decision (Feb 19):** Switched from Mistral to GLM-4.7-flash. Mistral ignored tools despite shim injecting tool_choice:auto (confirmed via logging: 11 tools sent, 0 called). GLM calls tools natively + 6x cheaper input. Shim kept as belt-and-suspenders.
+
+`streamText` with `stopWhen: stepCountIs(5)` limits to 5 LLM round-trips. Daily budget tracked per ChatAgent DO instance ($5/day cap, neurons).
