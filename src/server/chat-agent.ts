@@ -119,6 +119,10 @@ export class ChatAgent extends AIChatAgent<Bindings> {
   // Per-message requested model (resets on DO hibernation - client re-sends model on each message)
   private _requestedModel = "";
 
+  // Per-user AI rate limit (30 msg/min per username). Resets on DO hibernation - that's fine,
+  // the window is short and we'd rather allow traffic after a cold start than block it.
+  private _userRateLimit = new Map<string, { count: number; windowStart: number }>();
+
   // Daily AI budget tracking (resets on DO hibernation - conservative, prevents runaway spend)
   private _dailySpendNeurons = 0;
   private _dailySpendDate = ""; // YYYY-MM-DD UTC, resets when date changes
@@ -143,6 +147,24 @@ export class ChatAgent extends AIChatAgent<Bindings> {
       this._dailySpendDate = today;
     }
     this._dailySpendNeurons += inputTokens + outputTokens;
+  }
+
+  /** Rate-limit AI messages per user: 30/min. Returns limited=true with retryAfter seconds. */
+  private _checkUserRateLimit(username: string): { limited: boolean; retryAfter: number } {
+    const LIMIT = 30;
+    const WINDOW_MS = 60_000;
+    const now = Date.now();
+    const entry = this._userRateLimit.get(username);
+    if (!entry || now - entry.windowStart >= WINDOW_MS) {
+      this._userRateLimit.set(username, { count: 1, windowStart: now });
+      return { limited: false, retryAfter: 0 };
+    }
+    if (entry.count >= LIMIT) {
+      const retryAfter = Math.ceil((entry.windowStart + WINDOW_MS - now) / 1000);
+      return { limited: true, retryAfter };
+    }
+    entry.count++;
+    return { limited: false, retryAfter: 0 };
   }
 
   /** Load board personas from D1, falling back to defaults on error or empty result.
@@ -250,6 +272,30 @@ export class ChatAgent extends AIChatAgent<Bindings> {
 
   async onChatMessage(onFinish: any, options?: { abortSignal?: AbortSignal }) {
     // this.name = boardId (set by client connecting to /agents/ChatAgent/<boardId>)
+
+    // Extract body early - used for rate limiting AND throughout the method
+    const body = options && "body" in options ? (options as any).body : undefined;
+
+    // Per-user velocity limit: 30 messages/min per username.
+    // Check BEFORE claiming _isGenerating - if _checkUserRateLimit throws, the mutex won't leak.
+    // "anonymous" fallback is intentionally a shared bucket (fail-safe direction vs. bypassing limit).
+    const userKey = body?.username || "anonymous";
+    const rl = this._checkUserRateLimit(userKey);
+    if (rl.limited) {
+      console.warn(JSON.stringify({ event: "rate-limit:ai", boardId: this.name, user: userKey }));
+      const rlMsg: UIMessage = {
+        id: crypto.randomUUID(),
+        role: "assistant",
+        parts: [{ type: "text" as const, text: `Too many messages! Please slow down - try again in ${rl.retryAfter}s.` }],
+      };
+      this.messages.push(rlMsg);
+      await this.persistMessages(this.messages);
+      return new Response(JSON.stringify({ error: "rate-limited" }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
     this._isGenerating = true;
     this._autonomousExchangeCount = 0; // human spoke - reset cooldown
     const startTime = Date.now();
@@ -308,9 +354,6 @@ export class ChatAgent extends AIChatAgent<Bindings> {
     const boardStub = this.env.BOARD.get(doId);
     const batchId = crypto.randomUUID();
     const tools = createSDKTools(boardStub, batchId, this.env.AI);
-
-    const body =
-      options && "body" in options ? (options as any).body : undefined;
 
     // Update game mode from client (sent on every message so it survives DO hibernation)
     if (body?.gameMode && ["hat", "yesand", "freeform"].includes(body.gameMode)) {

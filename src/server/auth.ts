@@ -6,6 +6,46 @@ import type { Bindings } from "./env";
 // 7-day session expiry
 const SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
+// --- Auth rate limiting (in-memory per isolate, resets on Worker restarts - OK for first pass) ---
+
+const _rateLimitMap = new Map<string, { count: number; windowStart: number }>();
+const RATE_WINDOW_MS = 60_000;
+
+function getClientIp(req: Request): string {
+  // CF-Connecting-IP is set by Cloudflare's edge (cannot be spoofed through CF proxy).
+  // X-Forwarded-For fallback is only reached in local dev / non-CF environments.
+  // "unknown" is a shared bucket - multiple users without IP headers share one limit
+  // (acceptable: only happens in misconfigured/local deployments, not production).
+  return (
+    req.headers.get("CF-Connecting-IP") ||
+    req.headers.get("X-Forwarded-For")?.split(",")[0]?.trim() ||
+    "unknown"
+  );
+}
+
+function checkRateLimit(key: string, limit: number): { limited: boolean; retryAfter: number } {
+  const now = Date.now();
+  // Lazy sweep: prevent unbounded growth in long-lived isolates.
+  // ES2015 Map spec: deleting the current key inside for...of is safe - already-visited
+  // entries are not revisited and not-yet-visited deleted entries are skipped.
+  if (_rateLimitMap.size > 1000) {
+    for (const [k, v] of _rateLimitMap) {
+      if (now - v.windowStart >= RATE_WINDOW_MS) _rateLimitMap.delete(k);
+    }
+  }
+  const entry = _rateLimitMap.get(key);
+  if (!entry || now - entry.windowStart >= RATE_WINDOW_MS) {
+    _rateLimitMap.set(key, { count: 1, windowStart: now });
+    return { limited: false, retryAfter: 0 };
+  }
+  if (entry.count >= limit) {
+    const retryAfter = Math.ceil((entry.windowStart + RATE_WINDOW_MS - now) / 1000);
+    return { limited: true, retryAfter };
+  }
+  entry.count++;
+  return { limited: false, retryAfter: 0 };
+}
+
 export const auth = new Hono<{ Bindings: Bindings }>();
 
 // --- Password hashing (PBKDF2 via Web Crypto - zero deps, built into Workers runtime) ---
@@ -99,6 +139,13 @@ async function createAndSetSession(
 // --- Routes ---
 
 auth.post("/auth/signup", async (c) => {
+  const ip = getClientIp(c.req.raw);
+  const rl = checkRateLimit(`signup:${ip}`, 5);
+  if (rl.limited) {
+    c.header("Retry-After", String(rl.retryAfter));
+    return c.json({ error: "Too many signup attempts. Try again later." }, 429);
+  }
+
   const body = await c.req.json<{
     username: string;
     password: string;
@@ -146,6 +193,13 @@ auth.post("/auth/signup", async (c) => {
 });
 
 auth.post("/auth/login", async (c) => {
+  const ip = getClientIp(c.req.raw);
+  const rl = checkRateLimit(`login:${ip}`, 10);
+  if (rl.limited) {
+    c.header("Retry-After", String(rl.retryAfter));
+    return c.json({ error: "Too many login attempts. Try again later." }, 429);
+  }
+
   const body = await c.req.json<{ username: string; password: string }>();
 
   if (!body.username || !body.password) {

@@ -227,6 +227,7 @@ Each object stored as separate DO Storage key (`obj:{uuid}`, ~200 bytes). LWW vi
 - `docs/encrypted/` is git-crypt encrypted (spec, pre-search). Everything else in `docs/` is plaintext and merges normally across worktrees.
 - `private/` is .gitignore'd - contains original PDF, never committed
 - Auth is custom (no Better Auth) - PBKDF2 hashing (Web Crypto, zero deps), D1 sessions, cookie-based. No email, no OAuth, no password reset.
+- Rate limiting: auth routes (login 10/min, signup 5/min) via IP-based in-memory Map in `auth.ts` (resets per isolate - OK for first pass). AI chat (30 msg/min per user) via DO class-level Map in `ChatAgent`. Zero external deps. Rate check must happen BEFORE claiming `_isGenerating` mutex - see comment in `onChatMessage`.
 - Deploy via `git push` to main (CF git integration). Do NOT run `wrangler deploy` manually.
 - All AI calls are server-side in Worker - never expose API keys to client bundle
 - AI uses Cloudflare Agents SDK (`AIChatAgent` DO) + Vercel AI SDK v6 (`streamText` with `stopWhen: stepCountIs(5)`). Tool definitions in `src/server/ai-tools-sdk.ts` (Zod schemas, AI SDK `tool()`), display metadata in `src/client/components/ChatPanel.tsx`. Chat history persisted server-side in DO SQLite.

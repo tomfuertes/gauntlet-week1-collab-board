@@ -23,7 +23,6 @@
 |---------|----------|-------|
 | AI canvas cursor presence | High | Cursor animates to each creation point (purple, robot icon). Presence bar shipped; canvas animation TBD. |
 | Narrative/relationship state | Medium | Who-hates-whom graph, structural multi-agent memory. Architectural - needs opus worktree. |
-| Rate limiting (auth + AI) | Medium | Security tech debt. No rate limiting on auth or AI endpoints. |
 
 ## Roadmap
 
@@ -44,7 +43,7 @@
 ## Open Tech Debt
 
 ### Security
-- No rate limiting on auth + AI endpoints
+- Rate limiting shipped (feat/rate-limit): auth login 10/min + signup 5/min (IP-based, 429+Retry-After); AI chat 30 msg/min per user (WS error message). In-memory per isolate/DO - acceptable first pass.
 - AI route accepts arbitrary boardId - can create phantom DOs
 - No upper bound on AI chat history (fix: `maxPersistedMessages` in agents@0.5.0)
 - Username enumeration via signup 409
@@ -74,6 +73,7 @@
 
 | Date | Decision | Rationale |
 |------|----------|-----------|
+| Feb 19 | Rate limit check before _isGenerating mutex | If _checkUserRateLimit throws, mutex won't leak permanently blocking director/reactive. Check first, claim mutex only if passing. |
 | Feb 19 | GLM-4.7-flash over Mistral Small 3.1 | Mistral ignores tool_choice:auto in streaming. GLM native tool calling + 6x cheaper. |
 | Feb 19 | Earlier LLM prompt rules dominate later ones | "call ALL creates in SINGLE response" overrode "prefer batchExecute". Fix: name batchExecute in the first rule. |
 | Feb 19 | Killed Contextual AI Actions | Clustering via LLM is unreliable; spatial grouping needs deterministic algorithm. |
