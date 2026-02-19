@@ -10,6 +10,8 @@
 - **No UAT on custom AI characters** - wrangler dev D1 was returning 500s on signup; feature code is clean (tsc passes), needs manual verification
 - **5 worktrees need cleanup** - all merged, run `scripts/worktree.sh remove <branch>` for each
 - **`feat/mobile-chat` ready to merge** - branch clean-committed, run `scripts/merge.sh mobile-chat` from main, then update Shipped list
+- **`feat/ai-tools-fix` ready to merge** - branch clean-committed, run `scripts/merge.sh ai-tools-fix` from main
+- **CF issue to file** - `workers-ai-provider` drops `tool_choice` from `buildRunInputs`, breaking Mistral tool calling. Repo: github.com/cloudflare/ai. No existing issue found.
 
 ## Roadmap
 
@@ -60,6 +62,7 @@
 
 | Date | Decision | Rationale |
 |------|----------|-----------|
+| Feb 19 | Shim Workers AI binding vs switching model | workers-ai-provider v3.1.1 drops tool_choice from buildRunInputs; shim injects tool_choice:auto at binding.run() level - minimal fix, preserves Mistral quality |
 | Feb 16 | AI priority over more shapes | Gauntlet AI exercise - AI is differentiator |
 | Feb 17 | Template coord injection over LLM geometry | LLM as content generator, not geometry solver |
 | Feb 17 | Overlap score metric over visual QA | Single number for AI layout quality |

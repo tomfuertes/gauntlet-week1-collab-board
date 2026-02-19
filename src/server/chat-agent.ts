@@ -163,13 +163,19 @@ export class ChatAgent extends AIChatAgent<Bindings> {
 
   /** Choose model: Haiku if Anthropic enabled, else configurable Workers AI model */
   private _getModel() {
-    return this._useAnthropic()
-      ? createAnthropic({ apiKey: this.env.ANTHROPIC_API_KEY })(
-          "claude-haiku-4-5-20251001"
-        )
-      : (createWorkersAI({ binding: this.env.AI }) as any)(
-          this.env.WORKERS_AI_MODEL || "@cf/mistralai/mistral-small-3.1-24b-instruct"
-        );
+    if (this._useAnthropic()) {
+      return createAnthropic({ apiKey: this.env.ANTHROPIC_API_KEY })("claude-haiku-4-5-20251001");
+    }
+    // workers-ai-provider v3.1.1 drops tool_choice from buildRunInputs (only forwards `tools`).
+    // Mistral Small 3.1 requires explicit tool_choice:"auto" to call tools; shim it in.
+    const ai = this.env.AI as any;
+    const shimmedBinding = {
+      run: (model: string, inputs: Record<string, unknown>, options?: unknown) =>
+        ai.run(model, inputs?.tools ? { ...inputs, tool_choice: "auto" } : inputs, options),
+    };
+    return (createWorkersAI({ binding: shimmedBinding as any }) as any)(
+      this.env.WORKERS_AI_MODEL || "@cf/mistralai/mistral-small-3.1-24b-instruct"
+    );
   }
 
   /** Model name for logging (avoids exposing full model object) */
