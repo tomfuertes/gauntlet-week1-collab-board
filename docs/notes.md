@@ -62,6 +62,7 @@ open board -> play scene -> share replay link -> recruit new player
 - Smooth drag replay (throttled 100ms WS sends, spatial debounce in DO, RAF lerp interpolation in ReplayViewer)
 - Floating toolbar (bottom-center pill, redesigned from left sidebar)
 - AI image generation (SDXL via CF Workers AI, base64 data URL storage, Konva Image rendering, generateImage tool)
+- Board.tsx decomposition (1836 -> 1529 lines, extracted Toolbar.tsx, useKeyboardShortcuts.ts, useDragSelection.ts)
 
 **Killed (PM eval):** Contextual AI Actions (clustering unreliable on free-tier LLM), Intent Preview (problem overlap with batch undo at 3x cost).
 

@@ -127,7 +127,8 @@ src/
     App.tsx             # App shell + hash routing (#board/{id}, #replay/{id})
     theme.ts            # Shared color constants (accent, surfaces, borders, cursors)
     components/
-      Board.tsx         # Canvas + toolbar + chat panel integration (~1800 lines)
+      Board.tsx         # Canvas + chat panel integration (~1530 lines)
+      Toolbar.tsx       # Floating toolbar - tool buttons, mode switching (extracted from Board)
       BoardList.tsx     # Board grid (CRUD) - landing page after login
       ChatPanel.tsx     # AI chat sidebar (dynamic intent chips, improv scene interaction)
       ReplayViewer.tsx  # Read-only scene replay player (public, no auth)
@@ -140,6 +141,8 @@ src/
       useAIChat.ts      # Adapter: useAgentChat -> AIChatMessage (ChatPanel compat)
       useUndoRedo.ts    # Local undo/redo stack (max 50, Cmd+Z/Cmd+Shift+Z)
       useAiObjectEffects.ts  # AI glow + confetti trigger logic (extracted from Board)
+      useKeyboardShortcuts.ts  # Keyboard handlers: Cmd+Z, Cmd+C, Delete, Escape (extracted from Board)
+      useDragSelection.ts      # Marquee/rubber-band selection logic (extracted from Board)
     styles/
       animations.css    # Shared CSS keyframes (cb-pulse, cb-confetti)
   server/               # CF Worker
