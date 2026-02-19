@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import type { Context } from "hono";
 import { cors } from "hono/cors";
 import { getCookie } from "hono/cookie";
 import { routeAgentRequest } from "agents";
@@ -9,6 +10,31 @@ export { Board } from "./board";
 export { ChatAgent } from "./chat-agent";
 
 const app = new Hono<{ Bindings: Bindings }>();
+
+// --- Route helpers (DRY auth + DO stub patterns) ---
+
+async function requireAuth(c: Context<{ Bindings: Bindings }>) {
+  const sessionId = getCookie(c, "session");
+  const user = await getSessionUser(c.env.DB, sessionId);
+  if (!user) return null;
+  return user;
+}
+
+function getBoardStub(env: Bindings, boardId: string) {
+  return env.BOARD.get(env.BOARD.idFromName(boardId));
+}
+
+// Returns null if not found/forbidden (caller checks), or the board row
+async function checkBoardOwnership(
+  db: D1Database,
+  boardId: string,
+  userId: string
+): Promise<"not_found" | "forbidden" | "ok"> {
+  const board = await db.prepare("SELECT created_by FROM boards WHERE id = ?").bind(boardId).first();
+  if (!board) return "not_found";
+  if (board.created_by !== userId) return "forbidden";
+  return "ok";
+}
 
 app.use("/api/*", cors());
 app.use("/auth/*", cors());
@@ -22,8 +48,7 @@ app.route("/", auth);
 
 // Board CRUD (auth-protected)
 app.get("/api/boards", async (c) => {
-  const sessionId = getCookie(c, "session");
-  const user = await getSessionUser(c.env.DB, sessionId);
+  const user = await requireAuth(c);
   if (!user) return c.text("Unauthorized", 401);
 
   const { results } = await c.env.DB.prepare(
@@ -39,8 +64,7 @@ app.get("/api/boards", async (c) => {
 });
 
 app.post("/api/boards", async (c) => {
-  const sessionId = getCookie(c, "session");
-  const user = await getSessionUser(c.env.DB, sessionId);
+  const user = await requireAuth(c);
   if (!user) return c.text("Unauthorized", 401);
 
   const body = await c.req.json<{ name?: string }>();
@@ -54,21 +78,16 @@ app.post("/api/boards", async (c) => {
 });
 
 app.delete("/api/boards/:boardId", async (c) => {
-  const sessionId = getCookie(c, "session");
-  const user = await getSessionUser(c.env.DB, sessionId);
+  const user = await requireAuth(c);
   if (!user) return c.text("Unauthorized", 401);
 
   const boardId = c.req.param("boardId");
-
-  // Ownership check - don't allow deleting system boards or others' boards
-  const board = await c.env.DB.prepare("SELECT created_by FROM boards WHERE id = ?").bind(boardId).first();
-  if (!board) return c.text("Not found", 404);
-  if (board.created_by !== user.id) return c.text("Forbidden", 403);
+  const ownership = await checkBoardOwnership(c.env.DB, boardId, user.id);
+  if (ownership === "not_found") return c.text("Not found", 404);
+  if (ownership === "forbidden") return c.text("Forbidden", 403);
 
   // Delete DO: broadcast board:deleted, close WS connections, clear storage
-  const doId = c.env.BOARD.idFromName(boardId);
-  const stub = c.env.BOARD.get(doId);
-  await stub.deleteBoard();
+  await getBoardStub(c.env, boardId).deleteBoard();
 
   // Delete D1 row
   await c.env.DB.prepare("DELETE FROM boards WHERE id = ?").bind(boardId).run();
@@ -77,27 +96,21 @@ app.delete("/api/boards/:boardId", async (c) => {
 
 // Clear board (auth-protected, ownership check)
 app.post("/api/board/:boardId/clear", async (c) => {
-  const sessionId = getCookie(c, "session");
-  const user = await getSessionUser(c.env.DB, sessionId);
+  const user = await requireAuth(c);
   if (!user) return c.text("Unauthorized", 401);
 
   const boardId = c.req.param("boardId");
+  const ownership = await checkBoardOwnership(c.env.DB, boardId, user.id);
+  if (ownership === "not_found") return c.text("Not found", 404);
+  if (ownership === "forbidden") return c.text("Forbidden", 403);
 
-  // Ownership check - match DELETE route pattern
-  const board = await c.env.DB.prepare("SELECT created_by FROM boards WHERE id = ?").bind(boardId).first();
-  if (!board) return c.text("Not found", 404);
-  if (board.created_by !== user.id) return c.text("Forbidden", 403);
-
-  const doId = c.env.BOARD.idFromName(boardId);
-  const stub = c.env.BOARD.get(doId);
-  const deleted = await stub.clearBoard();
+  const deleted = await getBoardStub(c.env, boardId).clearBoard();
   return c.json({ deleted });
 });
 
 // Delete user account and all their data
 app.delete("/api/user", async (c) => {
-  const sessionId = getCookie(c, "session");
-  const user = await getSessionUser(c.env.DB, sessionId);
+  const user = await requireAuth(c);
   if (!user) return c.text("Unauthorized", 401);
 
   // Delete user's boards (and their DO storage)
@@ -105,9 +118,7 @@ app.delete("/api/user", async (c) => {
     "SELECT id FROM boards WHERE created_by = ?"
   ).bind(user.id).all();
   for (const board of userBoards) {
-    const doId = c.env.BOARD.idFromName(board.id as string);
-    const stub = c.env.BOARD.get(doId);
-    await stub.deleteBoard();
+    await getBoardStub(c.env, board.id as string).deleteBoard();
   }
   await c.env.DB.prepare("DELETE FROM boards WHERE created_by = ?").bind(user.id).run();
 
@@ -141,16 +152,13 @@ app.get("/api/boards/public", async (c) => {
 // Public replay endpoint - no auth (shareable replay URLs)
 app.get("/api/boards/:boardId/replay", async (c) => {
   const boardId = c.req.param("boardId");
-  const doId = c.env.BOARD.idFromName(boardId);
-  const stub = c.env.BOARD.get(doId);
-  const events = await stub.readEvents();
+  const events = await getBoardStub(c.env, boardId).readEvents();
   return c.json(events);
 });
 
 // Agent SDK route (auth-protected)
 app.all("/agents/*", async (c) => {
-  const sessionId = getCookie(c, "session");
-  const user = await getSessionUser(c.env.DB, sessionId);
+  const user = await requireAuth(c);
   if (!user) return c.text("Unauthorized", 401);
   return (await routeAgentRequest(c.req.raw, c.env)) || c.text("Not found", 404);
 });
@@ -162,17 +170,11 @@ app.get("/ws/board/:boardId", async (c) => {
     return c.text("Expected WebSocket", 426);
   }
 
-  // Authenticate via session cookie
-  const sessionId = getCookie(c, "session");
-  const user = await getSessionUser(c.env.DB, sessionId);
-  if (!user) {
-    return c.text("Unauthorized", 401);
-  }
+  const user = await requireAuth(c);
+  if (!user) return c.text("Unauthorized", 401);
 
-  // Route to Board Durable Object
   const boardId = c.req.param("boardId");
-  const doId = c.env.BOARD.idFromName(boardId);
-  const stub = c.env.BOARD.get(doId);
+  const stub = getBoardStub(c.env, boardId);
 
   // Forward with user info + boardId as query params (DO reads these)
   const url = new URL(c.req.url);

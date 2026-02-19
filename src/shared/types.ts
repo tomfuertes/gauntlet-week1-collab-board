@@ -1,16 +1,3 @@
-export interface User {
-  id: string;
-  username: string;
-  displayName: string;
-  createdAt: string;
-}
-
-export interface Session {
-  id: string;
-  userId: string;
-  expiresAt: string;
-}
-
 export interface BoardObject {
   id: string;
   type: "sticky" | "rect" | "circle" | "line" | "text" | "frame" | "image";
@@ -32,6 +19,12 @@ export interface BoardObject {
   updatedAt: number;
   batchId?: string;
 }
+
+/** Mutation messages the Board DO can receive (excludes cursor) */
+export type BoardMutation =
+  | { type: "obj:create"; obj: BoardObject }
+  | { type: "obj:update"; obj: Partial<BoardObject> & { id: string } }
+  | { type: "obj:delete"; id: string };
 
 export type WSClientMessage =
   | { type: "cursor"; x: number; y: number }
@@ -61,10 +54,4 @@ export interface ReplayEvent {
   ts: number;
   obj?: BoardObject; // present for create/update
   id?: string; // present for delete
-}
-
-export interface ChatMessage {
-  id: string;
-  role: "user" | "assistant";
-  content: string;
 }

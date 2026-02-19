@@ -5,11 +5,13 @@ import Konva from "konva";
 import type { AuthUser } from "../App";
 import { AI_USER_ID } from "@shared/types";
 import type { BoardObject } from "@shared/types";
+import { OBJECT_DEFAULTS, TRANSFORMER_CONFIG } from "../constants";
 import { useWebSocket, type ConnectionState } from "../hooks/useWebSocket";
 import { useUndoRedo } from "../hooks/useUndoRedo";
 import { useAiObjectEffects } from "../hooks/useAiObjectEffects";
 import { useKeyboardShortcuts } from "../hooks/useKeyboardShortcuts";
 import { useDragSelection } from "../hooks/useDragSelection";
+import { useThrottledCallback } from "../hooks/useThrottledCallback";
 import { colors, toolCursors, getUserColor } from "../theme";
 import { Toolbar, type ToolMode } from "./Toolbar";
 import { Cursors } from "./Cursors";
@@ -131,7 +133,7 @@ const BoardObjectRenderer = React.memo(function BoardObjectRenderer({
   if (obj.type === "sticky") {
     return (
       <Group {...groupProps}>
-        <Rect width={obj.width} height={obj.height} fill={obj.props.color || "#fbbf24"} cornerRadius={8} shadowBlur={hasAiGlow ? 12 : 5} shadowColor={hasAiGlow ? "rgba(99,102,241,0.5)" : "rgba(0,0,0,0.3)"} />
+        <Rect width={obj.width} height={obj.height} fill={obj.props.color || OBJECT_DEFAULTS.sticky.color} cornerRadius={8} shadowBlur={hasAiGlow ? 12 : 5} shadowColor={hasAiGlow ? "rgba(99,102,241,0.5)" : "rgba(0,0,0,0.3)"} />
         <Text x={10} y={10} text={obj.props.text || ""} fontSize={14} fill="#1a1a2e" width={obj.width - 20} />
       </Group>
     );
@@ -139,14 +141,14 @@ const BoardObjectRenderer = React.memo(function BoardObjectRenderer({
   if (obj.type === "rect") {
     return (
       <Group {...groupProps}>
-        <Rect width={obj.width} height={obj.height} fill={obj.props.fill || "#3b82f6"} stroke={obj.props.stroke || "#2563eb"} strokeWidth={2} cornerRadius={4} {...aiGlowProps} />
+        <Rect width={obj.width} height={obj.height} fill={obj.props.fill || OBJECT_DEFAULTS.rect.fill} stroke={obj.props.stroke || OBJECT_DEFAULTS.rect.stroke} strokeWidth={2} cornerRadius={4} {...aiGlowProps} />
       </Group>
     );
   }
   if (obj.type === "circle") {
     return (
       <Group {...groupProps}>
-        <Ellipse x={obj.width / 2} y={obj.height / 2} radiusX={obj.width / 2} radiusY={obj.height / 2} fill={obj.props.fill || "#8b5cf6"} stroke={obj.props.stroke || "#7c3aed"} strokeWidth={2} {...aiGlowProps} />
+        <Ellipse x={obj.width / 2} y={obj.height / 2} radiusX={obj.width / 2} radiusY={obj.height / 2} fill={obj.props.fill || OBJECT_DEFAULTS.circle.fill} stroke={obj.props.stroke || OBJECT_DEFAULTS.circle.stroke} strokeWidth={2} {...aiGlowProps} />
       </Group>
     );
   }
@@ -157,7 +159,7 @@ const BoardObjectRenderer = React.memo(function BoardObjectRenderer({
       <Group {...groupProps}>
         <LineComponent
           points={[0, 0, obj.width, obj.height]}
-          stroke={obj.props.stroke || "#f43f5e"}
+          stroke={obj.props.stroke || OBJECT_DEFAULTS.line.stroke}
           strokeWidth={3}
           hitStrokeWidth={12}
           lineCap="round"
@@ -174,7 +176,7 @@ const BoardObjectRenderer = React.memo(function BoardObjectRenderer({
   if (obj.type === "text") {
     return (
       <Group {...groupProps}>
-        <Text text={obj.props.text || ""} fontSize={16} fill={obj.props.color || "#ffffff"} width={obj.width} />
+        <Text text={obj.props.text || ""} fontSize={16} fill={obj.props.color || OBJECT_DEFAULTS.text.color} width={obj.width} />
       </Group>
     );
   }
@@ -321,7 +323,6 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
   const [stagePos, setStagePos] = useState({ x: 0, y: 0 });
   const [scale, setScale] = useState(1);
   const [size, setSize] = useState({ width: window.innerWidth, height: window.innerHeight });
-  const lastCursorSend = useRef(0);
   const lastDragSendRef = useRef(0);
   const [toolMode, setToolMode] = useState<ToolMode>("select");
   const [chatOpen, setChatOpen] = useState(true);
@@ -348,6 +349,11 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
   const dragStartPositionsRef = useRef<Map<string, { x: number; y: number }>>(new Map());
 
   const { connectionState, initialized, cursors, textCursors, objects, presence, send, createObject: wsCreate, updateObject: wsUpdate, deleteObject: wsDelete, batchUndo, lastServerMessageAt } = useWebSocket(boardId);
+
+  const sendCursorThrottled = useThrottledCallback(
+    (x: number, y: number) => send({ type: "cursor", x, y }),
+    CURSOR_THROTTLE_MS
+  );
 
   const { createObject, updateObject, deleteObject, startBatch, commitBatch, undo, redo, pushExternalBatch, topTag } = useUndoRedo(objects, wsCreate, wsUpdate, wsDelete);
   const { aiGlowIds, confettiPos, confettiKey, clearConfetti } = useAiObjectEffects(objects, initialized, scale, stagePos, size);
@@ -681,12 +687,9 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
     // Update marquee if dragging
     updateMarquee(worldX, worldY);
 
-    // Cursor sync (throttled)
-    const now = Date.now();
-    if (now - lastCursorSend.current < CURSOR_THROTTLE_MS) return;
-    lastCursorSend.current = now;
-    send({ type: "cursor", x: worldX, y: worldY });
-  }, [send, updateMarquee]);
+    // Cursor sync (throttled via useThrottledCallback)
+    sendCursorThrottled(worldX, worldY);
+  }, [sendCursorThrottled, updateMarquee]);
 
   // Stage mousedown: marquee (select mode) or frame draft (frame mode)
   const handleStageMouseDown = useCallback((e: KonvaEventObject<MouseEvent>) => {
@@ -1171,8 +1174,7 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
           {/* Selection transformer */}
           <Transformer
             ref={trRef}
-            flipEnabled={false}
-            rotateEnabled={true}
+            {...TRANSFORMER_CONFIG}
             boundBoxFunc={(_oldBox, newBox) => {
               // Lines can have near-zero dimensions in one axis - only clamp shapes
               const hasLineSelected = [...selectedIdsRef.current].some(id => objectsRef.current.get(id)?.type === "line");
@@ -1181,10 +1183,6 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
             }}
             borderStroke={colors.accent}
             anchorStroke={colors.accent}
-            anchorFill="#fff"
-            anchorSize={8}
-            padding={5}
-            anchorCornerRadius={2}
           />
         </Layer>
 

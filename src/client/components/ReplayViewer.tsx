@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { Stage, Layer, Rect, Text, Group, Ellipse, Line as KonvaLine, Arrow, Image as KonvaImage } from "react-konva";
 import type { BoardObject, ReplayEvent } from "@shared/types";
 import { colors } from "../theme";
+import { OBJECT_DEFAULTS } from "../constants";
 
 // Component for rendering base64 images (needs hooks for async loading)
 function ReplayImageObj({ obj }: { obj: BoardObject }) {
@@ -51,7 +52,7 @@ function renderObject(obj: BoardObject) {
   if (obj.type === "sticky") {
     return (
       <Group key={obj.id} {...base}>
-        <Rect width={obj.width} height={obj.height} fill={obj.props.color || "#fbbf24"} cornerRadius={8} shadowBlur={5} shadowColor="rgba(0,0,0,0.3)" />
+        <Rect width={obj.width} height={obj.height} fill={obj.props.color || OBJECT_DEFAULTS.sticky.color} cornerRadius={8} shadowBlur={5} shadowColor="rgba(0,0,0,0.3)" />
         <Text x={10} y={10} text={obj.props.text || ""} fontSize={14} fill="#1a1a2e" width={obj.width - 20} />
       </Group>
     );
@@ -59,14 +60,14 @@ function renderObject(obj: BoardObject) {
   if (obj.type === "rect") {
     return (
       <Group key={obj.id} {...base}>
-        <Rect width={obj.width} height={obj.height} fill={obj.props.fill || "#3b82f6"} stroke={obj.props.stroke || "#2563eb"} strokeWidth={2} cornerRadius={4} />
+        <Rect width={obj.width} height={obj.height} fill={obj.props.fill || OBJECT_DEFAULTS.rect.fill} stroke={obj.props.stroke || OBJECT_DEFAULTS.rect.stroke} strokeWidth={2} cornerRadius={4} />
       </Group>
     );
   }
   if (obj.type === "circle") {
     return (
       <Group key={obj.id} {...base}>
-        <Ellipse x={obj.width / 2} y={obj.height / 2} radiusX={obj.width / 2} radiusY={obj.height / 2} fill={obj.props.fill || "#8b5cf6"} stroke={obj.props.stroke || "#7c3aed"} strokeWidth={2} />
+        <Ellipse x={obj.width / 2} y={obj.height / 2} radiusX={obj.width / 2} radiusY={obj.height / 2} fill={obj.props.fill || OBJECT_DEFAULTS.circle.fill} stroke={obj.props.stroke || OBJECT_DEFAULTS.circle.stroke} strokeWidth={2} />
       </Group>
     );
   }
@@ -77,7 +78,7 @@ function renderObject(obj: BoardObject) {
       <Group key={obj.id} {...base}>
         <LineComponent
           points={[0, 0, obj.width, obj.height]}
-          stroke={obj.props.stroke || "#f43f5e"}
+          stroke={obj.props.stroke || OBJECT_DEFAULTS.line.stroke}
           strokeWidth={3}
           lineCap="round"
           {...(useArrow ? {
@@ -92,7 +93,7 @@ function renderObject(obj: BoardObject) {
   if (obj.type === "text") {
     return (
       <Group key={obj.id} {...base}>
-        <Text text={obj.props.text || ""} fontSize={16} fill={obj.props.color || "#ffffff"} width={obj.width} />
+        <Text text={obj.props.text || ""} fontSize={16} fill={obj.props.color || OBJECT_DEFAULTS.text.color} width={obj.width} />
       </Group>
     );
   }

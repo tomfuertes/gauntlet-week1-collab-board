@@ -1,9 +1,12 @@
-import React, { useRef, useEffect, useState } from "react";
-import { useAIChat, type AIChatMessage } from "../hooks/useAIChat";
+import React, { useCallback, useMemo, useRef, useEffect, useState } from "react";
+import { useAgent } from "agents/react";
+import { useAgentChat } from "@cloudflare/ai-chat/react";
+import { isToolUIPart, getToolName } from "ai";
+import type { UIMessage } from "ai";
 import { colors, getUserColor } from "../theme";
-import { getToolIcon, toolSummary } from "../../shared/ai-tool-meta";
 import "../styles/animations.css";
 import { BOARD_TEMPLATES } from "../../shared/board-templates";
+import type { ToolName } from "../../server/ai-tools-sdk";
 
 interface ChatPanelProps {
   boardId: string;
@@ -12,6 +15,60 @@ interface ChatPanelProps {
   initialPrompt?: string;
   selectedIds?: Set<string>;
   onAIComplete?: () => void;
+}
+
+// ---------------------------------------------------------------------------
+// Tool display metadata (was ai-tool-meta.ts - only used here)
+// ---------------------------------------------------------------------------
+
+const TOOL_ICONS: Record<ToolName, string> = {
+  createStickyNote: "\u{1F4CC}",
+  createShape: "\u{1F7E6}",
+  createFrame: "\u{1F5BC}",
+  createConnector: "\u{27A1}",
+  moveObject: "\u{1F4CD}",
+  resizeObject: "\u{2194}",
+  updateText: "\u{270F}",
+  changeColor: "\u{1F3A8}",
+  getBoardState: "\u{1F440}",
+  deleteObject: "\u{1F5D1}",
+  generateImage: "\u{2728}",
+};
+
+const TOOL_LABELS: Record<ToolName, string> = {
+  createStickyNote: "Creating sticky",
+  createShape: "Creating shape",
+  createFrame: "Creating frame",
+  createConnector: "Connecting objects",
+  moveObject: "Moving object",
+  resizeObject: "Resizing object",
+  updateText: "Updating text",
+  changeColor: "Changing color",
+  getBoardState: "Reading board",
+  deleteObject: "Deleting object",
+  generateImage: "Generating image",
+};
+
+function getToolIcon(name: string): string {
+  return TOOL_ICONS[name as ToolName] || "\u{1F527}";
+}
+
+function toolSummary(t: { name: string; args?: Record<string, unknown> }): string {
+  const a = t.args || {};
+  switch (t.name) {
+    case "createStickyNote": return `Created sticky: "${a.text || "..."}"`;
+    case "createShape": return `Drew ${a.shape || "shape"}${a.fill ? ` (${a.fill})` : ""}`;
+    case "createFrame": return `Created frame: "${a.title || "..."}"`;
+    case "createConnector": return "Connected objects";
+    case "moveObject": return "Moved object";
+    case "resizeObject": return "Resized object";
+    case "updateText": return `Updated text: "${a.text || "..."}"`;
+    case "changeColor": return `Changed color to ${a.color || "..."}`;
+    case "getBoardState": return `Read board${a.filter ? ` (${a.filter}s)` : ""}`;
+    case "deleteObject": return "Deleted object";
+    case "generateImage": return `Generated image: "${a.prompt || "..."}"`;
+    default: return TOOL_LABELS[t.name as ToolName] || t.name;
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -98,7 +155,12 @@ function ChipButton({ label, color, borderRadius, disabled, onClick }: {
   );
 }
 
-function ToolHistory({ tools }: { tools: NonNullable<AIChatMessage["tools"]> }) {
+interface ToolCallDisplay {
+  name: string;
+  args?: Record<string, unknown>;
+}
+
+function ToolHistory({ tools }: { tools: ToolCallDisplay[] }) {
   const [open, setOpen] = useState(true);
   return (
     <div style={{ marginBottom: 4 }}>
@@ -127,8 +189,46 @@ function ToolHistory({ tools }: { tools: NonNullable<AIChatMessage["tools"]> }) 
   );
 }
 
+// Regex to extract [username] prefix from user messages for multiplayer attribution
+const SENDER_RE = /^\[([^\]]+)\]\s*/;
+
 export function ChatPanel({ boardId, username, onClose, initialPrompt, selectedIds, onAIComplete }: ChatPanelProps) {
-  const { messages, loading, status, error, sendMessage } = useAIChat(boardId, selectedIds, username);
+  const selectedIdsArray = useMemo(
+    () => (selectedIds?.size ? [...selectedIds] : undefined),
+    [selectedIds],
+  );
+
+  // Connect to ChatAgent DO instance named by boardId
+  const agent = useAgent({ agent: "ChatAgent", name: boardId });
+
+  const {
+    messages: uiMessages,
+    sendMessage: sdkSendMessage,
+    status: sdkStatus,
+    error: sdkError,
+  } = useAgentChat({
+    agent,
+    body: { selectedIds: selectedIdsArray, username },
+  });
+
+  // Prefix [username] for multiplayer attribution in persisted history
+  const sendMessage = useCallback(
+    (text: string) => {
+      const prefixed = username ? `[${username}] ${text}` : text;
+      sdkSendMessage({ text: prefixed });
+    },
+    [sdkSendMessage, username],
+  );
+
+  const loading = sdkStatus === "streaming" || sdkStatus === "submitted";
+  const error = sdkStatus === "error" ? (sdkError?.message || "Something went wrong") : undefined;
+  const status =
+    sdkStatus === "submitted"
+      ? "Thinking..."
+      : sdkStatus === "streaming"
+        ? "Responding..."
+        : "";
+
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const lastHandledPrompt = useRef<string | undefined>(undefined);
@@ -149,7 +249,7 @@ export function ChatPanel({ boardId, username, onClose, initialPrompt, selectedI
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
-  }, [messages, loading, status]);
+  }, [uiMessages, loading, status]);
 
   // Auto-send initialPrompt when it changes (supports overlay + context menu)
   useEffect(() => {
@@ -174,6 +274,8 @@ export function ChatPanel({ boardId, username, onClose, initialPrompt, selectedI
       handleSubmit();
     }
   };
+
+  const userMessageCount = uiMessages.filter((m) => m.role === "user").length;
 
   return (
     <div style={{
@@ -202,29 +304,57 @@ export function ChatPanel({ boardId, username, onClose, initialPrompt, selectedI
         flex: 1, overflowY: "auto", padding: "1rem",
         display: "flex", flexDirection: "column", gap: "0.75rem",
       }}>
-        {messages.length === 0 && !loading && (
+        {uiMessages.length === 0 && !loading && (
           <div style={{ textAlign: "center", marginTop: "2rem" }}>
             <div style={{ color: "#64748b", fontSize: "0.8125rem", marginBottom: "1rem" }}>
               Pick a scene to get started, or type your own:
             </div>
           </div>
         )}
-        {messages.map((msg) => {
-          const isMe = msg.sender === username;
+        {uiMessages.map((msg: UIMessage) => {
+          // Extract [username] prefix from user messages for multiplayer attribution
+          let sender: string | undefined;
+          let displayText = "";
+          const tools: ToolCallDisplay[] = [];
+
+          for (const part of msg.parts) {
+            if (part.type === "text") {
+              displayText += part.text;
+            } else if (isToolUIPart(part)) {
+              tools.push({
+                name: getToolName(part),
+                args: part.input as Record<string, unknown>,
+              });
+            }
+          }
+
+          if (msg.role === "user") {
+            const match = displayText.match(SENDER_RE);
+            if (match) {
+              sender = match[1];
+              displayText = displayText.slice(match[0].length);
+            }
+          }
+
+          const content =
+            displayText ||
+            (tools.length > 0 ? "I performed the requested actions on the board." : "");
+
+          const isMe = sender === username;
           const senderColor = msg.role === "assistant"
             ? colors.aiCursor
-            : msg.sender
-              ? getUserColor(msg.sender)
+            : sender
+              ? getUserColor(sender)
               : colors.accent;
-          const senderLabel = msg.role === "assistant" ? "AI" : msg.sender;
+          const senderLabel = msg.role === "assistant" ? "AI" : sender;
 
           return (
             <div key={msg.id} style={{
               alignSelf: msg.role === "user" ? "flex-end" : "flex-start",
               maxWidth: "85%",
             }}>
-              {msg.role === "assistant" && msg.tools && (
-                <ToolHistory tools={msg.tools} />
+              {msg.role === "assistant" && tools.length > 0 && (
+                <ToolHistory tools={tools} />
               )}
               {senderLabel && (
                 <div style={{
@@ -249,7 +379,7 @@ export function ChatPanel({ boardId, username, onClose, initialPrompt, selectedI
                 whiteSpace: "pre-wrap",
                 wordBreak: "break-word",
               }}>
-                {msg.content}
+                {content}
               </div>
             </div>
           );
@@ -288,7 +418,7 @@ export function ChatPanel({ boardId, username, onClose, initialPrompt, selectedI
         padding: "0.375rem 0.75rem", borderTop: "1px solid #1e293b", flexShrink: 0,
         display: "flex", gap: 6, overflowX: "auto", alignItems: "center",
       }}>
-        {messages.length === 0 ? (
+        {uiMessages.length === 0 ? (
           BOARD_TEMPLATES.map((t) => (
             <ChipButton
               key={t.label}
@@ -300,7 +430,7 @@ export function ChatPanel({ boardId, username, onClose, initialPrompt, selectedI
             />
           ))
         ) : (
-          getIntentChips(messages.filter((m) => m.role === "user").length).map((chip) => (
+          getIntentChips(userMessageCount).map((chip) => (
             <ChipButton
               key={chip.prompt}
               label={chip.prompt}

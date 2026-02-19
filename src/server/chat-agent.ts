@@ -96,45 +96,118 @@ export class ChatAgent extends AIChatAgent<Bindings> {
   // causing false positives that permanently block director nudges on prod.)
   private _isGenerating = false;
 
-  /** Choose model: Haiku if ANTHROPIC_API_KEY set, else GLM free tier */
-  private _getModel() {
-    return this.env.ANTHROPIC_API_KEY
-      ? createAnthropic({ apiKey: this.env.ANTHROPIC_API_KEY })(
-          "claude-haiku-4-5-20251001"
-        )
-      : (createWorkersAI({ binding: this.env.AI }) as any)(
-          "@cf/zai-org/glm-4.7-flash"
-        );
+  /** Returns both the model instance and its display name for logging */
+  private _getModelInfo(): { model: any; name: string } {
+    if (this.env.ANTHROPIC_API_KEY) {
+      return {
+        model: createAnthropic({ apiKey: this.env.ANTHROPIC_API_KEY })("claude-haiku-4-5-20251001"),
+        name: "claude-haiku-4-5",
+      };
+    }
+    return {
+      model: (createWorkersAI({ binding: this.env.AI }) as any)("@cf/zai-org/glm-4.7-flash"),
+      name: "glm-4.7-flash",
+    };
   }
 
-  /** Model name for logging (avoids exposing full model object) */
-  private _getModelName(): string {
-    return this.env.ANTHROPIC_API_KEY
-      ? "claude-haiku-4-5"
-      : "glm-4.7-flash";
-  }
-
-  async onChatMessage(onFinish: any, options?: { abortSignal?: AbortSignal }) {
-    // this.name = boardId (set by client connecting to /agents/ChatAgent/<boardId>)
-    this._isGenerating = true;
-    const startTime = Date.now();
-    const modelName = this._getModelName();
-
+  /** Log AI request start with structured fields */
+  private _logRequestStart(trigger: string, extras?: Record<string, unknown>): void {
+    const { name: modelName } = this._getModelInfo();
     console.debug(
       JSON.stringify({
         event: "ai:request:start",
         boardId: this.name,
         model: modelName,
         promptVersion: PROMPT_VERSION,
-        trigger: "chat",
-      })
+        trigger,
+        ...extras,
+      }),
     );
+  }
+
+  /** Log AI request end with timing and tool call counts */
+  private _logRequestEnd(
+    trigger: string,
+    startTime: number,
+    steps: number,
+    toolCalls: number,
+    extras?: Record<string, unknown>,
+  ): void {
+    const { name: modelName } = this._getModelInfo();
+    const durationMs = Date.now() - startTime;
+    console.debug(
+      JSON.stringify({
+        event: "ai:request:end",
+        boardId: this.name,
+        model: modelName,
+        promptVersion: PROMPT_VERSION,
+        trigger,
+        steps,
+        toolCalls,
+        durationMs,
+        ...extras,
+      }),
+    );
+  }
+
+  /** Build a UIMessage from a generateText result (used by director nudge) */
+  private _buildDirectorMessage(result: any): UIMessage | null {
+    const parts: UIMessage["parts"] = [];
+
+    for (const step of result.steps) {
+      for (const tc of step.toolCalls) {
+        const tr = step.toolResults.find(
+          (r: { toolCallId: string }) => r.toolCallId === tc.toolCallId,
+        );
+        const safeInput = isPlainObject(tc.input) ? tc.input : {};
+        if (tr) {
+          parts.push({
+            type: "dynamic-tool" as const,
+            toolName: tc.toolName,
+            toolCallId: tc.toolCallId,
+            state: "output-available" as const,
+            input: safeInput,
+            output: tr.output,
+          });
+        } else {
+          parts.push({
+            type: "dynamic-tool" as const,
+            toolName: tc.toolName,
+            toolCallId: tc.toolCallId,
+            state: "output-error" as const,
+            input: safeInput,
+            errorText: "Tool execution did not return a result",
+          });
+        }
+      }
+    }
+
+    if (result.text) {
+      parts.push({ type: "text" as const, text: result.text });
+    }
+
+    if (parts.length === 0) return null;
+
+    return {
+      id: crypto.randomUUID(),
+      role: "assistant",
+      parts,
+    };
+  }
+
+  async onChatMessage(onFinish: any, options?: { abortSignal?: AbortSignal }) {
+    // this.name = boardId (set by client connecting to /agents/ChatAgent/<boardId>)
+    this._isGenerating = true;
+    const startTime = Date.now();
+    const { model } = this._getModelInfo();
+
+    this._logRequestStart("chat");
 
     // Record chat activity for async notifications (non-blocking)
     this.ctx.waitUntil(
       recordBoardActivity(this.env.DB, this.name).catch((err: unknown) => {
         console.error(JSON.stringify({ event: "activity:record", trigger: "chat", error: String(err) }));
-      })
+      }),
     );
 
     const doId = this.env.BOARD.idFromName(this.name);
@@ -155,20 +228,18 @@ export class ChatAgent extends AIChatAgent<Bindings> {
     if (body?.selectedIds?.length) {
       const objects = await boardStub.readObjects();
       const selected = (objects as BoardObject[]).filter((o: BoardObject) =>
-        body.selectedIds.includes(o.id)
+        body.selectedIds.includes(o.id),
       );
       if (selected.length > 0) {
         const desc = selected
           .map(
             (o: BoardObject) =>
-              `- ${o.type} (id: ${o.id}${o.props.text ? `, text: "${o.props.text}"` : ""})`
+              `- ${o.type} (id: ${o.id}${o.props.text ? `, text: "${o.props.text}"` : ""})`,
           )
           .join("\n");
         systemPrompt += `\n\nThe user has selected ${selected.length} object(s) on the board:\n${desc}\nWhen the user refers to "selected", "these", or "this", they mean the above objects. Use their IDs directly.`;
       }
     }
-
-    const model = this._getModel();
 
     // Show AI in presence bar while responding (best-effort, never blocks AI response)
     await boardStub.setAiPresence(true).catch((err: unknown) => {
@@ -191,26 +262,14 @@ export class ChatAgent extends AIChatAgent<Bindings> {
       await clearPresence();
 
       // Request-level metrics from onFinish
-      const durationMs = Date.now() - startTime;
       const finishArg = args[0] as { steps?: { toolCalls?: unknown[] }[] } | undefined;
       const steps = finishArg?.steps?.length ?? 0;
       const toolCalls = finishArg?.steps?.reduce(
         (sum: number, s: { toolCalls?: unknown[] }) => sum + (s.toolCalls?.length ?? 0),
-        0
+        0,
       ) ?? 0;
 
-      console.debug(
-        JSON.stringify({
-          event: "ai:request:end",
-          boardId: this.name,
-          model: modelName,
-          promptVersion: PROMPT_VERSION,
-          trigger: "chat",
-          steps,
-          toolCalls,
-          durationMs,
-        })
-      );
+      this._logRequestEnd("chat", startTime, steps, toolCalls);
 
       return onFinish(...args);
     };
@@ -267,7 +326,7 @@ export class ChatAgent extends AIChatAgent<Bindings> {
                 event: "director:timer-set",
                 boardId: this.name,
                 delaySeconds: 60,
-              })
+              }),
             );
           }
         } catch (err) {
@@ -276,17 +335,17 @@ export class ChatAgent extends AIChatAgent<Bindings> {
               event: "director:timer-error",
               boardId: this.name,
               error: String(err),
-            })
+            }),
           );
         }
-      })()
+      })(),
     );
   }
 
   /** Called by DO alarm after 60s of inactivity - generates a proactive scene complication */
   async onDirectorNudge(
     _payload: unknown,
-    currentSchedule?: { id: string }
+    currentSchedule?: { id: string },
   ) {
     // Guard: skip if another timer was set after this one fired
     // Note: the SDK deletes the schedule row AFTER the callback returns,
@@ -294,7 +353,7 @@ export class ChatAgent extends AIChatAgent<Bindings> {
     const lastSchedules = this.getSchedules({ type: "delayed" });
     const hasPending = lastSchedules.some(
       (s) =>
-        s.callback === "onDirectorNudge" && s.id !== currentSchedule?.id
+        s.callback === "onDirectorNudge" && s.id !== currentSchedule?.id,
     );
     if (hasPending) {
       console.debug(JSON.stringify({ event: "director:skip", reason: "newer-timer", boardId: this.name }));
@@ -315,31 +374,21 @@ export class ChatAgent extends AIChatAgent<Bindings> {
 
     this._isGenerating = true;
     const startTime = Date.now();
-    const modelName = this._getModelName();
 
-    console.debug(
-      JSON.stringify({
-        event: "ai:request:start",
-        boardId: this.name,
-        model: modelName,
-        promptVersion: PROMPT_VERSION,
-        trigger: "director",
-        messageCount: this.messages.length,
-      })
-    );
+    // Determine scene phase from user message count
+    const userMessageCount = this.messages.filter(
+      (m) => m.role === "user",
+    ).length;
+    const phase = computeScenePhase(userMessageCount);
+
+    this._logRequestStart("director", { messageCount: this.messages.length });
 
     const doId = this.env.BOARD.idFromName(this.name);
     const boardStub = this.env.BOARD.get(doId);
     const batchId = crypto.randomUUID();
     const tools = createSDKTools(boardStub, batchId, this.env.AI);
 
-    // Determine scene phase from user message count
-    const userMessageCount = this.messages.filter(
-      (m) => m.role === "user"
-    ).length;
-    const phase = computeScenePhase(userMessageCount);
-
-    const model = this._getModel();
+    const { model } = this._getModelInfo();
 
     // Show AI presence while generating
     await boardStub.setAiPresence(true).catch((err: unknown) => {
@@ -363,80 +412,25 @@ export class ChatAgent extends AIChatAgent<Bindings> {
         stopWhen: stepCountIs(3),
       });
 
-      // Build UIMessage from generateText result
-      const parts: UIMessage["parts"] = [];
-
-      // Add tool call parts from all steps
-      for (const step of result.steps) {
-        for (const tc of step.toolCalls) {
-          const tr = step.toolResults.find(
-            (r: { toolCallId: string }) => r.toolCallId === tc.toolCallId
-          );
-          const safeInput = isPlainObject(tc.input) ? tc.input : {};
-          if (tr) {
-            parts.push({
-              type: "dynamic-tool" as const,
-              toolName: tc.toolName,
-              toolCallId: tc.toolCallId,
-              state: "output-available" as const,
-              input: safeInput,
-              output: tr.output,
-            });
-          } else {
-            parts.push({
-              type: "dynamic-tool" as const,
-              toolName: tc.toolName,
-              toolCallId: tc.toolCallId,
-              state: "output-error" as const,
-              input: safeInput,
-              errorText: "Tool execution did not return a result",
-            });
-          }
-        }
-      }
-
-      // Add text part if present
-      if (result.text) {
-        parts.push({ type: "text" as const, text: result.text });
-      }
-
-      // Only persist if we actually generated something
-      if (parts.length > 0) {
-        const directorMessage: UIMessage = {
-          id: crypto.randomUUID(),
-          role: "assistant",
-          parts,
-        };
+      const directorMessage = this._buildDirectorMessage(result);
+      if (directorMessage) {
         this.messages.push(directorMessage);
         await this.persistMessages(this.messages);
       }
 
-      const durationMs = Date.now() - startTime;
       const totalToolCalls = result.steps.reduce(
         (sum, s) => sum + s.toolCalls.length,
-        0
+        0,
       );
 
-      console.debug(
-        JSON.stringify({
-          event: "ai:request:end",
-          boardId: this.name,
-          model: modelName,
-          promptVersion: PROMPT_VERSION,
-          trigger: "director",
-          phase,
-          steps: result.steps.length,
-          toolCalls: totalToolCalls,
-          durationMs,
-        })
-      );
+      this._logRequestEnd("director", startTime, result.steps.length, totalToolCalls, { phase });
     } catch (err) {
       console.error(
         JSON.stringify({
           event: "director:nudge-error",
           boardId: this.name,
           error: String(err),
-        })
+        }),
       );
     } finally {
       this._isGenerating = false;

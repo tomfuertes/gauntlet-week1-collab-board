@@ -107,7 +107,7 @@ npx playwright test --reporter=dot     # minimal output (default 'list' floods c
 Worktree agent lifecycle: **implement -> PR review -> fix review issues -> UAT -> commit -> /last-call**. PR review gates UAT. After UAT passes, commit all changes to the feature branch (no PR - the orchestrator merges from main). After committing, run `/last-call` for an end-of-session summary. The branch must be clean-committed when the agent finishes so `git merge feat/<branch>` works from main.
 
 Worktree prompts must explicitly mention:
-- `npm run dev` (auto-loads worktree.ports if present, never hardcode ports)
+- `npm run dev` for interactive development (auto-loads worktree.ports if present, never hardcode ports). **For agent-driven UAT without live editing**, prefer `npm run build && npx wrangler dev` to avoid EMFILE from Vite watchers - no persistent file watchers needed. Kill and rebuild between test rounds.
 - `scripts/localcurl.sh` instead of `curl` (agents default to raw curl which isn't in the permission allowlist)
 - **Namespace `playwright-cli` sessions in worktrees** - use `-s=<branch-name>` (e.g., `playwright-cli -s=feat-frames open ...`) to avoid conflicts with other worktrees running simultaneously. Without `-s`, all worktrees share the default session.
 - "Read CLAUDE.md and relevant source files before implementing" (not "Enter plan mode first")
@@ -138,8 +138,8 @@ src/
       BoardGrid.tsx     # Dot grid + radial glow background (extracted from Board)
     hooks/
       useWebSocket.ts   # WebSocket state management (Board DO)
-      useAIChat.ts      # Adapter: useAgentChat -> AIChatMessage (ChatPanel compat)
       useUndoRedo.ts    # Local undo/redo stack (max 50, Cmd+Z/Cmd+Shift+Z)
+      useThrottledCallback.ts  # Generic throttle hook (drag, cursor sends)
       useAiObjectEffects.ts  # AI glow + confetti trigger logic (extracted from Board)
       useKeyboardShortcuts.ts  # Keyboard handlers: Cmd+Z, Cmd+C, Delete, Escape (extracted from Board)
       useDragSelection.ts      # Marquee/rubber-band selection logic (extracted from Board)
@@ -153,8 +153,7 @@ src/
     chat-agent.ts       # AIChatAgent DO - WebSocket AI chat, model selection, request metrics
     ai-tools-sdk.ts     # 10 tools as AI SDK tool() with Zod schemas + instrumentExecute wrapper + DRY helpers
   shared/               # Types shared between client and server
-    types.ts            # BoardObject, WSMessage, ChatMessage, ReplayEvent, User, etc.
-    ai-tool-meta.ts     # Tool display metadata (icons, labels, summaries) for ChatPanel
+    types.ts            # BoardObject, WSMessage, BoardMutation, ReplayEvent, etc.
 migrations/             # D1 SQL migrations (tracked via d1_migrations table, npm run migrate)
 ```
 

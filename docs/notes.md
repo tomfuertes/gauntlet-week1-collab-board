@@ -124,35 +124,65 @@ Coworker's prompts: demon face -> unicorn -> GOOSE ATTACKING -> penguin fleeing 
 
 ## Open Tech Debt
 
-**File size / DRY candidates (wc -l, sorted):**
+*Full code-health audit completed Feb 18. ~1,200-1,500 lines of structural duplication (~20% of 6,995L codebase). Dead code is minimal (2 unused types). No circular dependencies.*
 
-| File | Lines | Issue |
-|------|-------|-------|
-| Board.tsx | 1836 | God component. Toolbar, keyboard shortcuts, drag selection, rendering all inline. Worktree in flight. |
-| ai-tools-sdk.ts | 587 | 10 tools with repetitive create patterns. `createAndMutate` helps but each tool still has ~40 lines of boilerplate (schema + execute + error handling). |
-| chat-agent.ts | 420 | Mixes concerns: model selection, message sanitization, streaming, director mode, metrics. Could split director into own file. |
-| board.ts | 353 | WS message handler is a giant switch. Replay recording + activity tracking interleaved. Manageable for now. |
-| ChatPanel.tsx | 348 | Intent chips, message rendering, input handling. Getting close to extraction threshold. |
-| ReplayViewer.tsx | 318 | RAF interpolation + playback engine + rendering. Self-contained, OK. |
+### Quick Wins (no worktree conflicts, safe to do anytime)
 
-**Security:**
+| # | Refactor | Lines | Files |
+|---|----------|-------|-------|
+| 1 | Delete unused `User`/`Session` types | 11 | types.ts |
+| 2 | Extract `OBJECT_DEFAULTS` + `TRANSFORMER_CONFIG` constants | 25 | Board.tsx, ReplayViewer.tsx |
+| 3 | Extract `useThrottledCallback()` hook | 10 | Board.tsx |
+| 4 | Extract `readAndCenter()` helper for tools | 12 | ai-tools-sdk.ts |
+| 5 | Consolidate model selection into single `_getModel()` | 6 | chat-agent.ts |
+| 6 | Extract `_logRequestStart/End()` helpers | 30 | chat-agent.ts |
+| 7 | Move `BoardMutation` to shared/types.ts (single source of truth) | 10 | types.ts, ai-tools-sdk.ts, board.ts |
+| 8 | Extract `createToolObject()` collapsing create-and-mutate boilerplate | 60 | ai-tools-sdk.ts |
+| 9 | Auth middleware helper (`requireAuth`, `checkBoardOwnership`) | 30 | index.ts, auth.ts |
+| 10 | Director message builder helper | 40 | chat-agent.ts |
+
+### Post-Merge Refactors (conflict with active worktrees)
+
+| # | Refactor | Lines | Blocked by |
+|---|----------|-------|------------|
+| 11 | Merge Board/Replay object renderers into shared utility | 90 | spectator-mode (adds 3rd renderer) |
+| 12 | Extract `<Button variant="..."/>` component | 100 | onboard-modal (adds buttons) |
+| 13 | Board.tsx further decomp (BoardObjectRenderer, ConnectionToast) | 260+ | onboard-modal (restructures Board) |
+| 14 | Discriminated union for BoardObject.props per shape type | 50+safety | multi-agent (extends types) |
+| 15 | Extract `BoardStub` interface to shared file | 20+safety | multi-agent (uses RPC) |
+| 16 | `<Modal>` + `<TextInput>` shared components | 130 | onboard-modal (adds modal) |
+
+### Architecture Notes
+
+- **Clean dependency flow:** No circular imports. Unidirectional server -> shared <- client.
+- **Implicit BoardStub interface** (ai-tools-sdk.ts:14-19) - not validated against Board DO. Type-safe at call sites but drifts possible.
+- **BoardObject.props too flexible** - no discriminated union per shape type. changeColor must guess color vs fill vs stroke.
+- **ChatAgent error handling loose** - tool failures logged but swallowed, LLM unaware of partial success.
+- **Board DO (356L) is acceptable** - single source of truth must own mutations + broadcasts + storage. Refactoring would lose transactionality.
+
+### Security
+
 - No rate limiting on auth + AI endpoints
 - AI route accepts arbitrary boardId - can create phantom DOs
 - No upper bound on AI chat history
 - Username enumeration via signup 409
 
-**React/Konva:**
+### React/Konva
+
 - `ToolIconBtn` not memoized (8 instances re-render on cursor updates)
 - No React error boundary
+- 150+ inline styles across 5 components (header bars 5x, buttons 8x, modals 3x, inputs 2x)
 
-**UX/Polish:**
+### UX/Polish
+
 - ~~Vite build >500KB chunk~~ Fixed: manualChunks splits vendor-react/canvas/ai
 - Circles have no resize handles
 - WS reconnect: no max retry, no non-retryable close code handling
 - Undo stack not cleared on WS reconnect
 - No guard against `sendMessage` when ChatAgent WS is disconnected
 
-**Won't Fix (Week 1):**
+### Won't Fix (Week 1)
+
 - `send()` silently drops messages during reconnect window
 
 ---

@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import type { Context } from "hono";
 import { getCookie, setCookie, deleteCookie } from "hono/cookie";
 import type { Bindings } from "./env";
 
@@ -82,6 +83,19 @@ function setSessionCookie(
   });
 }
 
+async function createAndSetSession(
+  c: Context<{ Bindings: Bindings }>,
+  userId: string
+): Promise<void> {
+  const sessionId = createSessionId();
+  await c.env.DB.prepare(
+    "INSERT INTO sessions (id, user_id, expires_at) VALUES (?, ?, ?)"
+  )
+    .bind(sessionId, userId, sessionExpiry())
+    .run();
+  setSessionCookie(c, sessionId);
+}
+
 // --- Routes ---
 
 auth.post("/auth/signup", async (c) => {
@@ -124,15 +138,7 @@ auth.post("/auth/signup", async (c) => {
     .bind(userId, body.username.toLowerCase(), passwordHash, displayName)
     .run();
 
-  // Create session
-  const sessionId = createSessionId();
-  await c.env.DB.prepare(
-    "INSERT INTO sessions (id, user_id, expires_at) VALUES (?, ?, ?)"
-  )
-    .bind(sessionId, userId, sessionExpiry())
-    .run();
-
-  setSessionCookie(c, sessionId);
+  await createAndSetSession(c, userId);
 
   return c.json({
     user: { id: userId, username: body.username.toLowerCase(), displayName },
@@ -161,15 +167,7 @@ auth.post("/auth/login", async (c) => {
     return c.json({ error: "Invalid username or password" }, 401);
   }
 
-  // Create session
-  const sessionId = createSessionId();
-  await c.env.DB.prepare(
-    "INSERT INTO sessions (id, user_id, expires_at) VALUES (?, ?, ?)"
-  )
-    .bind(sessionId, user.id, sessionExpiry())
-    .run();
-
-  setSessionCookie(c, sessionId);
+  await createAndSetSession(c, user.id);
 
   return c.json({
     user: {

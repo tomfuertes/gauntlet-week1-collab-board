@@ -1,14 +1,8 @@
 import { tool } from "ai";
 import { z } from "zod";
 import { AI_USER_ID } from "../shared/types";
-import type { BoardObject } from "../shared/types";
+import type { BoardObject, BoardMutation } from "../shared/types";
 import type { MutateResult } from "./env";
-
-/** Mutation messages the tool registry can send (excludes cursor) */
-type BoardMutation =
-  | { type: "obj:create"; obj: BoardObject }
-  | { type: "obj:update"; obj: Partial<BoardObject> & { id: string } }
-  | { type: "obj:delete"; id: string };
 
 /** Minimal interface for the Board DO stub methods used by tools */
 interface BoardStub {
@@ -17,6 +11,21 @@ interface BoardStub {
   mutate(msg: BoardMutation): Promise<MutateResult>;
   injectCursor(x: number, y: number): Promise<void>;
 }
+
+// ---------------------------------------------------------------------------
+// Constants
+// ---------------------------------------------------------------------------
+
+/** Magic number defaults for tool dimensions and colors */
+const TOOL_DEFAULTS = {
+  sticky: { width: 200, height: 200, color: "#fbbf24" },
+  rect: { width: 150, height: 100, fill: "#3b82f6", stroke: "#2563eb" },
+  circle: { diameter: 100, fill: "#3b82f6", stroke: "#2563eb" },
+  line: { width: 200, height: 0, stroke: "#94a3b8" },
+  frame: { width: 400, height: 300 },
+  image: { width: 512, height: 512 },
+  connector: { stroke: "#94a3b8" },
+} as const;
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -121,6 +130,17 @@ function cursorToCenter(stub: BoardStub, obj: { x: number; y: number; width: num
   stub.injectCursor(obj.x + obj.width / 2, obj.y + obj.height / 2).catch((err: unknown) => {
     console.debug(JSON.stringify({ event: "ai:cursor:error", error: String(err) }));
   });
+}
+
+/**
+ * Read an object by ID and move the AI cursor to its center.
+ * Returns the object (or null). Used by move/resize/text/color tools
+ * that need the existing object before mutating.
+ */
+async function readAndCenter(stub: BoardStub, id: string): Promise<BoardObject | null> {
+  const obj = await stub.readObject(id);
+  if (obj) cursorToCenter(stub, obj);
+  return obj;
 }
 
 /** Check if two board objects overlap (axis-aligned bounding boxes) */
@@ -250,9 +270,9 @@ export function createSDKTools(stub: BoardStub, batchId?: string, ai?: Ai) {
           ),
       }),
       execute: instrumentExecute("createStickyNote", async ({ text, x, y, color }) => {
-        const obj = makeObject("sticky", randomPos(x, y), 200, 200, {
+        const obj = makeObject("sticky", randomPos(x, y), TOOL_DEFAULTS.sticky.width, TOOL_DEFAULTS.sticky.height, {
           text: text || "New note",
-          color: color || "#fbbf24",
+          color: color || TOOL_DEFAULTS.sticky.color,
         }, batchId);
         return createAndMutate(stub, obj);
       }),
@@ -311,14 +331,14 @@ export function createSDKTools(stub: BoardStub, batchId?: string, ai?: Ai) {
         const shape = shapeArg || "rect";
 
         if (shape === "circle") {
-          const diameter = width ?? 100;
+          const diameter = width ?? TOOL_DEFAULTS.circle.diameter;
           const center = randomPos(x, y);
           const obj = makeObject(
             "circle",
             { x: center.x - diameter / 2, y: center.y - diameter / 2 },
             diameter,
             diameter,
-            { fill: fill || "#3b82f6", stroke: stroke || "#2563eb" },
+            { fill: fill || TOOL_DEFAULTS.circle.fill, stroke: stroke || TOOL_DEFAULTS.circle.stroke },
             batchId,
           );
           return createAndMutate(stub, obj);
@@ -328,9 +348,9 @@ export function createSDKTools(stub: BoardStub, batchId?: string, ai?: Ai) {
           const obj = makeObject(
             "line",
             randomPos(x, y),
-            width ?? 200,
-            height ?? 0,
-            { stroke: stroke || "#94a3b8" },
+            width ?? TOOL_DEFAULTS.line.width,
+            height ?? TOOL_DEFAULTS.line.height,
+            { stroke: stroke || TOOL_DEFAULTS.line.stroke },
             batchId,
           );
           return createAndMutate(stub, obj);
@@ -340,9 +360,9 @@ export function createSDKTools(stub: BoardStub, batchId?: string, ai?: Ai) {
         const obj = makeObject(
           "rect",
           randomPos(x, y),
-          width ?? 150,
-          height ?? 100,
-          { fill: fill || "#3b82f6", stroke: stroke || "#2563eb" },
+          width ?? TOOL_DEFAULTS.rect.width,
+          height ?? TOOL_DEFAULTS.rect.height,
+          { fill: fill || TOOL_DEFAULTS.rect.fill, stroke: stroke || TOOL_DEFAULTS.rect.stroke },
           batchId,
         );
         return createAndMutate(stub, obj);
@@ -376,8 +396,8 @@ export function createSDKTools(stub: BoardStub, batchId?: string, ai?: Ai) {
         const obj = makeObject(
           "frame",
           randomPos(x, y),
-          width ?? 400,
-          height ?? 300,
+          width ?? TOOL_DEFAULTS.frame.width,
+          height ?? TOOL_DEFAULTS.frame.height,
           {
             text:
               typeof title === "string" && title.trim()
@@ -428,7 +448,7 @@ export function createSDKTools(stub: BoardStub, batchId?: string, ai?: Ai) {
         const arrowStyle =
           arrow === "both" ? "both" : arrow === "none" ? "none" : "end";
         const obj = makeObject("line", { x: x1, y: y1 }, w, h, {
-          stroke: stroke || "#94a3b8",
+          stroke: stroke || TOOL_DEFAULTS.connector.stroke,
           arrow: arrowStyle as "end" | "both" | "none",
         }, batchId);
         const result = await createAndMutate(stub, obj);
@@ -447,7 +467,7 @@ export function createSDKTools(stub: BoardStub, batchId?: string, ai?: Ai) {
         y: z.number().describe("New Y position"),
       }),
       execute: instrumentExecute("moveObject", async ({ id, x, y }) => {
-        const existing = await stub.readObject(id);
+        const existing = await readAndCenter(stub, id);
         if (existing) cursorToCenter(stub, { x, y, width: existing.width, height: existing.height });
         return updateAndMutate(stub, id, { x, y }, "moved", { x, y });
       }),
@@ -462,7 +482,7 @@ export function createSDKTools(stub: BoardStub, batchId?: string, ai?: Ai) {
         height: z.number().describe("New height"),
       }),
       execute: instrumentExecute("resizeObject", async ({ id, width, height }) => {
-        const existing = await stub.readObject(id);
+        const existing = await readAndCenter(stub, id);
         if (existing) cursorToCenter(stub, { x: existing.x, y: existing.y, width, height });
         return updateAndMutate(stub, id, { width, height }, "resized", { width, height });
       }),
@@ -477,8 +497,7 @@ export function createSDKTools(stub: BoardStub, batchId?: string, ai?: Ai) {
         text: z.string().describe("New text content"),
       }),
       execute: instrumentExecute("updateText", async ({ id, text }) => {
-        const existing = await stub.readObject(id);
-        if (existing) cursorToCenter(stub, existing);
+        await readAndCenter(stub, id);
         return updateAndMutate(stub, id, { props: { text } }, "updated", { text });
       }),
     }),
@@ -492,10 +511,8 @@ export function createSDKTools(stub: BoardStub, batchId?: string, ai?: Ai) {
         color: z.string().describe("New hex color"),
       }),
       execute: instrumentExecute("changeColor", async ({ id, color }) => {
-        const existing = await stub.readObject(id);
+        const existing = await readAndCenter(stub, id);
         if (!existing) return { error: `Object ${id} not found` };
-
-        cursorToCenter(stub, existing);
         const props: BoardObject["props"] =
           existing.type === "sticky" || existing.type === "text"
             ? { color }
@@ -683,8 +700,8 @@ export function createSDKTools(stub: BoardStub, batchId?: string, ai?: Ai) {
         }
 
         const src = `data:image/png;base64,${base64}`;
-        const displayW = width ?? 512;
-        const displayH = height ?? 512;
+        const displayW = width ?? TOOL_DEFAULTS.image.width;
+        const displayH = height ?? TOOL_DEFAULTS.image.height;
         const obj = makeObject(
           "image",
           randomPos(x, y),
