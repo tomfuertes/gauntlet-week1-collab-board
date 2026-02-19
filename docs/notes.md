@@ -84,13 +84,48 @@ open board -> play scene -> share replay link -> recruit new player
 - AI Director nudge not firing on prod (DO alarm timing or threshold issue)
 - Async badges: boards only visible to owner, no cross-user board discovery
 
+## Product Strategy
+
+### The Broken Loop (why sessions evaporate)
+```
+Open board -> Pick scene -> AI sets stage -> Chat back and forth -> Board fills up -> ...now what?
+```
+No arc, no ending, no way to share the funny thing that happened, no reason to return. The board is a static graveyard of stickies.
+
+### Three Things That Broke the 1-to-100 Barrier
+1. **Scene Playback (viral loop)** - SHIPPED. Every replay is an ad for the product. Turns a transient experience into a shareable artifact. Without it, sessions evaporate. With it, sessions generate content that recruits new players.
+2. **Async Improv (kill the "both online" requirement)** - SHIPPED (notifications). Exquisite Corpse but spatial. Alice sets a scene before bed, Bob adds a complication in the morning. Architecture already supports it (DO SQLite chat + DO Storage board state persist across reconnects).
+3. **AI as Director (structure, not just performance)** - SHIPPED. Scenes meander without a director creating urgency. AI introduces ticking clocks, complications, scene transitions after inactivity. Dramatic structure: setup -> escalation -> complication -> climax -> callback.
+
+### Emergent Character Creation (coworker demo, Feb 18)
+Coworker's prompts: demon face -> unicorn -> GOOSE ATTACKING -> penguin fleeing goose -> horde of mongoose. The AI:
+- Named itself ("GLITTER the Improv Demon - I name myself")
+- Created characters with personality ("HONK the GOOSE OF CHAOS, hates love, pecking EVERYTHING")
+- Built inter-object relationships ("WADDLES - penguin refugee, fleeing the GOOSE OF CHAOS")
+- Maintained narrative coherence across prompts (each "yes, and"s the previous)
+
+**Key insight:** The visual medium is the bottleneck, not the AI's creativity. HONK is a circle with dots for eyes but the personality is vivid. Image generation closes that gap. Multi-agent improv (HONK vs WADDLES arguing autonomously) is the natural next step.
+
+---
+
 ## Planned Refactors
 
-- **Board.tsx decomposition** (~1800 lines): extract Toolbar.tsx, useKeyboardShortcuts.ts, useDragSelection.ts. Reduces merge conflicts across worktrees.
+- **Board.tsx decomposition** (~1800 lines, worktree in flight): extract Toolbar.tsx, useKeyboardShortcuts.ts, useDragSelection.ts. Reduces merge conflicts across worktrees.
 
 ---
 
 ## Open Tech Debt
+
+**File size / DRY candidates (wc -l, sorted):**
+
+| File | Lines | Issue |
+|------|-------|-------|
+| Board.tsx | 1836 | God component. Toolbar, keyboard shortcuts, drag selection, rendering all inline. Worktree in flight. |
+| ai-tools-sdk.ts | 587 | 10 tools with repetitive create patterns. `createAndMutate` helps but each tool still has ~40 lines of boilerplate (schema + execute + error handling). |
+| chat-agent.ts | 420 | Mixes concerns: model selection, message sanitization, streaming, director mode, metrics. Could split director into own file. |
+| board.ts | 353 | WS message handler is a giant switch. Replay recording + activity tracking interleaved. Manageable for now. |
+| ChatPanel.tsx | 348 | Intent chips, message rendering, input handling. Getting close to extraction threshold. |
+| ReplayViewer.tsx | 318 | RAF interpolation + playback engine + rendering. Self-contained, OK. |
 
 **Security:**
 - No rate limiting on auth + AI endpoints

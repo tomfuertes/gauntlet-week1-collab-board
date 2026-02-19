@@ -99,7 +99,7 @@ npx playwright test --reporter=dot     # minimal output (default 'list' floods c
 
 **Known gotchas:**
 - Sandbox blocks Playwright browser launch and `wrangler dev`. Use `dangerouslyDisableSandbox: true` for both.
-- **WS flakiness in local dev is expected.** First WS connection often drops with wrangler dev. The app reconnects but E2E/UAT tests must account for this. Use `createObjectsViaWS()` helper (in `e2e/helpers.ts`) instead of UI double-click for reliable object creation. `wsRef.current` can be null after a drop even when React state shows "connected". Validate real-time features on production deploy.
+- **WS flakiness in local dev is expected.** First WS connection often drops with wrangler dev (DO cold start during WS handshake). The app reconnects but E2E/UAT tests must account for this. **After navigating to a board, always wait for `[data-state="connected"]` before interacting.** This selector is on the connection status dot in the header. Use `createObjectsViaWS()` helper (in `e2e/helpers.ts`) instead of UI double-click for reliable object creation. `wsRef.current` can be null after a drop even when React state shows "connected".
 - **HMR hook-order false positive:** "React has detected a change in the order of Hooks called by Board" during dev = Vite HMR artifact, not a real bug. Full page reload fixes it. Never investigate this error in a live dev session.
 
 ### Worktree Agent Conventions
@@ -230,7 +230,7 @@ Main context is the orchestrator. Delegate execution to custom agents (`.claude/
 
 | Task | Agent | Model (in frontmatter) | Background? |
 |------|-------|------------------------|-------------|
-| UAT / smoke test / feature verification | `uat` | sonnet | yes |
+| UAT / smoke test / feature verification | `uat` | haiku | yes |
 | Worktree creation + setup | `worktree-setup` | haiku | yes |
 | E2E test suite (`npx playwright test`) | background Bash | - | yes |
 | Codebase exploration (3+ file reads) | `Explore` (built-in) | haiku | yes |

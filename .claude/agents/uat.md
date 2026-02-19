@@ -2,7 +2,7 @@
 name: uat
 description: UAT testing agent for CollabBoard. Use proactively to verify features, smoke test, and validate 2-browser sync. Delegates browser automation so main context stays clean.
 tools: Bash, Read, Grep, Glob
-model: sonnet
+model: haiku
 skills:
   - playwright-cli
 ---
@@ -37,16 +37,19 @@ playwright-cli close-all
 
 - **All screenshots go to `.playwright-cli/`** - use `--filename=.playwright-cli/<descriptive-name>.png`
 - **Always namespace sessions** with `-s=uat` (or `-s=uat-user1`/`-s=uat-user2` for sync tests)
-- **Snapshots over screenshots** for understanding page structure - they return YAML accessibility trees
+- **Snapshots over screenshots** - YAML accessibility trees are ~10x cheaper in tokens than images. Use snapshots for ALL verification (element exists, text content, state checking). Only use screenshots for visual-only checks (layout, colors, visual glitches) or on test failure for debugging. Never screenshot just to "see what happened."
 - **Close sessions when done** - `playwright-cli close-all`
 - Use `dangerouslyDisableSandbox: true` for all Bash commands running playwright-cli (browser launch requires it)
+- **CRITICAL: After navigating to a board, WAIT for WS connection before interacting.** The first WS connection to wrangler dev often drops (DO cold start). Run `playwright-cli -s=uat snapshot` and look for the connection dot with `data-state="connected"`. If it shows `connecting` or `reconnecting`, wait 2-3 seconds and snapshot again. Do NOT click, drag, or send messages until connected. This prevents the #1 cause of flaky UAT.
+- **Never hardcode `sleep` > 2s.** Instead of `sleep 70` or `sleep 8`, poll with short intervals: `sleep 1 && playwright-cli snapshot` in a loop, checking for the expected state. Long sleeps burn wall-clock time even when the condition is met early. For AI responses, poll every 2s for up to 30s. For Director nudges, poll every 5s for up to 90s.
+- **Never `Read` a screenshot PNG unless debugging a failure.** Reading a PNG sends the full image through the model (~7s, ~1500 tokens). You just took the screenshot - you know what page state triggered it. Use snapshots (YAML) for verification. Only read a screenshot when a test step failed and you need to visually diagnose why.
 
 ## App Knowledge
 
 - **URL:** `http://localhost:5173` (default) or check task for worktree port
 - **Auth flow:** Signup at login page (username + password fields), then redirected to board list
 - **Board creation:** Click "New Board" button on board list, enter name
-- **Canvas tools:** Toolbar on left side - select, sticky, rect, circle, line, arrow, text, frame
+- **Canvas tools:** Floating toolbar at bottom-center - select, sticky, rect, circle, line, arrow, text, frame
 - **Object creation:** Select tool, then click/drag on canvas (stickies: double-click)
 - **AI chat:** Panel on right side, type commands like "create a yellow sticky that says hello"
 

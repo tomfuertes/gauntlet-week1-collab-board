@@ -31,7 +31,7 @@ export function AuthForm({ onAuth }: { onAuth: (user: AuthUser) => void }) {
         return;
       }
       if (data.user) onAuth(data.user);
-    } catch {
+    } catch { // intentional: network failures shown to user via setError
       setError("Network error");
     } finally {
       setSubmitting(false);

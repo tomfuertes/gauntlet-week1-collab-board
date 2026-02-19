@@ -89,7 +89,7 @@ export function useWebSocket(boardId: string): UseWebSocketReturn {
         let msg: WSServerMessage;
         try {
           msg = JSON.parse(event.data) as WSServerMessage;
-        } catch {
+        } catch { // intentional: malformed server messages are non-recoverable
           console.error("[WS] failed to parse message:", event.data);
           return;
         }

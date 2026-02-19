@@ -1011,7 +1011,7 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
             fontSize: "0.875rem", padding: 0,
           }}>&larr; Boards</button>
           <span style={{ fontWeight: 600 }}>CollabBoard</span>
-          <span style={{
+          <span data-testid="connection-state" data-state={connectionState} style={{
             width: 8, height: 8, borderRadius: "50%", display: "inline-block",
             background: { connected: colors.success, reconnecting: colors.warning, connecting: colors.info, disconnected: colors.error }[connectionState],
           }} title={connectionState} />

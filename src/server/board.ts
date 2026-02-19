@@ -158,7 +158,7 @@ export class Board extends DurableObject<Bindings> {
     let msg: WSClientMessage;
     try {
       msg = JSON.parse(raw as string) as WSClientMessage;
-    } catch {
+    } catch { // intentional: malformed client messages are non-recoverable
       console.warn("[WS] malformed message, ignoring");
       return;
     }
