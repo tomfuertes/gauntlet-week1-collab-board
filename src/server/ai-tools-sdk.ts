@@ -212,6 +212,10 @@ type LLMBoardObject = Omit<BoardObject, "updatedAt" | "createdBy" | "batchId" | 
 /** Strip LLM-irrelevant fields from board objects to reduce token usage */
 function stripForLLM(obj: BoardObject): LLMBoardObject {
   const { updatedAt: _updatedAt, createdBy: _createdBy, batchId: _batchId, rotation, ...rest } = obj;
+  // Strip base64 src from images (massive, useless for LLM) - keep prompt for context
+  if (rest.type === "image" && rest.props.src) {
+    rest.props = { ...rest.props, src: "[base64 image]" };
+  }
   // Only include rotation when non-zero (meaningful)
   if (rotation) return { ...rest, rotation };
   return rest;
@@ -222,7 +226,7 @@ function stripForLLM(obj: BoardObject): LLMBoardObject {
 // ---------------------------------------------------------------------------
 
 /** Create the full AI SDK tool registry bound to a specific Board DO stub */
-export function createSDKTools(stub: BoardStub, batchId?: string) {
+export function createSDKTools(stub: BoardStub, batchId?: string, ai?: Ai) {
   return {
     // 1. createStickyNote
     createStickyNote: tool({
@@ -509,7 +513,7 @@ export function createSDKTools(stub: BoardStub, batchId?: string) {
           .string()
           .optional()
           .describe(
-            "Filter by object type: 'sticky', 'rect', 'circle', 'line', 'text', 'frame'",
+            "Filter by object type: 'sticky', 'rect', 'circle', 'line', 'text', 'frame', 'image'",
           ),
         ids: z
           .array(z.string())
@@ -578,6 +582,118 @@ export function createSDKTools(stub: BoardStub, batchId?: string) {
         }
         if (!result.ok) return { error: result.error };
         return { deleted: id };
+      }),
+    }),
+
+    // 11. generateImage
+    generateImage: tool({
+      description:
+        "Generate an AI image from a text prompt and place it on the whiteboard. Uses Stable Diffusion XL. Great for illustrations, scene backdrops, character portraits, props, etc.",
+      inputSchema: z.object({
+        prompt: z
+          .string()
+          .describe("Text description of the image to generate (be specific and descriptive)"),
+        x: z
+          .number()
+          .optional()
+          .describe("X position on the canvas (default: random 100-800)"),
+        y: z
+          .number()
+          .optional()
+          .describe("Y position on the canvas (default: random 100-600)"),
+        width: z
+          .number()
+          .optional()
+          .describe("Display width on the board in pixels (default: 512)"),
+        height: z
+          .number()
+          .optional()
+          .describe("Display height on the board in pixels (default: 512)"),
+      }),
+      execute: instrumentExecute("generateImage", async ({ prompt, x, y, width, height }) => {
+        if (!ai) {
+          return { error: "Image generation unavailable (AI binding not configured)" };
+        }
+
+        // Call CF Workers AI Stable Diffusion XL
+        const MAX_IMAGE_BYTES = 2 * 1024 * 1024; // 2MB raw - keeps base64 under DO SQLite 2MB value limit
+        let imageBytes: Uint8Array;
+        try {
+          const response = await ai.run(
+            "@cf/stabilityai/stable-diffusion-xl-base-1.0" as Parameters<Ai["run"]>[0],
+            { prompt, width: 512, height: 512 } as Record<string, unknown>,
+          );
+          // Validate response is a ReadableStream
+          if (!response || typeof (response as ReadableStream).getReader !== "function") {
+            const responseType = response === null ? "null" : typeof response;
+            console.error(
+              JSON.stringify({ event: "ai:image:unexpected-response", prompt: prompt.slice(0, 100), responseType }),
+            );
+            return { error: `Image generation returned unexpected response type: ${responseType}` };
+          }
+          const stream = response as ReadableStream<Uint8Array>;
+          const reader = stream.getReader();
+          const chunks: Uint8Array[] = [];
+          let totalLen = 0;
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            chunks.push(value);
+            totalLen += value.byteLength;
+          }
+          if (totalLen === 0) {
+            console.error(
+              JSON.stringify({ event: "ai:image:empty-response", prompt: prompt.slice(0, 100) }),
+            );
+            return { error: "Image generation returned empty response (0 bytes)" };
+          }
+          if (totalLen > MAX_IMAGE_BYTES) {
+            console.error(
+              JSON.stringify({ event: "ai:image:too-large", prompt: prompt.slice(0, 100), bytes: totalLen }),
+            );
+            return { error: `Generated image too large (${(totalLen / 1024).toFixed(0)}KB)` };
+          }
+          imageBytes = new Uint8Array(totalLen);
+          let offset = 0;
+          for (const chunk of chunks) {
+            imageBytes.set(chunk, offset);
+            offset += chunk.byteLength;
+          }
+        } catch (err) {
+          console.error(
+            JSON.stringify({ event: "ai:image:generate-error", prompt: prompt.slice(0, 100), error: String(err) }),
+          );
+          return { error: `Image generation failed: ${err instanceof Error ? err.message : String(err)}` };
+        }
+
+        // Convert to base64 data URL
+        let base64: string;
+        try {
+          // btoa works on latin1 strings; build from byte array
+          let binary = "";
+          for (let i = 0; i < imageBytes.length; i++) {
+            binary += String.fromCharCode(imageBytes[i]);
+          }
+          base64 = btoa(binary);
+        } catch (err) {
+          console.error(
+            JSON.stringify({ event: "ai:image:base64-error", prompt: prompt.slice(0, 100), bytesLen: imageBytes.length, error: String(err) }),
+          );
+          return { error: `Base64 encoding failed: ${err instanceof Error ? err.message : String(err)}` };
+        }
+
+        const src = `data:image/png;base64,${base64}`;
+        const displayW = width ?? 512;
+        const displayH = height ?? 512;
+        const obj = makeObject(
+          "image",
+          randomPos(x, y),
+          displayW,
+          displayH,
+          { src, prompt },
+          batchId,
+        );
+        return createAndMutate(stub, obj);
       }),
     }),
   };

@@ -13,7 +13,7 @@ export interface Session {
 
 export interface BoardObject {
   id: string;
-  type: "sticky" | "rect" | "circle" | "line" | "text" | "frame";
+  type: "sticky" | "rect" | "circle" | "line" | "text" | "frame" | "image";
   x: number;
   y: number;
   width: number;
@@ -25,6 +25,8 @@ export interface BoardObject {
     fill?: string;
     stroke?: string;
     arrow?: "none" | "end" | "both";
+    src?: string;
+    prompt?: string;
   };
   createdBy: string;
   updatedAt: number;

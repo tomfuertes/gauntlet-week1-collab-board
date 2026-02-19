@@ -1,7 +1,36 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { Stage, Layer, Rect, Text, Group, Ellipse, Line as KonvaLine, Arrow } from "react-konva";
+import { Stage, Layer, Rect, Text, Group, Ellipse, Line as KonvaLine, Arrow, Image as KonvaImage } from "react-konva";
 import type { BoardObject, ReplayEvent } from "@shared/types";
 import { colors } from "../theme";
+
+// Component for rendering base64 images (needs hooks for async loading)
+function ReplayImageObj({ obj }: { obj: BoardObject }) {
+  const [img, setImg] = useState<HTMLImageElement | null>(null);
+  const [error, setError] = useState(false);
+  useEffect(() => {
+    if (!obj.props.src) { setError(true); return; }
+    setError(false);
+    setImg(null);
+    let cancelled = false;
+    const image = new window.Image();
+    image.onload = () => { if (!cancelled) setImg(image); };
+    image.onerror = () => { if (!cancelled) setError(true); };
+    image.src = obj.props.src;
+    return () => { cancelled = true; };
+  }, [obj.props.src]);
+  const base = { x: obj.x, y: obj.y, rotation: obj.rotation };
+  return (
+    <Group {...base}>
+      {error ? (
+        <Rect width={obj.width} height={obj.height} fill="rgba(239,68,68,0.08)" stroke="#ef4444" strokeWidth={1} dash={[4, 4]} cornerRadius={4} />
+      ) : img ? (
+        <KonvaImage image={img} width={obj.width} height={obj.height} cornerRadius={4} />
+      ) : (
+        <Rect width={obj.width} height={obj.height} fill="rgba(99,102,241,0.08)" stroke="#6366f1" strokeWidth={1} dash={[4, 4]} cornerRadius={4} />
+      )}
+    </Group>
+  );
+}
 
 interface ReplayViewerProps {
   boardId: string;
@@ -66,6 +95,9 @@ function renderObject(obj: BoardObject) {
         <Text text={obj.props.text || ""} fontSize={16} fill={obj.props.color || "#ffffff"} width={obj.width} />
       </Group>
     );
+  }
+  if (obj.type === "image") {
+    return <ReplayImageObj key={obj.id} obj={obj} />;
   }
   return null;
 }

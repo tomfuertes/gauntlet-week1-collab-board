@@ -4,7 +4,7 @@
  */
 
 /** Bump when prompt content changes - logged with every AI request for correlation */
-export const PROMPT_VERSION = "v1";
+export const PROMPT_VERSION = "v2";
 
 // ---------------------------------------------------------------------------
 // Scene phase system - dramatic arc for proactive AI director
@@ -55,6 +55,7 @@ TOOL RULES:
 - To create multiple objects: call ALL create tools in a SINGLE response. Do NOT wait for results between creates.
 - Never duplicate a tool call that already succeeded.
 - Use getBoardState with filter/ids to minimize token usage on large boards.
+- generateImage creates AI-generated images on the board. Use it for scene backdrops, character portraits, props, or illustrations. Write vivid, specific prompts (e.g., "a dimly lit dentist office with cobwebs, gothic style" not just "dentist office"). Images are 512x512 and take a few seconds to generate. Use sparingly - 1 image per response max.
 
 LAYOUT RULES:
 - Canvas usable area: (50,60) to (1150,780). Never place objects at x<50 or y<60.

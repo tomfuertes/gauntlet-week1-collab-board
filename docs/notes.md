@@ -74,7 +74,7 @@ open board -> play scene -> share replay link -> recruit new player
 | Custom AI characters | Upload personality, share characters |
 | Persistent characters across scenes | Continuity creates attachment |
 | Daily scene challenges + leaderboard | Brings people back daily |
-| AI image generation | Prompt-to-image tool - generate images and place on board. CF Workers AI (Stable Diffusion) or external API. New BoardObject type for images, new AI tool in ai-tools-sdk.ts |
+| ~~AI image generation~~ | **Shipped.** generateImage tool (SDXL 512x512 via CF Workers AI), `image` BoardObject type, base64 in DO SQLite storage, Konva rendering in Board + ReplayViewer |
 | Multi-agent improv | Multiple AI characters with distinct personalities improvising against each other on canvas. Humans throw curveballs, AI agents "yes, and" autonomously |
 | Narrative/relationship state | Formalize scene state: who hates whom, who's fleeing whom, alliances. AI reads/writes relationship graph to make "yes, and" structural, not just emergent |
 | Per-scene token budgets | Natural scene endings via turn/token limits. Improv scenes should end, not run forever. Cost ceiling = dramatic constraint |

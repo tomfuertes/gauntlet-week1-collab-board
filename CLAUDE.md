@@ -13,7 +13,7 @@ CollabBoard - multiplayer improv canvas with AI agent integration. Real-time col
 - **Real-time:** Durable Objects + WebSockets (one DO per board, LWW conflict resolution)
 - **Auth:** Custom (username/password, PBKDF2 hash, D1 sessions, cookie-based)
 - **Database:** DO Storage (board objects as KV) + D1 (users/sessions/board metadata)
-- **AI:** Cloudflare Agents SDK (`AIChatAgent` DO) + Vercel AI SDK v6 (`streamText`, `generateText`, `tool()`). `ChatAgent` DO per board (instance name = boardId), WebSocket streaming, server-side chat persistence (DO SQLite). 10 tools in `src/server/ai-tools-sdk.ts` (Zod schemas, `instrumentExecute` wrapper for timing/success logs), display metadata in `src/shared/ai-tool-meta.ts`, prompts in `src/server/prompts.ts` (versioned via `PROMPT_VERSION`). Models: GLM-4.7-Flash (free tier) or Claude Haiku 4.5 (if `ANTHROPIC_API_KEY` set) via `@ai-sdk/anthropic`. **AI Director:** proactive mode - after 60s inactivity, `onDirectorNudge` fires via DO schedule alarm, uses `generateText` (non-streaming) with scene-phase-specific prompts, builds `UIMessage` manually and broadcasts via `persistMessages()`. See `docs/ai-architecture.md` for full request lifecycle.
+- **AI:** Cloudflare Agents SDK (`AIChatAgent` DO) + Vercel AI SDK v6 (`streamText`, `generateText`, `tool()`). `ChatAgent` DO per board (instance name = boardId), WebSocket streaming, server-side chat persistence (DO SQLite). 11 tools in `src/server/ai-tools-sdk.ts` (Zod schemas, `instrumentExecute` wrapper for timing/success logs), display metadata in `src/shared/ai-tool-meta.ts`, prompts in `src/server/prompts.ts` (versioned via `PROMPT_VERSION`). Models: GLM-4.7-Flash (free tier) or Claude Haiku 4.5 (if `ANTHROPIC_API_KEY` set) via `@ai-sdk/anthropic`. **AI Director:** proactive mode - after 60s inactivity, `onDirectorNudge` fires via DO schedule alarm, uses `generateText` (non-streaming) with scene-phase-specific prompts, builds `UIMessage` manually and broadcasts via `persistMessages()`. **AI Image Generation:** `generateImage` tool calls CF Workers AI SDXL (512x512), base64 data URL stored in `props.src`, rendered via Konva `Image` component. See `docs/ai-architecture.md` for full request lifecycle.
 - **Deploy:** CF git integration auto-deploys on push to main
 
 ## Commands
@@ -185,7 +185,7 @@ DO echoes mutations to OTHER clients only (sender already applied optimistically
 ### Board Object Shape
 
 ```typescript
-{ id, type, x, y, width, height, rotation, props: { text?, color?, fill?, stroke?, arrow? }, createdBy, updatedAt, batchId? }
+{ id, type, x, y, width, height, rotation, props: { text?, color?, fill?, stroke?, arrow?, src?, prompt? }, createdBy, updatedAt, batchId? }
 ```
 
 Each object stored as separate DO Storage key (`obj:{uuid}`, ~200 bytes). LWW via `updatedAt`. `batchId` groups AI-created objects from a single `streamText` call for batch undo. Replay events stored as `evt:{16-padded-ts}:{4-char-rand}` keys (max 2000, `obj:update` debounced 500ms per object).

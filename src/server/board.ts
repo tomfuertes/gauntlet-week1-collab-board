@@ -286,6 +286,9 @@ export class Board extends DurableObject<Bindings> {
   private async handleMutation(msg: WSClientMessage, userId: string, excludeWs?: WebSocket): Promise<MutateResult> {
     switch (msg.type) {
       case "obj:create": {
+        if (msg.obj.type === "image" && !msg.obj.props?.src) {
+          return { ok: false, error: "Image objects require props.src" };
+        }
         const obj = { ...msg.obj, createdBy: userId, updatedAt: Date.now() };
         await this.ctx.storage.put(`obj:${obj.id}`, obj);
         this.broadcast({ type: "obj:create", obj }, excludeWs);
