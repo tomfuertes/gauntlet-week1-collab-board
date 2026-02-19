@@ -2,6 +2,25 @@
 
 *Internal project management scratch. Not a deliverable.*
 
+## AI Model Upgrade Session (Feb 19, 2026)
+
+### What Was Done
+- **Model swap:** GLM-4.7-Flash -> Mistral Small 3.1 24B (`@cf/mistralai/mistral-small-3.1-24b-instruct`). More creative, better tool calling.
+- **Daily budget cap:** `DAILY_AI_BUDGET_USD = "5.00"` in wrangler.toml [vars]. Class-level neuron tracking in ChatAgent DO (resets on date change or hibernation). Rejects messages with friendly "over budget" when exceeded.
+- **ENABLE_ANTHROPIC_API toggle:** Default `"false"`. When `"true"` + `ANTHROPIC_API_KEY` secret set, routes to Claude Haiku 4.5 instead of Workers AI. Budget cap only applies to Workers AI (Anthropic has its own billing).
+- **Configurable model:** `WORKERS_AI_MODEL` var in wrangler.toml - swap models without redeploying.
+- **DX:** merge.sh --no-gpg-sign fix, worktree prompt temp file pattern, npm run health for agents.
+
+### Key Decisions
+| Date | Decision | Rationale |
+|------|----------|-----------|
+| Feb 19 | Mistral Small 3.1 over GLM-4.7-Flash | More creative responses, better instruction following; $0.011/1K neurons is cheap |
+| Feb 19 | App-level budget cap over CF billing alerts | CF has no hard spend cap; app-level gives per-board control |
+| Feb 19 | Budget in wrangler.toml [vars] over secrets | Not sensitive; visible config is easier to tune |
+| Feb 19 | String() casts for wrangler literal types | wrangler.toml [vars] generate literal types ("false" not string); String() cast is simplest fix |
+
+---
+
 ## Game Modes Session (Feb 19, 2026)
 
 ### What Was Done
@@ -134,6 +153,9 @@ open board -> play scene -> share replay link -> recruit new player
 - Spectator mode (live #watch/{id} route, read-only WS, emoji reactions, spectator count in presence)
 - Multi-agent improv (SPARK provocateur + SAGE peacemaker, autonomous "yes, and" exchanges, 3-exchange cooldown, persona-aware director nudges)
 - Code cleanup sprint: all 16 tech debt items resolved (DRY chat-agent, shared BoardObjectRenderer, Button/Modal/TextInput components, discriminated union props, BoardStub interface)
+- Per-scene token budgets (20-turn budget, 4 dramatic arc phases, "New Scene" button)
+- Improv game modes: Scenes From a Hat (random prompts, 5-exchange scenes) + Yes-And Chain (10-beat chain)
+- AI model upgrade: Mistral Small 3.1 24B (from GLM-4.7-Flash), $5/day budget cap, ENABLE_ANTHROPIC_API toggle
 
 **Killed (PM eval):** Contextual AI Actions (clustering unreliable on free-tier LLM), Intent Preview (problem overlap with batch undo at 3x cost).
 
@@ -247,6 +269,8 @@ Coworker's prompts: demon face -> unicorn -> GOOSE ATTACKING -> penguin fleeing 
 | Feb 18 | Worktree DX: auto-load ports in dev.sh | Eliminates un-whitelistable `source worktree.ports` command |
 | Feb 18 | Msg age over fake WS latency | DO doesn't echo cursors; measure something honest instead |
 | Feb 18 | Prompt versioning in prompts.ts | Correlate behavior changes to prompt versions in logs |
+| Feb 19 | Mistral Small 3.1 24B over GLM-4.7-Flash | More creative for improv; $0.011/1K neurons with $5/day cap |
+| Feb 19 | ENABLE_ANTHROPIC_API default off | Ship with free-tier Workers AI; flip to Anthropic when needed |
 
 ---
 
@@ -254,7 +278,8 @@ Coworker's prompts: demon face -> unicorn -> GOOSE ATTACKING -> penguin fleeing 
 
 | Model | Input/1M | Output/1M | Tool-use | Notes |
 |-------|----------|-----------|----------|-------|
-| GLM-4.7-Flash (Workers AI) | Free | Free | Good | 131K context, multi-turn tool calling |
-| Claude Haiku 4.5 (Anthropic) | $1.00 | $5.00 | Excellent | Deployed to prod |
+| ~~GLM-4.7-Flash (Workers AI)~~ | Free | Free | Good | Replaced - too "dull" for improv |
+| Mistral Small 3.1 24B (Workers AI) | $0.011/1K neurons | same | Good | 131K context, creative, $5/day app cap |
+| Claude Haiku 4.5 (Anthropic) | $1.00 | $5.00 | Excellent | Behind ENABLE_ANTHROPIC_API toggle (default off) |
 
-`streamText` with `stopWhen: stepCountIs(5)` limits to 5 LLM round-trips.
+`streamText` with `stopWhen: stepCountIs(5)` limits to 5 LLM round-trips. Daily budget tracked per ChatAgent DO instance.
