@@ -1,10 +1,10 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { Stage, Layer, Rect, Text, Group, Ellipse, Line as KonvaLine, Arrow, Image as KonvaImage } from "react-konva";
-import type { BoardObject } from "@shared/types";
+import { Stage, Layer } from "react-konva";
 import { AI_USER_ID } from "@shared/types";
 import { useSpectatorSocket } from "../hooks/useSpectatorSocket";
 import { colors } from "../theme";
 import { Button } from "./Button";
+import { BoardObjectRenderer } from "./BoardObjectRenderer";
 import { Cursors } from "./Cursors";
 import { BoardGrid } from "./BoardGrid";
 import "../styles/animations.css";
@@ -13,100 +13,6 @@ import "../styles/animations.css";
 const REACTION_EMOJIS = ["\uD83D\uDC4F", "\uD83D\uDE02", "\uD83D\uDD25", "\u2764\uFE0F", "\uD83D\uDE2E", "\uD83C\uDFAD"] as const;
 const HEADER_H = 48;
 const REACTION_BAR_H = 56;
-
-// Renders a base64 image (same pattern as ReplayViewer)
-function SpectatorImageObj({ obj }: { obj: BoardObject }) {
-  const [img, setImg] = useState<HTMLImageElement | null>(null);
-  const [error, setError] = useState(false);
-  useEffect(() => {
-    if (!obj.props.src) { setError(true); return; }
-    setError(false);
-    setImg(null);
-    let cancelled = false;
-    const image = new window.Image();
-    image.onload = () => { if (!cancelled) setImg(image); };
-    image.onerror = () => { if (!cancelled) setError(true); };
-    image.src = obj.props.src;
-    return () => { cancelled = true; };
-  }, [obj.props.src]);
-  const base = { x: obj.x, y: obj.y, rotation: obj.rotation };
-  return (
-    <Group {...base}>
-      {error ? (
-        <Rect width={obj.width} height={obj.height} fill="rgba(239,68,68,0.08)" stroke="#ef4444" strokeWidth={1} dash={[4, 4]} cornerRadius={4} />
-      ) : img ? (
-        <KonvaImage image={img} width={obj.width} height={obj.height} cornerRadius={4} />
-      ) : (
-        <Rect width={obj.width} height={obj.height} fill="rgba(99,102,241,0.08)" stroke="#6366f1" strokeWidth={1} dash={[4, 4]} cornerRadius={4} />
-      )}
-    </Group>
-  );
-}
-
-function renderObject(obj: BoardObject) {
-  const base = { x: obj.x, y: obj.y, rotation: obj.rotation };
-
-  if (obj.type === "frame") {
-    return (
-      <Group key={obj.id} {...base}>
-        <Rect width={obj.width} height={obj.height} fill="rgba(99,102,241,0.06)" stroke="#6366f1" strokeWidth={2} dash={[10, 5]} cornerRadius={4} />
-        <Text x={8} y={-20} text={obj.props.text || "Frame"} fontSize={13} fill="#6366f1" fontStyle="600" />
-      </Group>
-    );
-  }
-  if (obj.type === "sticky") {
-    return (
-      <Group key={obj.id} {...base}>
-        <Rect width={obj.width} height={obj.height} fill={obj.props.color || "#fbbf24"} cornerRadius={8} shadowBlur={5} shadowColor="rgba(0,0,0,0.3)" />
-        <Text x={10} y={10} text={obj.props.text || ""} fontSize={14} fill="#1a1a2e" width={obj.width - 20} />
-      </Group>
-    );
-  }
-  if (obj.type === "rect") {
-    return (
-      <Group key={obj.id} {...base}>
-        <Rect width={obj.width} height={obj.height} fill={obj.props.fill || "#3b82f6"} stroke={obj.props.stroke || "#2563eb"} strokeWidth={2} cornerRadius={4} />
-      </Group>
-    );
-  }
-  if (obj.type === "circle") {
-    return (
-      <Group key={obj.id} {...base}>
-        <Ellipse x={obj.width / 2} y={obj.height / 2} radiusX={obj.width / 2} radiusY={obj.height / 2} fill={obj.props.fill || "#8b5cf6"} stroke={obj.props.stroke || "#7c3aed"} strokeWidth={2} />
-      </Group>
-    );
-  }
-  if (obj.type === "line") {
-    const useArrow = obj.props.arrow === "end" || obj.props.arrow === "both";
-    const LineComponent = useArrow ? Arrow : KonvaLine;
-    return (
-      <Group key={obj.id} {...base}>
-        <LineComponent
-          points={[0, 0, obj.width, obj.height]}
-          stroke={obj.props.stroke || "#f43f5e"}
-          strokeWidth={3}
-          lineCap="round"
-          {...(useArrow ? {
-            pointerLength: 12,
-            pointerWidth: 10,
-            ...(obj.props.arrow === "both" ? { pointerAtBeginning: true } : {}),
-          } : {})}
-        />
-      </Group>
-    );
-  }
-  if (obj.type === "text") {
-    return (
-      <Group key={obj.id} {...base}>
-        <Text text={obj.props.text || ""} fontSize={16} fill={obj.props.color || "#ffffff"} width={obj.width} />
-      </Group>
-    );
-  }
-  if (obj.type === "image") {
-    return <SpectatorImageObj key={obj.id} obj={obj} />;
-  }
-  return null;
-}
 
 interface SpectatorViewProps {
   boardId: string;
@@ -279,7 +185,7 @@ export function SpectatorView({ boardId, onBack }: SpectatorViewProps) {
         >
           <Layer>
             <BoardGrid size={{ width: size.width, height: stageH }} scale={scale} stagePos={stagePos} />
-            {objectList.map((obj) => renderObject(obj))}
+            {objectList.map((obj) => <BoardObjectRenderer key={obj.id} obj={obj} />)}
             <Cursors cursors={cursors} />
           </Layer>
         </Stage>

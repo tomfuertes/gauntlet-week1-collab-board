@@ -1,35 +1,63 @@
-export interface BoardObject {
+// Flat union (backward compat for partial updates)
+export interface BoardObjectProps {
+  text?: string;
+  color?: string;
+  fill?: string;
+  stroke?: string;
+  arrow?: "none" | "end" | "both";
+  src?: string;
+  prompt?: string;
+}
+
+// Per-type narrowed props
+type StickyProps = Pick<BoardObjectProps, "text" | "color">;
+type RectProps = Pick<BoardObjectProps, "fill" | "stroke">;
+type CircleProps = Pick<BoardObjectProps, "fill" | "stroke">;
+type LineProps = Pick<BoardObjectProps, "stroke" | "arrow">;
+type TextObjectProps = Pick<BoardObjectProps, "text" | "color">;
+type FrameProps = Pick<BoardObjectProps, "text">;
+type ImageObjectProps = Pick<BoardObjectProps, "src" | "prompt">;
+
+type BoardObjectVariant =
+  | { type: "sticky"; props: StickyProps }
+  | { type: "rect"; props: RectProps }
+  | { type: "circle"; props: CircleProps }
+  | { type: "line"; props: LineProps }
+  | { type: "text"; props: TextObjectProps }
+  | { type: "frame"; props: FrameProps }
+  | { type: "image"; props: ImageObjectProps };
+
+interface BoardObjectBase {
   id: string;
-  type: "sticky" | "rect" | "circle" | "line" | "text" | "frame" | "image";
   x: number;
   y: number;
   width: number;
   height: number;
   rotation: number;
-  props: {
-    text?: string;
-    color?: string;
-    fill?: string;
-    stroke?: string;
-    arrow?: "none" | "end" | "both";
-    src?: string;
-    prompt?: string;
-  };
   createdBy: string;
   updatedAt: number;
   batchId?: string;
 }
 
+export type BoardObject = BoardObjectBase & BoardObjectVariant;
+
+// For partial updates - flat props, no discriminant enforcement
+export type BoardObjectUpdate = Partial<Omit<BoardObjectBase, "id">> & {
+  id: string;
+  type?: BoardObject["type"];
+  props?: BoardObjectProps;
+};
+
 /** Mutation messages the Board DO can receive (excludes cursor) */
 export type BoardMutation =
   | { type: "obj:create"; obj: BoardObject }
-  | { type: "obj:update"; obj: Partial<BoardObject> & { id: string } }
+  | { type: "obj:update"; obj: BoardObjectUpdate }
   | { type: "obj:delete"; id: string };
 
 export type WSClientMessage =
   | { type: "cursor"; x: number; y: number }
   | { type: "obj:create"; obj: BoardObject }
-  | { type: "obj:update"; obj: Partial<BoardObject> & { id: string } }
+  | { type: "obj:update"; obj: BoardObjectUpdate }
   | { type: "obj:delete"; id: string }
   | { type: "text:cursor"; objectId: string; position: number }
   | { type: "text:blur"; objectId: string }

@@ -1,12 +1,14 @@
 import React, { useState, useRef, useCallback, useEffect } from "react";
-import { Stage, Layer, Rect, Text, Group, Transformer, Ellipse, Line as KonvaLine, Arrow, Image as KonvaImage } from "react-konva";
+import { Stage, Layer, Rect, Text, Transformer } from "react-konva";
 import type { KonvaEventObject } from "konva/lib/Node";
 import Konva from "konva";
 import type { AuthUser } from "../App";
 import { AI_USER_ID } from "@shared/types";
-import type { BoardObject } from "@shared/types";
-import { OBJECT_DEFAULTS, TRANSFORMER_CONFIG } from "../constants";
-import { useWebSocket, type ConnectionState } from "../hooks/useWebSocket";
+import type { BoardObject, BoardObjectProps } from "@shared/types";
+import { TRANSFORMER_CONFIG } from "../constants";
+import { useWebSocket } from "../hooks/useWebSocket";
+import { BoardObjectRenderer } from "./BoardObjectRenderer";
+import { ConnectionToast } from "./ConnectionToast";
 import { useUndoRedo } from "../hooks/useUndoRedo";
 import { useAiObjectEffects } from "../hooks/useAiObjectEffects";
 import { useKeyboardShortcuts } from "../hooks/useKeyboardShortcuts";
@@ -58,32 +60,8 @@ function getCaretPixelPos(textarea: HTMLTextAreaElement, position: number): { x:
   }
 }
 
-// Renders a base64 image using Konva's Image component, handling async loading
-function KonvaImageRenderer({ src, width, height, aiGlowProps }: { src: string; width: number; height: number; aiGlowProps: Record<string, unknown> }) {
-  const [img, setImg] = useState<HTMLImageElement | null>(null);
-  const [error, setError] = useState(false);
-  useEffect(() => {
-    if (!src) { setError(true); return; }
-    setError(false);
-    setImg(null);
-    let cancelled = false;
-    const image = new window.Image();
-    image.onload = () => { if (!cancelled) setImg(image); };
-    image.onerror = () => { if (!cancelled) setError(true); };
-    image.src = src;
-    return () => { cancelled = true; };
-  }, [src]);
-  if (error) {
-    return <Rect width={width} height={height} fill="rgba(239,68,68,0.08)" stroke="#ef4444" strokeWidth={1} dash={[4, 4]} cornerRadius={4} />;
-  }
-  if (!img) {
-    return <Rect width={width} height={height} fill="rgba(99,102,241,0.08)" stroke="#6366f1" strokeWidth={1} dash={[4, 4]} cornerRadius={4} />;
-  }
-  return <KonvaImage image={img} width={width} height={height} cornerRadius={4} {...aiGlowProps} />;
-}
-
-// Memoized object renderer - prevents re-rendering unchanged objects when Board state changes
-interface BoardObjectRendererProps {
+// Interactive wrapper: binds drag/click/transform handlers to the shared BoardObjectRenderer
+interface InteractiveBoardObjectProps {
   obj: BoardObject;
   hasAiGlow: boolean;
   setShapeRef: (id: string) => (node: Konva.Group | null) => void;
@@ -96,18 +74,12 @@ interface BoardObjectRendererProps {
   onDblClickEdit: (id: string) => void;
 }
 
-const BoardObjectRenderer = React.memo(function BoardObjectRenderer({
+const InteractiveBoardObject = React.memo(function InteractiveBoardObject({
   obj, hasAiGlow, setShapeRef, onShapeClick, onContextMenu, onDragStart, onDragMove, onDragEnd, onTransformEnd, onDblClickEdit,
-}: BoardObjectRendererProps) {
-  const aiGlowProps = hasAiGlow ? { shadowBlur: 12, shadowColor: "rgba(99,102,241,0.5)" } : {};
-  const aiGlowLineProps = hasAiGlow ? { shadowBlur: 8, shadowColor: "rgba(99,102,241,0.4)" } : {};
+}: InteractiveBoardObjectProps) {
   const editable = obj.type === "sticky" || obj.type === "text" || obj.type === "frame";
-
   const groupProps = {
     ref: setShapeRef(obj.id),
-    x: obj.x,
-    y: obj.y,
-    rotation: obj.rotation,
     draggable: true as const,
     onClick: (e: KonvaEventObject<MouseEvent>) => onShapeClick(e, obj.id),
     onContextMenu: (e: KonvaEventObject<PointerEvent>) => onContextMenu(e, obj.id),
@@ -122,73 +94,7 @@ const BoardObjectRenderer = React.memo(function BoardObjectRenderer({
       },
     } : {}),
   };
-
-  if (obj.type === "frame") {
-    return (
-      <Group {...groupProps}>
-        <Rect width={obj.width} height={obj.height} fill="rgba(99,102,241,0.06)" stroke="#6366f1" strokeWidth={2} dash={[10, 5]} cornerRadius={4} {...aiGlowProps} />
-        <Text x={8} y={-20} text={obj.props.text || "Frame"} fontSize={13} fill="#6366f1" fontStyle="600" />
-      </Group>
-    );
-  }
-  if (obj.type === "sticky") {
-    return (
-      <Group {...groupProps}>
-        <Rect width={obj.width} height={obj.height} fill={obj.props.color || OBJECT_DEFAULTS.sticky.color} cornerRadius={8} shadowBlur={hasAiGlow ? 12 : 5} shadowColor={hasAiGlow ? "rgba(99,102,241,0.5)" : "rgba(0,0,0,0.3)"} />
-        <Text x={10} y={10} text={obj.props.text || ""} fontSize={14} fill="#1a1a2e" width={obj.width - 20} />
-      </Group>
-    );
-  }
-  if (obj.type === "rect") {
-    return (
-      <Group {...groupProps}>
-        <Rect width={obj.width} height={obj.height} fill={obj.props.fill || OBJECT_DEFAULTS.rect.fill} stroke={obj.props.stroke || OBJECT_DEFAULTS.rect.stroke} strokeWidth={2} cornerRadius={4} {...aiGlowProps} />
-      </Group>
-    );
-  }
-  if (obj.type === "circle") {
-    return (
-      <Group {...groupProps}>
-        <Ellipse x={obj.width / 2} y={obj.height / 2} radiusX={obj.width / 2} radiusY={obj.height / 2} fill={obj.props.fill || OBJECT_DEFAULTS.circle.fill} stroke={obj.props.stroke || OBJECT_DEFAULTS.circle.stroke} strokeWidth={2} {...aiGlowProps} />
-      </Group>
-    );
-  }
-  if (obj.type === "line") {
-    const useArrow = obj.props.arrow === "end" || obj.props.arrow === "both";
-    const LineComponent = useArrow ? Arrow : KonvaLine;
-    return (
-      <Group {...groupProps}>
-        <LineComponent
-          points={[0, 0, obj.width, obj.height]}
-          stroke={obj.props.stroke || OBJECT_DEFAULTS.line.stroke}
-          strokeWidth={3}
-          hitStrokeWidth={12}
-          lineCap="round"
-          {...(useArrow ? {
-            pointerLength: 12,
-            pointerWidth: 10,
-            ...(obj.props.arrow === "both" ? { pointerAtBeginning: true } : {}),
-          } : {})}
-          {...aiGlowLineProps}
-        />
-      </Group>
-    );
-  }
-  if (obj.type === "text") {
-    return (
-      <Group {...groupProps}>
-        <Text text={obj.props.text || ""} fontSize={16} fill={obj.props.color || OBJECT_DEFAULTS.text.color} width={obj.width} />
-      </Group>
-    );
-  }
-  if (obj.type === "image") {
-    return (
-      <Group {...groupProps}>
-        <KonvaImageRenderer src={obj.props.src || ""} width={obj.width} height={obj.height} aiGlowProps={aiGlowProps} />
-      </Group>
-    );
-  }
-  return null;
+  return <BoardObjectRenderer obj={obj} groupProps={groupProps} aiGlow={hasAiGlow} interactive />;
 });
 
 export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boardId: string; onLogout: () => void; onBack: () => void }) {
@@ -339,7 +245,7 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
           props: { ...item.props },
           createdBy: user.id,
           updatedAt: Date.now(),
-        });
+        } as BoardObject);
       }
     } finally {
       if (isBatch) commitBatch();
@@ -353,7 +259,7 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
     const copied: BoardObject[] = [];
     for (const id of selectedIds) {
       const obj = objectsRef.current.get(id);
-      if (obj) copied.push({ ...obj, props: { ...obj.props } });
+      if (obj) copied.push({ ...obj, props: { ...obj.props } } as BoardObject);
     }
     clipboardRef.current = copied;
   }, [selectedIds]);
@@ -369,7 +275,7 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
       x: item.x + 20,
       y: item.y + 20,
       props: { ...item.props },
-    }));
+    } as BoardObject));
   }, [placeItems]);
 
   // Duplicate selected objects with 20px offset without touching the clipboard
@@ -377,7 +283,7 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
     const items: BoardObject[] = [];
     for (const id of selectedIds) {
       const obj = objectsRef.current.get(id);
-      if (obj) items.push({ ...obj, props: { ...obj.props } });
+      if (obj) items.push({ ...obj, props: { ...obj.props } } as BoardObject);
     }
     placeItems(items);
   }, [selectedIds, placeItems]);
@@ -391,7 +297,7 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
         const obj = objects.get(id);
         if (!obj) continue;
         const key = obj.type === "sticky" || obj.type === "text" ? "color" : obj.type === "line" ? "stroke" : "fill";
-        updateObject({ id, props: { ...obj.props, [key]: color } });
+        updateObject({ id, props: { [key]: color } as BoardObjectProps });
       }
     } finally {
       if (isBatch) commitBatch();
@@ -961,7 +867,7 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
 
           {/* Pass 1: frames (behind everything) */}
           {[...objects.values()].filter(o => o.type === "frame").map((obj) => (
-            <BoardObjectRenderer
+            <InteractiveBoardObject
               key={obj.id}
               obj={obj}
               hasAiGlow={aiGlowIds.has(obj.id)}
@@ -992,7 +898,7 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
           )}
           {/* Pass 2: non-frame objects */}
           {[...objects.values()].filter(o => o.type !== "frame").map((obj) => (
-            <BoardObjectRenderer
+            <InteractiveBoardObject
               key={obj.id}
               obj={obj}
               hasAiGlow={aiGlowIds.has(obj.id)}
@@ -1115,25 +1021,27 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
           );
         }
         const isText = obj.type === "text";
+        // Only sticky/text reach this branch; cast to flat props for field access
+        const p = obj.props as BoardObjectProps;
         const remoteCarets = [...textCursors.values()].filter(tc => tc.objectId === editingId);
         return (
           <>
             <textarea
               ref={textareaRef}
               autoFocus
-              defaultValue={obj.props.text || ""}
+              defaultValue={p.text || ""}
               style={{
                 position: "absolute",
                 left: obj.x * scale + stagePos.x,
                 top: obj.y * scale + stagePos.y,
                 width: obj.width * scale,
                 height: obj.height * scale,
-                background: isText ? "transparent" : (obj.props.color || "#fbbf24"),
+                background: isText ? "transparent" : (p.color || "#fbbf24"),
                 border: isText ? "2px solid #60a5fa" : "2px solid #f59e0b",
                 borderRadius: isText ? 4 * scale : 8 * scale,
                 padding: isText ? 4 * scale : 10 * scale,
                 fontSize: isText ? 16 * scale : 14 * scale,
-                color: isText ? (obj.props.color || "#ffffff") : "#1a1a2e",
+                color: isText ? (p.color || "#ffffff") : "#1a1a2e",
                 resize: "none",
                 outline: "none",
                 zIndex: 20,
@@ -1143,20 +1051,20 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
                 transformOrigin: "0 0",
               }}
               onChange={(e) => {
-                updateObject({ id: editingId, props: { ...obj.props, text: e.target.value } });
+                updateObject({ id: editingId, props: { ...p, text: e.target.value } });
                 send({ type: "text:cursor", objectId: editingId, position: e.target.selectionStart ?? 0 });
               }}
               onSelect={(e) => {
                 send({ type: "text:cursor", objectId: editingId, position: (e.target as HTMLTextAreaElement).selectionStart ?? 0 });
               }}
               onBlur={(e) => {
-                updateObject({ id: editingId, props: { ...obj.props, text: e.target.value } });
+                updateObject({ id: editingId, props: { ...p, text: e.target.value } });
                 send({ type: "text:blur", objectId: editingId });
                 setEditingId(null);
               }}
               onKeyDown={(e) => {
                 if (e.key === "Escape") {
-                  updateObject({ id: editingId, props: { ...obj.props, text: (e.target as HTMLTextAreaElement).value } });
+                  updateObject({ id: editingId, props: { ...p, text: (e.target as HTMLTextAreaElement).value } });
                   send({ type: "text:blur", objectId: editingId });
                   setEditingId(null);
                 }
@@ -1307,8 +1215,9 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
       {contextMenu && (() => {
         const obj = objects.get(contextMenu.objId);
         if (!obj) return null;
+        const cp = obj.props as BoardObjectProps;
         const items: { label: string; prompt: string }[] = [
-          { label: "Ask AI about this", prompt: `What is this ${obj.type}${obj.props.text ? ` that says "${obj.props.text}"` : ""} about?` },
+          { label: "Ask AI about this", prompt: `What is this ${obj.type}${cp.text ? ` that says "${cp.text}"` : ""} about?` },
           { label: "Recolor with AI", prompt: `Change the color of this ${obj.type} (id: ${obj.id}) to a random vibrant color.` },
         ];
         if (obj.type === "sticky" || obj.type === "text") {
@@ -1370,43 +1279,6 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
         stageRef={stageRef}
         lastServerMessageAt={lastServerMessageAt}
       />
-    </div>
-  );
-}
-
-const TOAST_CONFIG: Record<ConnectionState, { label: string; bg: string; border: string }> = {
-  connecting: { label: "Connecting...", bg: "#78350f", border: "#f59e0b" },
-  connected: { label: "Connected", bg: "#065f46", border: "#10b981" },
-  reconnecting: { label: "Reconnecting...", bg: "#78350f", border: "#f59e0b" },
-  disconnected: { label: "Disconnected", bg: "#7f1d1d", border: "#ef4444" },
-};
-
-function ConnectionToast({ connectionState }: { connectionState: ConnectionState }) {
-  const [show, setShow] = useState(false);
-  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  useEffect(() => {
-    clearTimeout(timer.current!);
-    if (connectionState === "connecting") return;
-
-    setShow(true);
-    if (connectionState === "connected") {
-      timer.current = setTimeout(() => setShow(false), 3000);
-    }
-
-    return () => clearTimeout(timer.current!);
-  }, [connectionState]);
-
-  if (!show) return null;
-
-  const c = TOAST_CONFIG[connectionState];
-  return (
-    <div style={{
-      position: "absolute", top: 56, left: "50%", transform: "translateX(-50%)",
-      background: c.bg, border: `1px solid ${c.border}`, borderRadius: 6,
-      padding: "6px 16px", color: "#fff", fontSize: "0.8rem", zIndex: 30,
-    }}>
-      {c.label}
     </div>
   );
 }

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useCallback, useState } from "react";
-import type { WSClientMessage, WSServerMessage, BoardObject } from "@shared/types";
+import type { WSClientMessage, WSServerMessage, BoardObject, BoardObjectUpdate } from "@shared/types";
 
 export type ConnectionState = "connecting" | "connected" | "reconnecting" | "disconnected";
 
@@ -39,7 +39,7 @@ interface UseWebSocketReturn {
   reactions: Reaction[];
   send: (msg: WSClientMessage) => void;
   createObject: (obj: BoardObject) => void;
-  updateObject: (partial: Partial<BoardObject> & { id: string }) => void;
+  updateObject: (partial: BoardObjectUpdate) => void;
   deleteObject: (id: string) => void;
   batchUndo: (batchId: string) => void;
   lastServerMessageAt: React.RefObject<number>;
@@ -247,12 +247,13 @@ export function useWebSocket(boardId: string): UseWebSocketReturn {
     send({ type: "obj:create", obj });
   }, [send]);
 
-  const updateObject = useCallback((partial: Partial<BoardObject> & { id: string }) => {
+  const updateObject = useCallback((partial: BoardObjectUpdate) => {
     const now = Date.now();
     setObjects((prev) => {
       const next = new Map(prev);
       const existing = next.get(partial.id);
-      if (existing) next.set(partial.id, { ...existing, ...partial, updatedAt: now });
+      // Cast safe: merging into valid BoardObject preserves discriminant (type unchanged)
+      if (existing) next.set(partial.id, { ...existing, ...partial, props: { ...existing.props, ...(partial.props || {}) }, updatedAt: now } as BoardObject);
       return next;
     });
     send({ type: "obj:update", obj: { ...partial, updatedAt: now } });

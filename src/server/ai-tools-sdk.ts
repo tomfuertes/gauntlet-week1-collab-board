@@ -1,7 +1,7 @@
 import { tool } from "ai";
 import { z } from "zod";
 import { AI_USER_ID } from "../shared/types";
-import type { BoardObject, MutateResult, BoardStub } from "../shared/types";
+import type { BoardObject, BoardObjectProps, BoardObjectUpdate, MutateResult, BoardStub } from "../shared/types";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -36,9 +36,10 @@ function makeObject(
   pos: { x: number; y: number },
   width: number,
   height: number,
-  props: BoardObject["props"],
+  props: BoardObjectProps,
   batchId?: string,
 ): BoardObject {
+  // Cast: TS can't narrow type+props combo from separate args
   return {
     id: crypto.randomUUID(),
     type,
@@ -50,7 +51,7 @@ function makeObject(
     createdBy: AI_USER_ID,
     updatedAt: Date.now(),
     ...(batchId ? { batchId } : {}),
-  };
+  } as BoardObject;
 }
 
 /** Mutate (create) an object, log it, and return position info for LLM chaining */
@@ -96,7 +97,7 @@ async function createAndMutate(stub: BoardStub, obj: BoardObject) {
 async function updateAndMutate(
   stub: BoardStub,
   id: string,
-  fields: Omit<Partial<BoardObject>, "id" | "updatedAt">,
+  fields: Omit<BoardObjectUpdate, "id">,
   resultKey: string,
   extra?: Record<string, unknown>,
 ) {
@@ -504,9 +505,10 @@ export function createSDKTools(stub: BoardStub, batchId?: string, ai?: Ai) {
       execute: instrumentExecute("changeColor", async ({ id, color }) => {
         const existing = await readAndCenter(stub, id);
         if (!existing) return { error: `Object ${id} not found` };
-        const props: BoardObject["props"] =
+        const props: BoardObjectProps =
           existing.type === "sticky" || existing.type === "text"
             ? { color }
+            : existing.type === "line" ? { stroke: color }
             : { fill: color };
         return updateAndMutate(stub, id, { props }, "recolored", { color });
       }),

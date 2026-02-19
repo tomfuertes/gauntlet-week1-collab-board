@@ -1,5 +1,5 @@
 import { useRef, useCallback } from "react";
-import type { BoardObject } from "@shared/types";
+import type { BoardObject, BoardObjectUpdate } from "@shared/types";
 
 type UndoableAction =
   | { type: "create"; obj: BoardObject }
@@ -9,13 +9,13 @@ type UndoableAction =
 
 const MAX_UNDO = 50;
 
-/** Deep-clone a BoardObject (one level into props) */
-const snapshot = (obj: BoardObject): BoardObject => ({ ...obj, props: { ...obj.props } });
+/** Deep-clone a BoardObject (one level into props). Cast safe: spread preserves structure. */
+const snapshot = (obj: BoardObject): BoardObject => ({ ...obj, props: { ...obj.props } } as BoardObject);
 
 export function useUndoRedo(
   objects: Map<string, BoardObject>,
   wsCreate: (obj: BoardObject) => void,
-  wsUpdate: (partial: Partial<BoardObject> & { id: string }) => void,
+  wsUpdate: (partial: BoardObjectUpdate) => void,
   wsDelete: (id: string) => void,
 ) {
   const stackRef = useRef<UndoableAction[]>([]);
@@ -101,11 +101,12 @@ export function useUndoRedo(
   );
 
   const updateObject = useCallback(
-    (partial: Partial<BoardObject> & { id: string }) => {
+    (partial: BoardObjectUpdate) => {
       if (!replayingRef.current) {
         const before = objectsRef.current.get(partial.id);
         if (before) {
-          const after = { ...before, ...partial, props: { ...before.props, ...partial.props } };
+          // Cast safe: merging into valid BoardObject preserves discriminant
+          const after = { ...before, ...partial, props: { ...before.props, ...(partial.props || {}) } } as BoardObject;
           push({ type: "update", before: snapshot(before), after: snapshot(after) });
         }
       }

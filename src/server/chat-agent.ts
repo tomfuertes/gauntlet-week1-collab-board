@@ -20,7 +20,7 @@ import {
 } from "./prompts";
 import type { Bindings } from "./env";
 import { recordBoardActivity } from "./env";
-import type { BoardObject } from "../shared/types";
+import type { BoardObject, BoardObjectProps } from "../shared/types";
 
 /**
  * Sanitize UIMessages to ensure all tool invocation inputs are valid objects.
@@ -200,7 +200,7 @@ export class ChatAgent extends AIChatAgent<Bindings> {
         const desc = selected
           .map(
             (o: BoardObject) =>
-              `- ${o.type} (id: ${o.id}${o.props.text ? `, text: "${o.props.text}"` : ""})`,
+              `- ${o.type} (id: ${o.id}${(o.props as BoardObjectProps).text ? `, text: "${(o.props as BoardObjectProps).text}"` : ""})`,
           )
           .join("\n");
         systemPrompt += `\n\nThe user has selected ${selected.length} object(s) on the board:\n${desc}\nWhen the user refers to "selected", "these", or "this", they mean the above objects. Use their IDs directly.`;

@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import type { BoardObject } from "@shared/types";
+import type { BoardObject, BoardObjectProps } from "@shared/types";
 import { colors } from "../theme";
 
 export type ToolMode = "select" | "sticky" | "rect" | "circle" | "line" | "arrow" | "text" | "frame";
@@ -43,7 +43,7 @@ export function Toolbar({
   const firstObj = firstId ? objects.get(firstId) : undefined;
   const showColorPicker = firstObj && firstObj.type !== "frame";
   const currentColor = firstObj
-    ? firstObj.props[firstObj.type === "sticky" || firstObj.type === "text" ? "color" : firstObj.type === "line" ? "stroke" : "fill"]
+    ? (firstObj.props as BoardObjectProps)[firstObj.type === "sticky" || firstObj.type === "text" ? "color" : firstObj.type === "line" ? "stroke" : "fill"]
     : undefined;
 
   return (

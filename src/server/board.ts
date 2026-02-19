@@ -341,7 +341,7 @@ export class Board extends DurableObject<Bindings> {
           ...msg.obj,
           props: { ...existing.props, ...(msg.obj.props || {}) },
           updatedAt: Date.now(),
-        };
+        } as BoardObject;
         await this.ctx.storage.put(`obj:${updated.id}`, updated);
         this.broadcast({ type: "obj:update", obj: updated }, excludeWs);
         const isSpatial = (msg.obj.x !== undefined && msg.obj.x !== existing.x) ||
