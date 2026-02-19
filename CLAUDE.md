@@ -63,7 +63,10 @@ scripts/worktree-prompt-suffix.md      # standard instructions - orchestrator re
 
 When working in a worktree, use absolute paths for file tools. Run git commands directly (not `git -C`) - the working directory is already the repo/worktree.
 
-When printing worktree startup commands for the user: write the prompt to `$TMPDIR/prompt-<branch>.txt` using the Write tool, then print a short launch command. **Use `--model sonnet`** for worktree agents - they do implementation, not orchestration, so Sonnet is the right tradeoff (saves Opus quota, still highly capable for multi-file coding).
+When printing worktree startup commands for the user: write the prompt to `$TMPDIR/prompt-<branch>.txt` using the Write tool, then print a short launch command. **Choose model by complexity:**
+- `--model sonnet` - Default for most worktrees: refactors, extracting components, DX fixes, well-scoped features with clear specs
+- `--model opus` - Architectural changes, novel integrations, complex multi-system features, anything requiring deep reasoning about tradeoffs
+- `--model haiku` - Mechanical tasks: bulk renames, migration boilerplate, config changes
 ```bash
 cd /path/to/worktree && claude --model sonnet "$(cat /private/tmp/claude-501/prompt-<branch>.txt)"
 ```
