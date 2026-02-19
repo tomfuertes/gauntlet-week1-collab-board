@@ -90,6 +90,10 @@ function sanitizeMessages(messages: UIMessage[]): UIMessage[] {
 export class ChatAgent extends AIChatAgent<Bindings> {
   /* eslint-disable @typescript-eslint/no-explicit-any */
 
+  // Lightweight mutex: prevents concurrent AI generation (chat + director).
+  // Resets to false on DO hibernation, which is correct (no active generation).
+  private _isGenerating = false;
+
   /** Choose model: Haiku if ANTHROPIC_API_KEY set, else GLM free tier */
   private _getModel() {
     return this.env.ANTHROPIC_API_KEY
@@ -110,6 +114,7 @@ export class ChatAgent extends AIChatAgent<Bindings> {
 
   async onChatMessage(onFinish: any, options?: { abortSignal?: AbortSignal }) {
     // this.name = boardId (set by client connecting to /agents/ChatAgent/<boardId>)
+    this._isGenerating = true;
     const startTime = Date.now();
     const modelName = this._getModelName();
 
@@ -180,6 +185,7 @@ export class ChatAgent extends AIChatAgent<Bindings> {
     };
 
     const wrappedOnFinish: typeof onFinish = async (...args: Parameters<typeof onFinish>) => {
+      this._isGenerating = false;
       await clearPresence();
 
       // Request-level metrics from onFinish
@@ -209,6 +215,7 @@ export class ChatAgent extends AIChatAgent<Bindings> {
 
     // Clean up presence if client disconnects mid-stream
     options?.abortSignal?.addEventListener("abort", () => {
+      this._isGenerating = false;
       clearPresence();
     }, { once: true });
 
@@ -228,6 +235,7 @@ export class ChatAgent extends AIChatAgent<Bindings> {
 
       return result.toUIMessageStreamResponse();
     } catch (err) {
+      this._isGenerating = false;
       await clearPresence();
       throw err;
     }
@@ -239,29 +247,38 @@ export class ChatAgent extends AIChatAgent<Bindings> {
 
   /** Cancel existing director schedule and set a new 60s timer */
   private _resetDirectorTimer() {
-    // Fire-and-forget: schedule management should never block chat response
-    (async () => {
-      try {
-        // Cancel any existing director nudge schedules
-        const existing = this.getSchedules({ type: "delayed" });
-        for (const s of existing) {
-          if (s.callback === "onDirectorNudge") {
-            await this.cancelSchedule(s.id);
+    this.ctx.waitUntil(
+      (async () => {
+        try {
+          // Cancel any existing director nudge schedules
+          const existing = this.getSchedules({ type: "delayed" });
+          for (const s of existing) {
+            if (s.callback === "onDirectorNudge") {
+              await this.cancelSchedule(s.id);
+            }
           }
+          // Only schedule if there's an active scene (messages exist)
+          if (this.messages.length > 0) {
+            await this.schedule(60, "onDirectorNudge" as keyof this);
+            console.debug(
+              JSON.stringify({
+                event: "director:timer-set",
+                boardId: this.name,
+                delaySeconds: 60,
+              })
+            );
+          }
+        } catch (err) {
+          console.warn(
+            JSON.stringify({
+              event: "director:timer-error",
+              boardId: this.name,
+              error: String(err),
+            })
+          );
         }
-        // Only schedule if there's an active scene (messages exist)
-        if (this.messages.length > 0) {
-          await this.schedule(60, "onDirectorNudge" as keyof this);
-        }
-      } catch (err) {
-        console.warn(
-          JSON.stringify({
-            event: "director:timer-error",
-            error: String(err),
-          })
-        );
-      }
-    })();
+      })()
+    );
   }
 
   /** Called by DO alarm after 60s of inactivity - generates a proactive scene complication */
@@ -278,19 +295,23 @@ export class ChatAgent extends AIChatAgent<Bindings> {
         s.callback === "onDirectorNudge" && s.id !== currentSchedule?.id
     );
     if (hasPending) {
+      console.debug(JSON.stringify({ event: "director:skip", reason: "newer-timer", boardId: this.name }));
       return;
     }
 
-    // Guard: skip if a stream is already in progress
-    if (this._activeStreamId) {
+    // Guard: skip if AI is already generating a response
+    if (this._isGenerating) {
+      console.debug(JSON.stringify({ event: "director:skip", reason: "generating", boardId: this.name }));
       return;
     }
 
     // Guard: skip if no scene started
     if (this.messages.length === 0) {
+      console.debug(JSON.stringify({ event: "director:skip", reason: "no-messages", boardId: this.name }));
       return;
     }
 
+    this._isGenerating = true;
     const startTime = Date.now();
     const modelName = this._getModelName();
 
@@ -319,7 +340,9 @@ export class ChatAgent extends AIChatAgent<Bindings> {
     const model = this._getModel();
 
     // Show AI presence while generating
-    await boardStub.setAiPresence(true).catch(() => {});
+    await boardStub.setAiPresence(true).catch((err: unknown) => {
+      console.debug(JSON.stringify({ event: "ai:presence:start-error", trigger: "director", error: String(err) }));
+    });
 
     try {
       const directorSystem =
@@ -414,7 +437,10 @@ export class ChatAgent extends AIChatAgent<Bindings> {
         })
       );
     } finally {
-      await boardStub.setAiPresence(false).catch(() => {});
+      this._isGenerating = false;
+      await boardStub.setAiPresence(false).catch((err: unknown) => {
+        console.debug(JSON.stringify({ event: "ai:presence:cleanup-error", trigger: "director", error: String(err) }));
+      });
     }
   }
 }

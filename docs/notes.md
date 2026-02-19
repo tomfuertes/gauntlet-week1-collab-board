@@ -81,8 +81,7 @@ open board -> play scene -> share replay link -> recruit new player
 
 ## Known Bugs
 
-- AI Director nudge not firing on prod (DO alarm timing or threshold issue)
-- Async badges: boards only visible to owner, no cross-user board discovery
+(none)
 
 ## Planned Refactors
 

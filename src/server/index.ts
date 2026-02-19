@@ -32,7 +32,7 @@ app.get("/api/boards", async (c) => {
      FROM boards b
      LEFT JOIN board_activity a ON a.board_id = b.id
      LEFT JOIN user_board_seen s ON s.board_id = b.id AND s.user_id = ?1
-     WHERE b.created_by = ?1 OR b.created_by = 'system'
+     WHERE b.created_by = ?1 OR b.created_by = 'system' OR s.user_id IS NOT NULL
      ORDER BY b.updated_at DESC`
   ).bind(user.id).all();
   return c.json(results);
