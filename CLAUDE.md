@@ -151,7 +151,7 @@ src/
       ReplayViewer.tsx  # Read-only scene replay player (public, no auth)
       SpectatorView.tsx # Live read-only board view with emoji reactions (public, no auth)
       SceneGallery.tsx  # Public gallery grid of replayable scenes (#gallery route)
-      PerfOverlay.tsx   # Dev performance overlay (FPS, msg age, nodes, connection state)
+      PerfOverlay.tsx   # Performance overlay (FPS, msg age, nodes, connection state) - always on, Shift+P toggle
       ConfettiBurst.tsx # Confetti particle burst animation (extracted from Board)
       BoardGrid.tsx     # Dot grid + radial glow background (extracted from Board)
     hooks/
@@ -172,7 +172,7 @@ src/
     prompts.ts          # All LLM prompt content + scene phases + game mode blocks + PROMPT_VERSION constant
     hat-prompts.ts      # 30+ curated "Scenes From a Hat" prompts + getRandomHatPrompt()
     chat-agent.ts       # AIChatAgent DO - WebSocket AI chat, model selection, game mode state, request metrics
-    ai-tools-sdk.ts     # 10 tools as AI SDK tool() with Zod schemas + instrumentExecute wrapper + DRY helpers
+    ai-tools-sdk.ts     # 11 tools as AI SDK tool() with Zod schemas + instrumentExecute wrapper + DRY helpers
   shared/               # Types shared between client and server
     types.ts            # BoardObject, WSMessage, BoardMutation, ReplayEvent, etc.
 migrations/             # D1 SQL migrations (tracked via d1_migrations table, npm run migrate)
