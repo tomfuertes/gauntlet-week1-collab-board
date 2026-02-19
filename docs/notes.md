@@ -16,10 +16,14 @@
 - **Worktree DX:** Added `wrangler types` to worktree setup, codified lifecycle (implement -> review -> fix -> UAT -> commit, no PR).
 
 ### UAT Results (Prod)
-- 14/17 pass. Two known failures:
-  - AI Director nudge didn't fire after 70s idle (DO alarm issue on prod)
-  - Async badges: boards not visible cross-user (board discovery gap, not notification bug)
+- 14/17 pass -> 16/17 after bug fixes (director nudge needs prod deploy to fully validate)
 - Core viral loop works: auth -> board -> scene -> AI objects -> share replay -> watch replay
+
+### Bug Fix Session (Feb 18)
+- `72292fa` fix: director nudge + board discovery bugs
+- **Director nudge root cause:** `_activeStreamId` guard blocked nudge after DO hibernation. `ResumableStream.restore()` picks up stale stream metadata (5-min threshold) on wake, setting `_activeStreamId` truthy. Replaced with lightweight `_isGenerating` boolean (resets to false on hibernation). Also wrapped `_resetDirectorTimer` in `ctx.waitUntil` for reliability.
+- **Board discovery root cause:** `GET /api/boards` WHERE clause only matched `created_by = user OR system`. Added `OR s.user_id IS NOT NULL` to include boards with `user_board_seen` records (created on WS connect/disconnect).
+- Review fixes: empty `.catch(() => {})` blocks replaced with logging, missing `boardId` in error logs.
 
 ### The Loop
 
@@ -83,8 +87,7 @@ open board -> play scene -> share replay link -> recruit new player
 
 ## Known Bugs
 
-- AI Director nudge not firing on prod (DO alarm timing or threshold issue)
-- Async badges: boards only visible to owner, no cross-user board discovery
+(none)
 
 ## Product Strategy
 
