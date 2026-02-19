@@ -21,7 +21,7 @@ CollabBoard - multiplayer improv canvas with AI agent integration. Real-time col
 ```bash
 # Dev
 npm run dev              # wrangler dev (backend + frontend, auto-loads worktree.ports)
-npm run health           # wait for dev server (auto-detects port from worktree.ports)
+npm run health           # wait for dev server (polls 500ms, auto-detects port from worktree.ports) - use instead of sleep
 
 # Build & Deploy (CF git integration auto-deploys on push to main)
 npm run build            # Vite build
