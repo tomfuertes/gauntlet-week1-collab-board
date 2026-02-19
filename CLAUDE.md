@@ -104,7 +104,7 @@ npx playwright test --reporter=dot     # minimal output (default 'list' floods c
 
 ### Worktree Agent Conventions
 
-Worktree agent lifecycle: **implement -> PR review -> fix review issues -> UAT -> commit**. PR review gates UAT. After UAT passes, commit all changes to the feature branch (no PR - the orchestrator merges from main). The branch must be clean-committed when the agent finishes so `git merge feat/<branch>` works from main.
+Worktree agent lifecycle: **implement -> PR review -> fix review issues -> UAT -> commit -> /last-call**. PR review gates UAT. After UAT passes, commit all changes to the feature branch (no PR - the orchestrator merges from main). After committing, run `/last-call` for an end-of-session summary. The branch must be clean-committed when the agent finishes so `git merge feat/<branch>` works from main.
 
 Worktree prompts must explicitly mention:
 - `npm run dev` (auto-loads worktree.ports if present, never hardcode ports)
