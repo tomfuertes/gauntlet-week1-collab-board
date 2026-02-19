@@ -53,7 +53,7 @@ app.get("/api/boards", async (c) => {
   if (!user) return c.text("Unauthorized", 401);
 
   const { results } = await c.env.DB.prepare(
-    `SELECT b.id, b.name, b.created_by, b.created_at, b.updated_at,
+    `SELECT b.id, b.name, b.created_by, b.created_at, b.updated_at, b.game_mode,
        MAX(0, COALESCE(a.activity_count, 0) - COALESCE(s.seen_count, 0)) AS unseen_count
      FROM boards b
      LEFT JOIN board_activity a ON a.board_id = b.id
@@ -99,6 +99,33 @@ app.delete("/api/boards/:boardId", async (c) => {
   return c.json({ deleted: true });
 });
 
+// Get single board metadata (auth-protected)
+app.get("/api/boards/:boardId", async (c) => {
+  const user = await requireAuth(c);
+  if (!user) return c.text("Unauthorized", 401);
+  const boardId = c.req.param("boardId");
+  const row = await c.env.DB.prepare("SELECT id, name, game_mode, created_by FROM boards WHERE id = ?")
+    .bind(boardId).first();
+  if (!row) return c.text("Not found", 404);
+  return c.json(row);
+});
+
+// Update board game mode (auth-protected, ownership check)
+app.patch("/api/boards/:boardId", async (c) => {
+  const user = await requireAuth(c);
+  if (!user) return c.text("Unauthorized", 401);
+  const boardId = c.req.param("boardId");
+  const ownership = await checkBoardOwnership(c.env.DB, boardId, user.id);
+  if (ownership === "not_found") return c.text("Not found", 404);
+  if (ownership === "forbidden") return c.text("Forbidden", 403);
+  const body = await c.req.json<{ game_mode?: string }>();
+  const gameMode = ["hat", "yesand", "freeform"].includes(body.game_mode ?? "")
+    ? body.game_mode : "freeform";
+  await c.env.DB.prepare("UPDATE boards SET game_mode = ? WHERE id = ?")
+    .bind(gameMode, boardId).run();
+  return c.json({ ok: true });
+});
+
 // Clear board (auth-protected, ownership check)
 app.post("/api/board/:boardId/clear", async (c) => {
   const user = await requireAuth(c);
@@ -138,14 +165,14 @@ app.delete("/api/user", async (c) => {
 app.get("/api/boards/public", async (c) => {
   try {
     const { results } = await c.env.DB.prepare(
-      `SELECT b.id, b.name, u.display_name AS creator,
+      `SELECT b.id, b.name, b.game_mode, u.display_name AS creator,
               a.last_activity_at, COALESCE(a.activity_count, 0) AS eventCount
        FROM boards b
        JOIN users u ON u.id = b.created_by
        LEFT JOIN board_activity a ON a.board_id = b.id
        ORDER BY a.last_activity_at DESC
        LIMIT 50`
-    ).all<{ id: string; name: string; creator: string; last_activity_at: string; eventCount: number }>();
+    ).all<{ id: string; name: string; game_mode?: string; creator: string; last_activity_at: string; eventCount: number }>();
     return c.json(results);
   } catch (err) {
     console.error(JSON.stringify({ event: "gallery:public:error", error: String(err) }));

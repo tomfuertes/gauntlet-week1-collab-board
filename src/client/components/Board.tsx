@@ -4,7 +4,7 @@ import type { KonvaEventObject } from "konva/lib/Node";
 import Konva from "konva";
 import type { AuthUser } from "../App";
 import { AI_USER_ID } from "@shared/types";
-import type { BoardObject, BoardObjectProps } from "@shared/types";
+import type { BoardObject, BoardObjectProps, GameMode } from "@shared/types";
 import { TRANSFORMER_CONFIG } from "../constants";
 import { useWebSocket } from "../hooks/useWebSocket";
 import { BoardObjectRenderer } from "./BoardObjectRenderer";
@@ -107,6 +107,19 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
   const [chatOpen, setChatOpen] = useState(false);
   const [chatInitialPrompt, setChatInitialPrompt] = useState<string | undefined>();
   const [boardGenStarted, setBoardGenStarted] = useState(false);
+  const [gameMode, setGameMode] = useState<GameMode>("freeform");
+
+  // Hydrate game mode from D1 on mount (so returning users get the right mode)
+  useEffect(() => {
+    fetch(`/api/boards/${boardId}`)
+      .then((r) => r.ok ? r.json() as Promise<{ game_mode?: string }> : null)
+      .then((data) => {
+        if (data?.game_mode && ["hat", "yesand"].includes(data.game_mode)) {
+          setGameMode(data.game_mode as GameMode);
+        }
+      })
+      .catch(() => {}); // non-critical - defaults to freeform
+  }, [boardId]);
   const [showShortcuts, setShowShortcuts] = useState(false);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; objId: string } | null>(null);
   const trRef = useRef<Konva.Transformer>(null);
@@ -826,10 +839,19 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
       {/* Onboard modal - shown on empty boards until user starts a scene or dismisses */}
       {initialized && objects.size === 0 && !boardGenStarted && !chatOpen && (
         <OnboardModal
-          onSubmit={(prompt) => {
+          onSubmit={(prompt, mode) => {
+            setGameMode(mode);
             setBoardGenStarted(true);
             setChatInitialPrompt(prompt);
             setChatOpen(true);
+            // Persist mode to D1 (fire-and-forget)
+            if (mode !== "freeform") {
+              fetch(`/api/boards/${boardId}`, {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ game_mode: mode }),
+              }).catch(() => {});
+            }
           }}
           onDismiss={() => setBoardGenStarted(true)}
         />
@@ -1162,6 +1184,7 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
         <ChatPanel
           boardId={boardId}
           username={user.username}
+          gameMode={gameMode}
           onClose={() => {
             setChatOpen(false);
             setChatInitialPrompt(undefined);

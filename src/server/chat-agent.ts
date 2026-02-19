@@ -12,6 +12,8 @@ import { createSDKTools, isPlainObject } from "./ai-tools-sdk";
 import {
   SYSTEM_PROMPT,
   DIRECTOR_PROMPTS,
+  DIRECTOR_PROMPTS_HAT,
+  DIRECTOR_PROMPTS_YESAND,
   PROMPT_VERSION,
   computeScenePhase,
   PERSONAS,
@@ -19,10 +21,13 @@ import {
   buildPersonaSystemPrompt,
   computeBudgetPhase,
   BUDGET_PROMPTS,
+  buildGameModePromptBlock,
 } from "./prompts";
+import type { GameModeState } from "./prompts";
+import { HAT_PROMPTS, getRandomHatPrompt } from "./hat-prompts";
 import type { Bindings } from "./env";
 import { recordBoardActivity } from "./env";
-import type { BoardObject, BoardObjectProps } from "../shared/types";
+import type { BoardObject, BoardObjectProps, GameMode } from "../shared/types";
 import { SCENE_TURN_BUDGET } from "../shared/types";
 
 /**
@@ -105,6 +110,12 @@ export class ChatAgent extends AIChatAgent<Bindings> {
   // Multi-agent persona state (resets on DO hibernation - that's fine, defaults work)
   private _activePersonaIndex = 0; // which persona responds to the next human message
   private _autonomousExchangeCount = 0; // consecutive autonomous exchanges (reset on human msg)
+
+  // Game mode state (resets on DO hibernation - client re-sends gameMode on each message)
+  private _gameMode: GameMode = "freeform";
+  private _hatPromptIndex = -1;
+  private _hatExchangeCount = 0;
+  private _yesAndCount = 0;
 
   /** Choose model: Haiku if ANTHROPIC_API_KEY set, else GLM free tier */
   private _getModel() {
@@ -205,15 +216,55 @@ export class ChatAgent extends AIChatAgent<Bindings> {
     const batchId = crypto.randomUUID();
     const tools = createSDKTools(boardStub, batchId, this.env.AI);
 
+    const body =
+      options && "body" in options ? (options as any).body : undefined;
+
+    // Update game mode from client (sent on every message so it survives DO hibernation)
+    if (body?.gameMode && ["hat", "yesand", "freeform"].includes(body.gameMode)) {
+      this._gameMode = body.gameMode as GameMode;
+    }
+
+    // Handle hat mode prompt lifecycle
+    if (this._gameMode === "hat") {
+      // Check for [NEXT-HAT-PROMPT] marker to advance prompt
+      const lastUserMsg = this.messages[this.messages.length - 1];
+      const lastUserText = lastUserMsg?.parts
+        ?.filter((p) => p.type === "text")
+        .map((p) => (p as { type: "text"; text: string }).text)
+        .join("") ?? "";
+      if (lastUserText.includes("[NEXT-HAT-PROMPT]")) {
+        const pick = getRandomHatPrompt(this._hatPromptIndex);
+        this._hatPromptIndex = pick.index;
+        this._hatExchangeCount = 0;
+      } else if (this._hatPromptIndex === -1) {
+        // First message in hat mode - pick initial prompt
+        const pick = getRandomHatPrompt();
+        this._hatPromptIndex = pick.index;
+        this._hatExchangeCount = 0;
+      }
+      this._hatExchangeCount++;
+    }
+
+    // Track yes-and beat count
+    if (this._gameMode === "yesand") {
+      this._yesAndCount++;
+    }
+
+    // Build game mode prompt block
+    const gameModeState: GameModeState = {
+      hatPrompt: this._hatPromptIndex >= 0 ? HAT_PROMPTS[this._hatPromptIndex] : undefined,
+      hatExchangeCount: this._hatExchangeCount,
+      yesAndCount: this._yesAndCount,
+    };
+    const gameModeBlock = buildGameModePromptBlock(this._gameMode, gameModeState);
+
     // Build persona-aware system prompt with optional selection + multiplayer context
-    let systemPrompt = buildPersonaSystemPrompt(this._activePersonaIndex, SYSTEM_PROMPT);
+    let systemPrompt = buildPersonaSystemPrompt(this._activePersonaIndex, SYSTEM_PROMPT, gameModeBlock);
 
     // Inject budget phase prompt when not in normal phase
     if (budgetPhase !== "normal") {
       systemPrompt += `\n\n${BUDGET_PROMPTS[budgetPhase]}`;
     }
-    const body =
-      options && "body" in options ? (options as any).body : undefined;
 
     // Multiplayer attribution: tell the AI who is speaking
     if (body?.username) {
@@ -455,8 +506,16 @@ export class ChatAgent extends AIChatAgent<Bindings> {
     const batchId = crypto.randomUUID();
     const tools = createSDKTools(boardStub, batchId, this.env.AI);
 
+    // Pass the same game mode block to the reactive persona
+    const reactiveGameModeState: GameModeState = {
+      hatPrompt: this._hatPromptIndex >= 0 ? HAT_PROMPTS[this._hatPromptIndex] : undefined,
+      hatExchangeCount: this._hatExchangeCount,
+      yesAndCount: this._yesAndCount,
+    };
+    const reactiveGameModeBlock = buildGameModePromptBlock(this._gameMode, reactiveGameModeState);
+
     const reactiveSystem =
-      buildPersonaSystemPrompt(reactiveIndex, SYSTEM_PROMPT) +
+      buildPersonaSystemPrompt(reactiveIndex, SYSTEM_PROMPT, reactiveGameModeBlock) +
       `\n\n[REACTIVE MODE] You are responding autonomously to what just happened. ` +
       `Your improv partner ${activePersona.name} just made their move. ` +
       `React to it and the human's prompt. Keep it brief - 1 sentence of chat and 1-2 canvas actions max. ` +
@@ -611,12 +670,32 @@ export class ChatAgent extends AIChatAgent<Bindings> {
     });
 
     try {
+      // Build game mode block for director
+      const directorGameModeState: GameModeState = {
+        hatPrompt: this._hatPromptIndex >= 0 ? HAT_PROMPTS[this._hatPromptIndex] : undefined,
+        hatExchangeCount: this._hatExchangeCount,
+        yesAndCount: this._yesAndCount,
+      };
+      const directorGameModeBlock = buildGameModePromptBlock(this._gameMode, directorGameModeState);
+
+      // Mode-specific director instructions
+      let directorInstructions: string;
+      if (this._gameMode === "hat") {
+        const hatKey = this._hatExchangeCount >= 5 ? "wrapup" : "active";
+        directorInstructions = DIRECTOR_PROMPTS_HAT[hatKey];
+      } else if (this._gameMode === "yesand") {
+        const yesandKey = this._yesAndCount >= 10 ? "wrapup" : "active";
+        directorInstructions = DIRECTOR_PROMPTS_YESAND[yesandKey];
+      } else {
+        directorInstructions =
+          `Current scene phase: ${phase.toUpperCase()}. ` + DIRECTOR_PROMPTS[phase];
+      }
+
       // Director nudge uses the active persona's voice + budget-aware prompts
       let directorSystem =
-        buildPersonaSystemPrompt(directorIndex, SYSTEM_PROMPT) +
+        buildPersonaSystemPrompt(directorIndex, SYSTEM_PROMPT, directorGameModeBlock) +
         `\n\n[DIRECTOR MODE] You are the scene director. The players have been quiet for a while. ` +
-        `Current scene phase: ${phase.toUpperCase()}. ` +
-        DIRECTOR_PROMPTS[phase] +
+        directorInstructions +
         `\n\nAct NOW - add something to the canvas to restart momentum. ` +
         `Keep your chat response to 1 sentence max, something provocative that invites players to react.`;
       if (directorBudget !== "normal") {

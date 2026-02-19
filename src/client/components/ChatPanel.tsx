@@ -6,6 +6,7 @@ import type { UIMessage } from "ai";
 import { colors, getUserColor } from "../theme";
 import { Button } from "./Button";
 import { PERSONA_COLORS, SCENE_TURN_BUDGET } from "../../shared/types";
+import type { GameMode } from "../../shared/types";
 import "../styles/animations.css";
 import { BOARD_TEMPLATES } from "../../shared/board-templates";
 import type { ToolName } from "../../server/ai-tools-sdk";
@@ -13,6 +14,7 @@ import type { ToolName } from "../../server/ai-tools-sdk";
 interface ChatPanelProps {
   boardId: string;
   username?: string;
+  gameMode?: GameMode;
   onClose: () => void;
   initialPrompt?: string;
   selectedIds?: Set<string>;
@@ -108,9 +110,24 @@ const CATEGORY_COLORS: Record<IntentChip["category"], string> = {
   chaos: colors.error,
 };
 
-/** Pick intent chips based on user message count (excludes AI replies) */
-function getIntentChips(userMessageCount: number): IntentChip[] {
+// Mode-specific intent chips
+const HAT_INTENTS: IntentChip[] = [
+  { prompt: "[NEXT-HAT-PROMPT]", category: "scene" },
+  { prompt: "Plot twist!", category: "scene" },
+  { prompt: "A stranger walks in", category: "character" },
+];
+
+const YESAND_INTENTS: IntentChip[] = [
+  { prompt: "Yes, and...", category: "scene" },
+  { prompt: "Escalate!", category: "chaos" },
+  { prompt: "Meanwhile, elsewhere...", category: "scene" },
+];
+
+/** Pick intent chips based on user message count and game mode */
+function getIntentChips(userMessageCount: number, gameMode?: GameMode): IntentChip[] {
   if (userMessageCount <= 0) return []; // empty state uses templates instead
+  if (gameMode === "hat") return HAT_INTENTS;
+  if (gameMode === "yesand") return YESAND_INTENTS;
   if (userMessageCount <= 2) return SCENE_SET_INTENTS;
   if (userMessageCount <= 5) return MID_SCENE_INTENTS;
   return DEEP_SCENE_INTENTS;
@@ -194,7 +211,7 @@ function ToolHistory({ tools }: { tools: ToolCallDisplay[] }) {
 // Regex to extract [username] prefix from user messages for multiplayer attribution
 const SENDER_RE = /^\[([^\]]+)\]\s*/;
 
-export function ChatPanel({ boardId, username, onClose, initialPrompt, selectedIds, onAIComplete }: ChatPanelProps) {
+export function ChatPanel({ boardId, username, gameMode, onClose, initialPrompt, selectedIds, onAIComplete }: ChatPanelProps) {
   const selectedIdsArray = useMemo(
     () => (selectedIds?.size ? [...selectedIds] : undefined),
     [selectedIds],
@@ -211,7 +228,7 @@ export function ChatPanel({ boardId, username, onClose, initialPrompt, selectedI
     clearHistory,
   } = useAgentChat({
     agent,
-    body: { selectedIds: selectedIdsArray, username },
+    body: { selectedIds: selectedIdsArray, username, gameMode },
   });
 
   // Prefix [username] for multiplayer attribution in persisted history
@@ -298,8 +315,8 @@ export function ChatPanel({ boardId, username, onClose, initialPrompt, selectedI
         padding: "0 1rem", borderBottom: "1px solid #334155", flexShrink: 0,
         borderRadius: "12px 12px 0 0",
       }}>
-        <span style={{ color: "#e2e8f0", fontWeight: 600, fontSize: "0.875rem", display: "flex", alignItems: "center", gap: 8 }}>
-          <span>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <span style={{ color: "#e2e8f0", fontWeight: 600, fontSize: "0.875rem" }}>
             <span style={{ color: PERSONA_COLORS.SPARK }}>SPARK</span>
             {" & "}
             <span style={{ color: PERSONA_COLORS.SAGE }}>SAGE</span>
@@ -318,7 +335,25 @@ export function ChatPanel({ boardId, username, onClose, initialPrompt, selectedI
               {budgetLabel}
             </span>
           )}
-        </span>
+          {gameMode === "hat" && (
+            <span style={{
+              fontSize: "0.6875rem", color: colors.warning,
+              border: `1px solid ${colors.warning}44`, borderRadius: 8,
+              padding: "1px 6px",
+            }}>
+              Hat
+            </span>
+          )}
+          {gameMode === "yesand" && (
+            <span style={{
+              fontSize: "0.6875rem", color: colors.info,
+              border: `1px solid ${colors.info}44`, borderRadius: 8,
+              padding: "1px 6px",
+            }}>
+              Beat {Math.min(userMessageCount, 10)}/10
+            </span>
+          )}
+        </div>
         <button onClick={onClose} style={{
           background: "none", border: "none", color: "#94a3b8", cursor: "pointer",
           fontSize: "1.25rem", lineHeight: 1, padding: "0.25rem",
@@ -462,10 +497,10 @@ export function ChatPanel({ boardId, username, onClose, initialPrompt, selectedI
               />
             ))
           ) : (
-            getIntentChips(userMessageCount).map((chip) => (
+            getIntentChips(userMessageCount, gameMode).map((chip) => (
               <ChipButton
                 key={chip.prompt}
-                label={chip.prompt}
+                label={chip.prompt === "[NEXT-HAT-PROMPT]" ? "Next prompt" : chip.prompt}
                 color={CATEGORY_COLORS[chip.category]}
                 borderRadius={16}
                 disabled={loading || isSceneOver}

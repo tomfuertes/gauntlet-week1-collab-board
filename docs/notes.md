@@ -2,6 +2,26 @@
 
 *Internal project management scratch. Not a deliverable.*
 
+## Game Modes Session (Feb 19, 2026)
+
+### What Was Done
+- **Scenes From a Hat + Yes-And Chain** game modes. Full vertical slice: `GameMode` type, 33 hat prompts, `buildGameModePromptBlock()`, ChatAgent mode state, PATCH endpoint, D1 migration 0004, OnboardModal mode selector, ChatPanel mode-specific chips/badges, gallery mode badges.
+- **PR review fixes:** ownership check on PATCH, off-by-one counter, undefined guard in `getRandomHatPrompt`, `GET /api/boards/:boardId` for mode hydration on mount.
+- **CLAUDE.md AI section restructured** from single mega-paragraph to 7 sub-bullets.
+
+### Loose Ends
+- **Remote D1 migration pending** - wrangler OAuth token expired. Run `npx wrangler login` then `npm run migrate:remote` to apply migration 0004.
+- **No UAT this session** - needs dev server. Verify: freeform unchanged, hat prompt card + "Next prompt" advances, yes-and beat counter, gallery badges, two-browser sync.
+
+### Key Decisions
+| Date | Decision | Rationale |
+|------|----------|-----------|
+| Feb 19 | `[NEXT-HAT-PROMPT]` marker protocol | Avoids custom WS message types; ChatAgent detects marker in user message text |
+| Feb 19 | Client re-sends gameMode on every message | DO hibernation resilience; D1 stores mode for gallery, ChatAgent uses client value |
+| Feb 19 | `GET /api/boards/:boardId` endpoint | Hydrate mode on mount so returning users get correct mode |
+
+---
+
 ## Code Cleanup Sprint (Feb 19, 2026)
 
 ### What Was Done
@@ -121,7 +141,7 @@ open board -> play scene -> share replay link -> recruit new player
 
 | Feature | Notes |
 |---------|-------|
-| Improv game modes | Scenes From a Hat, Yes-And chains - structured replayability. Pairs well with token budgets. |
+| ~~Improv game modes~~ | **Shipped.** Scenes From a Hat (random prompts, 5-exchange scenes) + Yes-And Chain (10-beat chain). Mode selector in OnboardModal, PATCH /api/boards/:boardId, mode-aware ChatAgent prompts + director, gallery badges. |
 | ~~Per-scene token budgets~~ | **Shipped.** 20-turn budget, 4 phases (normal/act3/final-beat/scene-over), budget-aware prompts, "New Scene" button. |
 | Narrative/relationship state | Formalize who-hates-whom graph. Makes multi-agent "yes, and" structural, not emergent. |
 | Custom AI characters | Replace fixed SPARK/SAGE with user-uploaded personalities. Extends multi-agent. |

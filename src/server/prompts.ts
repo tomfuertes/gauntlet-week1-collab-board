@@ -4,6 +4,7 @@
  */
 
 import { PERSONA_META } from "../shared/types";
+import type { GameMode } from "../shared/types";
 
 /** Bump when prompt content changes - logged with every AI request for correlation */
 export const PROMPT_VERSION = "v4";
@@ -50,6 +51,7 @@ export const MAX_AUTONOMOUS_EXCHANGES = 3;
 export function buildPersonaSystemPrompt(
   personaIndex: number,
   basePrompt: string,
+  gameModeBlock?: string,
 ): string {
   if (personaIndex < 0 || personaIndex >= PERSONAS.length) {
     throw new Error(`buildPersonaSystemPrompt: invalid index ${personaIndex}`);
@@ -60,12 +62,70 @@ export function buildPersonaSystemPrompt(
 
   return (
     basePrompt +
+    (gameModeBlock ? `\n\n${gameModeBlock}` : "") +
     `\n\n[CHARACTER IDENTITY]\n${persona.personality}` +
     `\nYou MUST start every chat response with [${persona.name}] followed by your message. Example: "[${persona.name}] The floor is now lava."` +
     `\n\n[IMPROV PARTNER]\nYou are part of an improv duo with ${other.name}. ${other.partnerSummary}` +
     `\nWhen ${other.name} makes a move, "yes, and" it. Never negate or undo what they created. Build on their contributions even when they conflict with your instincts.`
   );
 }
+
+// ---------------------------------------------------------------------------
+// Game mode prompt blocks - injected between base prompt and persona identity
+// ---------------------------------------------------------------------------
+
+export interface GameModeState {
+  hatPrompt?: string;
+  hatExchangeCount?: number;
+  yesAndCount?: number;
+}
+
+/** Build mode-specific system prompt block for injection into persona prompt */
+export function buildGameModePromptBlock(mode: GameMode, state: GameModeState): string {
+  if (mode === "hat") {
+    return (
+      `[GAME MODE: SCENES FROM A HAT]\n` +
+      `Current prompt: "${state.hatPrompt ?? ""}"\n` +
+      `Exchange ${state.hatExchangeCount ?? 0} of 5.\n` +
+      `RULES:\n` +
+      `- Stay on the current prompt. Every response must relate to it.\n` +
+      `- Keep scenes short and punchy - this is a quick-fire format.\n` +
+      `- After 5 exchanges, the scene ends. Wrap up with a callback.\n` +
+      `- If a user sends [NEXT-HAT-PROMPT], acknowledge the prompt change and start fresh on the new prompt.`
+    );
+  }
+  if (mode === "yesand") {
+    return (
+      `[GAME MODE: YES-AND CHAIN]\n` +
+      `Beat ${state.yesAndCount ?? 0} of 10.\n` +
+      `RULES:\n` +
+      `- Every response MUST start with "Yes, and..." (after your [NAME] prefix).\n` +
+      `- Build directly on the last thing said. No tangents.\n` +
+      `- Each beat should escalate or add a new detail. Small steps, not giant leaps.\n` +
+      `- If someone breaks the chain (doesn't "yes, and"), gently redirect: "Let's get back on the chain!"\n` +
+      `- The chain ends at beat 10 with a callback to beat 1.`
+    );
+  }
+  return "";
+}
+
+/** Mode-specific director prompts (override phase-based defaults) */
+export const DIRECTOR_PROMPTS_HAT: Record<string, string> = {
+  active:
+    "The hat scene is going well. Add a complication related to the current prompt. " +
+    "Keep it on-topic - something that twists the scenario.",
+  wrapup:
+    "This hat scene has gone on long enough (5+ exchanges). " +
+    "Wrap it up with a punchline or callback. Create 1 sticky with a punchy conclusion.",
+};
+
+export const DIRECTOR_PROMPTS_YESAND: Record<string, string> = {
+  active:
+    "The yes-and chain needs momentum. Add the next beat that builds on the previous one. " +
+    "Start with 'Yes, and...' and escalate by one notch.",
+  wrapup:
+    "The chain is at 10+ beats. Bring it full circle - reference beat 1 with a twist.",
+};
 
 // ---------------------------------------------------------------------------
 // Scene phase system - dramatic arc for proactive AI director

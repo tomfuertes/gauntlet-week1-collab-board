@@ -5,10 +5,16 @@ import { Button } from "./Button";
 interface SceneMeta {
   id: string;
   name: string;
+  game_mode?: string;
   creator: string;
   last_activity_at: string;
   eventCount: number;
 }
+
+const MODE_BADGES: Record<string, { icon: string; label: string }> = {
+  hat: { icon: "\uD83C\uDFA9", label: "Hat" },
+  yesand: { icon: "\uD83D\uDD17", label: "Yes-And" },
+};
 
 function thumbnailGradient(name: string): string {
   const hash = name.split("").reduce((h, c) => (h * 31 + c.charCodeAt(0)) | 0, 0);
@@ -52,6 +58,17 @@ function SceneCard({ scene }: { scene: SceneMeta }) {
         }}>
           {scene.eventCount} events
         </div>
+        {scene.game_mode && MODE_BADGES[scene.game_mode] && (
+          <div style={{
+            position: "absolute", top: 8, right: 8,
+            background: "rgba(0,0,0,0.6)", borderRadius: 6,
+            padding: "2px 6px", fontSize: "0.6875rem",
+            color: colors.textMuted, display: "flex", alignItems: "center", gap: 3,
+          }}>
+            <span>{MODE_BADGES[scene.game_mode].icon}</span>
+            {MODE_BADGES[scene.game_mode].label}
+          </div>
+        )}
         {/* Play overlay on hover */}
         {hovered && (
           <div style={{

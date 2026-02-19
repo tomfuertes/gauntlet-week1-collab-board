@@ -92,6 +92,14 @@ export const PERSONA_COLORS: Record<string, string> =
 /** Max human turns per scene before AI wraps up */
 export const SCENE_TURN_BUDGET = 20;
 
+export type GameMode = "freeform" | "hat" | "yesand";
+
+export const GAME_MODES = [
+  { mode: "freeform" as const, label: "Freeform", icon: "\u2728", description: "Classic improv - no rules, just play" },
+  { mode: "hat" as const, label: "Scenes From a Hat", icon: "\uD83C\uDFA9", description: "Random prompts, short scenes" },
+  { mode: "yesand" as const, label: "Yes-And Chain", icon: "\uD83D\uDD17", description: "Build a 10-beat chain" },
+] as const;
+
 export interface ReplayEvent {
   type: "obj:create" | "obj:update" | "obj:delete";
   ts: number;
