@@ -56,6 +56,16 @@ export type WSServerMessage =
 export const AI_USER_ID = "ai-agent" as const;
 export const AI_USERNAME = "AI Assistant" as const;
 
+/** Shared persona display data - single source of truth for client + server */
+export const PERSONA_META = [
+  { name: "SPARK", color: "#fb923c" },
+  { name: "SAGE", color: "#4ade80" },
+] as const;
+
+/** Persona name -> display color for ChatPanel sender labels (derived from PERSONA_META) */
+export const PERSONA_COLORS: Record<string, string> =
+  Object.fromEntries(PERSONA_META.map((p) => [p.name, p.color]));
+
 export interface ReplayEvent {
   type: "obj:create" | "obj:update" | "obj:delete";
   ts: number;

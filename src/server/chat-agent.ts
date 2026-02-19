@@ -14,6 +14,9 @@ import {
   DIRECTOR_PROMPTS,
   PROMPT_VERSION,
   computeScenePhase,
+  PERSONAS,
+  MAX_AUTONOMOUS_EXCHANGES,
+  buildPersonaSystemPrompt,
 } from "./prompts";
 import type { Bindings } from "./env";
 import { recordBoardActivity } from "./env";
@@ -96,6 +99,10 @@ export class ChatAgent extends AIChatAgent<Bindings> {
   // causing false positives that permanently block director nudges on prod.)
   private _isGenerating = false;
 
+  // Multi-agent persona state (resets on DO hibernation - that's fine, defaults work)
+  private _activePersonaIndex = 0; // which persona responds to the next human message
+  private _autonomousExchangeCount = 0; // consecutive autonomous exchanges (reset on human msg)
+
   /** Choose model: Haiku if ANTHROPIC_API_KEY set, else GLM free tier */
   private _getModel() {
     return this.env.ANTHROPIC_API_KEY
@@ -117,8 +124,10 @@ export class ChatAgent extends AIChatAgent<Bindings> {
   async onChatMessage(onFinish: any, options?: { abortSignal?: AbortSignal }) {
     // this.name = boardId (set by client connecting to /agents/ChatAgent/<boardId>)
     this._isGenerating = true;
+    this._autonomousExchangeCount = 0; // human spoke - reset cooldown
     const startTime = Date.now();
     const modelName = this._getModelName();
+    const activePersona = PERSONAS[this._activePersonaIndex];
 
     console.debug(
       JSON.stringify({
@@ -127,6 +136,7 @@ export class ChatAgent extends AIChatAgent<Bindings> {
         model: modelName,
         promptVersion: PROMPT_VERSION,
         trigger: "chat",
+        persona: activePersona.name,
       })
     );
 
@@ -142,8 +152,8 @@ export class ChatAgent extends AIChatAgent<Bindings> {
     const batchId = crypto.randomUUID();
     const tools = createSDKTools(boardStub, batchId, this.env.AI);
 
-    // Build system prompt with optional selection + multiplayer context
-    let systemPrompt = SYSTEM_PROMPT;
+    // Build persona-aware system prompt with optional selection + multiplayer context
+    let systemPrompt = buildPersonaSystemPrompt(this._activePersonaIndex, SYSTEM_PROMPT);
     const body =
       options && "body" in options ? (options as any).body : undefined;
 
@@ -186,6 +196,9 @@ export class ChatAgent extends AIChatAgent<Bindings> {
       }
     };
 
+    // Capture persona index for the reactive trigger (before it might change)
+    const activeIndex = this._activePersonaIndex;
+
     const wrappedOnFinish: typeof onFinish = async (...args: Parameters<typeof onFinish>) => {
       this._isGenerating = false;
       await clearPresence();
@@ -206,9 +219,20 @@ export class ChatAgent extends AIChatAgent<Bindings> {
           model: modelName,
           promptVersion: PROMPT_VERSION,
           trigger: "chat",
+          persona: activePersona.name,
           steps,
           toolCalls,
           durationMs,
+        })
+      );
+
+      // Ensure active persona's message has the [NAME] prefix (LLMs sometimes forget)
+      this._ensurePersonaPrefix(activeIndex);
+
+      // Trigger reactive persona to "yes, and" the active persona's response
+      this.ctx.waitUntil(
+        this._triggerReactivePersona(activeIndex).catch((err: unknown) => {
+          console.error(JSON.stringify({ event: "reactive:unhandled", boardId: this.name, error: String(err) }));
         })
       );
 
@@ -240,6 +264,209 @@ export class ChatAgent extends AIChatAgent<Bindings> {
       this._isGenerating = false;
       await clearPresence();
       throw err;
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Multi-agent persona helpers
+  // ---------------------------------------------------------------------------
+
+  /** Ensure the last assistant message starts with [PERSONA_NAME] prefix.
+   *  Uses immutable update + persist to avoid mutating SDK-owned objects. */
+  private _ensurePersonaPrefix(personaIndex: number) {
+    const persona = PERSONAS[personaIndex];
+    const lastMsg = this.messages[this.messages.length - 1];
+    if (!lastMsg || lastMsg.role !== "assistant") return;
+
+    const needsFix = lastMsg.parts.some(
+      (p) => p.type === "text" && !p.text.startsWith(`[${persona.name}]`)
+    );
+    if (!needsFix) {
+      if (!lastMsg.parts.some((p) => p.type === "text")) {
+        console.warn(JSON.stringify({ event: "persona:prefix:no-text-part", boardId: this.name, persona: persona.name }));
+      }
+      return;
+    }
+
+    const newParts = lastMsg.parts.map((part) => {
+      if (part.type === "text" && !part.text.startsWith(`[${persona.name}]`)) {
+        return { ...part, text: `[${persona.name}] ${part.text}` };
+      }
+      return part;
+    });
+    this.messages[this.messages.length - 1] = { ...lastMsg, parts: newParts };
+    this.ctx.waitUntil(
+      this.persistMessages(this.messages).catch((err: unknown) => {
+        console.error(JSON.stringify({ event: "persona:prefix:persist-error", boardId: this.name, error: String(err) }));
+      })
+    );
+  }
+
+  /** After the active persona finishes, trigger the other persona to react.
+   *  Claims _isGenerating mutex BEFORE the delay to prevent TOCTOU races. */
+  private async _triggerReactivePersona(activeIndex: number) {
+    // Guard: cooldown exceeded (check before claiming mutex)
+    if (this._autonomousExchangeCount >= MAX_AUTONOMOUS_EXCHANGES) {
+      console.debug(JSON.stringify({ event: "reactive:skip", reason: "cooldown", boardId: this.name }));
+      return;
+    }
+
+    // Guard: already generating (human message or concurrent caller)
+    if (this._isGenerating) {
+      console.debug(JSON.stringify({ event: "reactive:skip", reason: "busy", boardId: this.name }));
+      return;
+    }
+
+    // Guard: need at least one assistant message to react to
+    if (!this.messages.some((m) => m.role === "assistant")) {
+      console.debug(JSON.stringify({ event: "reactive:skip", reason: "no-assistant-message", boardId: this.name }));
+      return;
+    }
+
+    // Claim mutex BEFORE the delay to prevent TOCTOU races
+    this._isGenerating = true;
+    this._autonomousExchangeCount++;
+
+    // UX delay - let the active persona's message settle before the reaction
+    await new Promise((r) => setTimeout(r, 2000));
+
+    // Re-check: human may have interrupted during the delay (onChatMessage resets count)
+    if (this._autonomousExchangeCount === 0) {
+      this._isGenerating = false;
+      console.debug(JSON.stringify({ event: "reactive:skip", reason: "human-interrupted", boardId: this.name }));
+      return;
+    }
+
+    const reactiveIndex = activeIndex === 0 ? 1 : 0;
+    const reactivePersona = PERSONAS[reactiveIndex];
+    const activePersona = PERSONAS[activeIndex];
+    const modelName = this._getModelName();
+    const startTime = Date.now();
+
+    console.debug(
+      JSON.stringify({
+        event: "ai:request:start",
+        boardId: this.name,
+        model: modelName,
+        promptVersion: PROMPT_VERSION,
+        trigger: "reactive",
+        persona: reactivePersona.name,
+      })
+    );
+
+    const doId = this.env.BOARD.idFromName(this.name);
+    const boardStub = this.env.BOARD.get(doId);
+    const batchId = crypto.randomUUID();
+    const tools = createSDKTools(boardStub, batchId, this.env.AI);
+
+    const reactiveSystem =
+      buildPersonaSystemPrompt(reactiveIndex, SYSTEM_PROMPT) +
+      `\n\n[REACTIVE MODE] You are responding autonomously to what just happened. ` +
+      `Your improv partner ${activePersona.name} just made their move. ` +
+      `React to it and the human's prompt. Keep it brief - 1 sentence of chat and 1-2 canvas actions max. ` +
+      `Do NOT repeat or summarize what ${activePersona.name} did - build on it.`;
+
+    const model = this._getModel();
+
+    // Show AI presence while generating
+    await boardStub.setAiPresence(true).catch((err: unknown) => {
+      console.debug(JSON.stringify({ event: "ai:presence:start-error", trigger: "reactive", error: String(err) }));
+    });
+
+    try {
+      const result = await generateText({
+        model,
+        system: reactiveSystem,
+        messages: await convertToModelMessages(sanitizeMessages(this.messages)),
+        tools,
+        stopWhen: stepCountIs(3),
+      });
+
+      // Build UIMessage from generateText result (same pattern as director nudge)
+      const parts: UIMessage["parts"] = [];
+
+      for (const step of result.steps) {
+        for (const tc of step.toolCalls) {
+          const tr = step.toolResults.find(
+            (r: { toolCallId: string }) => r.toolCallId === tc.toolCallId
+          );
+          const safeInput = isPlainObject(tc.input) ? tc.input : {};
+          if (tr) {
+            parts.push({
+              type: "dynamic-tool" as const,
+              toolName: tc.toolName,
+              toolCallId: tc.toolCallId,
+              state: "output-available" as const,
+              input: safeInput,
+              output: tr.output,
+            });
+          } else {
+            parts.push({
+              type: "dynamic-tool" as const,
+              toolName: tc.toolName,
+              toolCallId: tc.toolCallId,
+              state: "output-error" as const,
+              input: safeInput,
+              errorText: "Tool execution did not return a result",
+            });
+          }
+        }
+      }
+
+      // Add text part with persona prefix
+      const text = result.text
+        ? (result.text.startsWith(`[${reactivePersona.name}]`)
+            ? result.text
+            : `[${reactivePersona.name}] ${result.text}`)
+        : `[${reactivePersona.name}] *reacts to the scene*`;
+      parts.push({ type: "text" as const, text });
+
+      if (parts.length > 0) {
+        const reactiveMessage: UIMessage = {
+          id: crypto.randomUUID(),
+          role: "assistant",
+          parts,
+        };
+        this.messages.push(reactiveMessage);
+        await this.persistMessages(this.messages);
+      }
+
+      const durationMs = Date.now() - startTime;
+      const totalToolCalls = result.steps.reduce(
+        (sum, s) => sum + s.toolCalls.length,
+        0
+      );
+
+      console.debug(
+        JSON.stringify({
+          event: "ai:request:end",
+          boardId: this.name,
+          model: modelName,
+          promptVersion: PROMPT_VERSION,
+          trigger: "reactive",
+          persona: reactivePersona.name,
+          steps: result.steps.length,
+          toolCalls: totalToolCalls,
+          durationMs,
+        })
+      );
+    } catch (err) {
+      console.error(
+        JSON.stringify({
+          event: "reactive:error",
+          boardId: this.name,
+          persona: reactivePersona.name,
+          autonomousExchangeCount: this._autonomousExchangeCount,
+          error: String(err),
+        })
+      );
+    } finally {
+      // Toggle persona regardless of success/failure - prevents getting stuck
+      this._activePersonaIndex = reactiveIndex;
+      this._isGenerating = false;
+      await boardStub.setAiPresence(false).catch((err: unknown) => {
+        console.debug(JSON.stringify({ event: "ai:presence:cleanup-error", trigger: "reactive", error: String(err) }));
+      });
     }
   }
 
@@ -316,6 +543,8 @@ export class ChatAgent extends AIChatAgent<Bindings> {
     this._isGenerating = true;
     const startTime = Date.now();
     const modelName = this._getModelName();
+    const directorPersona = PERSONAS[this._activePersonaIndex];
+    const directorIndex = this._activePersonaIndex;
 
     console.debug(
       JSON.stringify({
@@ -324,6 +553,7 @@ export class ChatAgent extends AIChatAgent<Bindings> {
         model: modelName,
         promptVersion: PROMPT_VERSION,
         trigger: "director",
+        persona: directorPersona.name,
         messageCount: this.messages.length,
       })
     );
@@ -347,8 +577,9 @@ export class ChatAgent extends AIChatAgent<Bindings> {
     });
 
     try {
+      // Director nudge uses the active persona's voice
       const directorSystem =
-        SYSTEM_PROMPT +
+        buildPersonaSystemPrompt(directorIndex, SYSTEM_PROMPT) +
         `\n\n[DIRECTOR MODE] You are the scene director. The players have been quiet for a while. ` +
         `Current scene phase: ${phase.toUpperCase()}. ` +
         DIRECTOR_PROMPTS[phase] +
@@ -395,9 +626,14 @@ export class ChatAgent extends AIChatAgent<Bindings> {
         }
       }
 
-      // Add text part if present
-      if (result.text) {
-        parts.push({ type: "text" as const, text: result.text });
+      // Add text part with persona prefix
+      const text = result.text
+        ? (result.text.startsWith(`[${directorPersona.name}]`)
+            ? result.text
+            : `[${directorPersona.name}] ${result.text}`)
+        : "";
+      if (text) {
+        parts.push({ type: "text" as const, text });
       }
 
       // Only persist if we actually generated something
@@ -424,10 +660,19 @@ export class ChatAgent extends AIChatAgent<Bindings> {
           model: modelName,
           promptVersion: PROMPT_VERSION,
           trigger: "director",
+          persona: directorPersona.name,
           phase,
           steps: result.steps.length,
           toolCalls: totalToolCalls,
           durationMs,
+        })
+      );
+
+      // Director nudge also triggers the other persona to react
+      this._autonomousExchangeCount++;
+      this.ctx.waitUntil(
+        this._triggerReactivePersona(directorIndex).catch((err: unknown) => {
+          console.error(JSON.stringify({ event: "reactive:unhandled", boardId: this.name, error: String(err) }));
         })
       );
     } catch (err) {
@@ -435,6 +680,8 @@ export class ChatAgent extends AIChatAgent<Bindings> {
         JSON.stringify({
           event: "director:nudge-error",
           boardId: this.name,
+          persona: directorPersona.name,
+          phase,
           error: String(err),
         })
       );
