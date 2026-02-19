@@ -1,4 +1,5 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, Component } from "react";
+import type { ReactNode, ErrorInfo } from "react";
 import { Board } from "./components/Board";
 import { BoardList } from "./components/BoardList";
 import { AuthForm } from "./components/AuthForm";
@@ -6,6 +7,24 @@ import { ReplayViewer } from "./components/ReplayViewer";
 import { SpectatorView } from "./components/SpectatorView";
 import { SceneGallery } from "./components/SceneGallery";
 import { colors } from "./theme";
+
+class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
+  state: { error: Error | null } = { error: null };
+  static getDerivedStateFromError(error: Error) { return { error }; }
+  componentDidCatch(error: Error, info: ErrorInfo) { console.error("ErrorBoundary caught:", error, info.componentStack); }
+  render() {
+    if (!this.state.error) return this.props.children;
+    return (
+      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", height: "100vh", background: colors.bg, color: colors.text, gap: 16 }}>
+        <h2>Something went wrong</h2>
+        <pre style={{ color: colors.textMuted, fontSize: "0.875rem", maxWidth: 600, overflow: "auto" }}>{this.state.error.message}</pre>
+        <button onClick={() => { this.setState({ error: null }); location.hash = ""; }} style={{ padding: "8px 16px", background: colors.accent, color: "#fff", border: "none", borderRadius: 6, cursor: "pointer" }}>
+          Back to home
+        </button>
+      </div>
+    );
+  }
+}
 
 export interface AuthUser {
   id: string;
@@ -63,7 +82,9 @@ function PrivacyPolicy() {
   );
 }
 
-export function App() {
+export function App() { return <ErrorBoundary><AppContent /></ErrorBoundary>; }
+
+function AppContent() {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [loading, setLoading] = useState(true);
   const [boardId, setBoardId] = useState<string | null>(parseBoardId);

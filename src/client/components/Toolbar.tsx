@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React from "react";
 import type { BoardObject, BoardObjectProps } from "@shared/types";
 import { colors } from "../theme";
 
@@ -120,32 +120,32 @@ export function Toolbar({
 
 // --- Internal components ---
 
-function ToolIconBtn({ icon, title, active, onClick, disabled }: {
+// Memoized to avoid re-renders from parent cursor updates. CSS :hover replaces useState.
+const ToolIconBtn = React.memo(function ToolIconBtn({ icon, title, active, onClick, disabled }: {
   icon: React.ReactNode; title: string; active: boolean; onClick: () => void; disabled?: boolean;
 }) {
-  const [hovered, setHovered] = useState(false);
   return (
     <button
       onClick={onClick}
       title={title}
       disabled={disabled}
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
+      className="cb-tool-btn"
+      data-active={active || undefined}
+      data-disabled={disabled || undefined}
       style={{
         width: 36, height: 36, display: "flex", alignItems: "center", justifyContent: "center",
-        background: active ? colors.accent : hovered && !disabled ? colors.accentSubtle : "transparent",
+        background: active ? colors.accent : "transparent",
         border: active ? `1px solid ${colors.accentLight}` : "1px solid transparent",
         borderRadius: 6,
-        color: disabled ? "#475569" : active ? "#fff" : hovered ? colors.accentLight : colors.textMuted,
+        color: disabled ? "#475569" : active ? "#fff" : colors.textMuted,
         cursor: disabled ? "default" : "pointer", padding: 0,
-        transform: hovered && !disabled ? "scale(1.1)" : "scale(1)",
         transition: "transform 0.15s ease, background 0.15s ease, color 0.15s ease",
       }}
     >
       {icon}
     </button>
   );
-}
+});
 
 function ToolbarSep() {
   return <div style={{ width: 1, height: 24, background: colors.border, margin: "0 4px", flexShrink: 0 }} />;
