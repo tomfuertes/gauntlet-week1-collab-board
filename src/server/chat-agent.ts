@@ -32,7 +32,7 @@ import { SCENE_TURN_BUDGET } from "../shared/types";
 
 /**
  * Sanitize UIMessages to ensure all tool invocation inputs are valid objects.
- * Free-tier LLMs (e.g., GLM-4.7-Flash) sometimes emit tool calls with string,
+ * Some LLMs (especially smaller ones) sometimes emit tool calls with string,
  * null, or array inputs instead of JSON objects. This causes API validation
  * errors ("Input should be a valid dictionary") when the conversation history
  * is sent back to the model on subsequent turns.
@@ -117,22 +117,53 @@ export class ChatAgent extends AIChatAgent<Bindings> {
   private _hatExchangeCount = 0;
   private _yesAndCount = 0;
 
-  /** Choose model: Haiku if ANTHROPIC_API_KEY set, else GLM free tier */
+  // Daily AI budget tracking (resets on DO hibernation - conservative, prevents runaway spend)
+  private _dailySpendNeurons = 0;
+  private _dailySpendDate = ""; // YYYY-MM-DD UTC, resets when date changes
+
+  /** Check if daily AI budget is exhausted. Returns true if over budget. */
+  private _isOverBudget(): boolean {
+    const today = new Date().toISOString().slice(0, 10);
+    if (this._dailySpendDate !== today) {
+      this._dailySpendNeurons = 0;
+      this._dailySpendDate = today;
+    }
+    // $0.011 per 1K neurons -> budget_usd / 0.011 * 1000 = max neurons
+    const maxNeurons = (parseFloat(String(this.env.DAILY_AI_BUDGET_USD) || "5") / 0.011) * 1000;
+    return this._dailySpendNeurons >= maxNeurons;
+  }
+
+  /** Track neuron usage after a request (rough estimate: ~1 neuron per token) */
+  private _trackUsage(inputTokens: number, outputTokens: number) {
+    const today = new Date().toISOString().slice(0, 10);
+    if (this._dailySpendDate !== today) {
+      this._dailySpendNeurons = 0;
+      this._dailySpendDate = today;
+    }
+    this._dailySpendNeurons += inputTokens + outputTokens;
+  }
+
+  private _useAnthropic(): boolean {
+    // Cast: wrangler types generate literal "false" but value is overridable at runtime
+    return String(this.env.ENABLE_ANTHROPIC_API) === "true" && !!this.env.ANTHROPIC_API_KEY;
+  }
+
+  /** Choose model: Haiku if Anthropic enabled, else configurable Workers AI model */
   private _getModel() {
-    return this.env.ANTHROPIC_API_KEY
+    return this._useAnthropic()
       ? createAnthropic({ apiKey: this.env.ANTHROPIC_API_KEY })(
           "claude-haiku-4-5-20251001"
         )
       : (createWorkersAI({ binding: this.env.AI }) as any)(
-          "@cf/zai-org/glm-4.7-flash"
+          this.env.WORKERS_AI_MODEL || "@cf/mistralai/mistral-small-3.1-24b-instruct"
         );
   }
 
   /** Model name for logging (avoids exposing full model object) */
   private _getModelName(): string {
-    return this.env.ANTHROPIC_API_KEY
-      ? "claude-haiku-4-5"
-      : "glm-4.7-flash";
+    return this._useAnthropic()
+      ? "claude-haiku-4.5"
+      : (this.env.WORKERS_AI_MODEL || "mistral-small-3.1").split("/").pop() || "workers-ai";
   }
 
   /** Structured log: AI request started */
@@ -159,6 +190,11 @@ export class ChatAgent extends AIChatAgent<Bindings> {
     toolCalls: number,
     extra?: Record<string, unknown>,
   ) {
+    // Rough neuron tracking: ~2K input + ~500 output per step (conservative estimate).
+    // Actual usage varies by model/context but this prevents runaway spend.
+    if (!this._useAnthropic()) {
+      this._trackUsage(steps * 2000, steps * 500);
+    }
     console.debug(
       JSON.stringify({
         event: "ai:request:end",
@@ -170,6 +206,7 @@ export class ChatAgent extends AIChatAgent<Bindings> {
         steps,
         toolCalls,
         durationMs: Date.now() - startTime,
+        dailyNeurons: this._dailySpendNeurons,
         ...extra,
       })
     );
@@ -185,6 +222,23 @@ export class ChatAgent extends AIChatAgent<Bindings> {
     const humanTurns = this.messages.filter((m) => m.role === "user").length;
     const budgetPhase = computeBudgetPhase(humanTurns, SCENE_TURN_BUDGET);
     this._logRequestStart("chat", activePersona.name, { budgetPhase, humanTurns });
+
+    // Daily spend cap: reject if over budget (Workers AI only - Anthropic has its own billing)
+    if (!this._useAnthropic() && this._isOverBudget()) {
+      this._isGenerating = false;
+      console.warn(JSON.stringify({ event: "budget:daily-cap", boardId: this.name, neurons: this._dailySpendNeurons }));
+      const capMsg: UIMessage = {
+        id: crypto.randomUUID(),
+        role: "assistant",
+        parts: [{ type: "text" as const, text: `[${activePersona.name}] The AI has reached its daily budget. Come back tomorrow for more improv!` }],
+      };
+      this.messages.push(capMsg);
+      await this.persistMessages(this.messages);
+      return new Response(JSON.stringify({ error: "daily-budget-exceeded" }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
 
     // Reject if scene is over - the last human message pushed us past the budget
     if (humanTurns > SCENE_TURN_BUDGET) {

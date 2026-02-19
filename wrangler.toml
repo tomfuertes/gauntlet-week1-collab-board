@@ -30,7 +30,17 @@ new_sqlite_classes = ["ChatAgent"]
 [ai]
 binding = "AI"
 
+[vars]
+# Daily AI spend cap in USD (neurons priced at $0.011/1K).
+# Tracked per ChatAgent DO instance, resets at midnight UTC.
+DAILY_AI_BUDGET_USD = "5.00"
+# Workers AI model. Override to test different models without redeploying.
+WORKERS_AI_MODEL = "@cf/mistralai/mistral-small-3.1-24b-instruct"
+# Set to "true" to route AI through Anthropic API (requires ANTHROPIC_API_KEY secret).
+# Default "false" = all AI via Workers AI (Mistral Small 3.1).
+ENABLE_ANTHROPIC_API = "false"
+
 # AUTH_SECRET set via: wrangler secret put AUTH_SECRET
 # ANTHROPIC_API_KEY set via: wrangler secret put ANTHROPIC_API_KEY
-#   Enables Claude Haiku 4.5 for AI chat (falls back to Llama 3.3 if unset)
+#   Only used when ENABLE_ANTHROPIC_API = "true"
 #   For local dev: add to .dev.vars file

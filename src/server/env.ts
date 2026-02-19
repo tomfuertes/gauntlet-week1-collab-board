@@ -1,12 +1,15 @@
 import type { Board } from "./board";
 import type { ChatAgent } from "./chat-agent";
 
-/** Server environment - single source of truth for all Hono routes */
-export type Bindings = {
-  DB: D1Database;
+/**
+ * Server environment - extends auto-generated Env (from wrangler types).
+ * Wrangler vars (DAILY_AI_BUDGET_USD, WORKERS_AI_MODEL, ENABLE_ANTHROPIC_API)
+ * come from worker-configuration.d.ts with literal types. Secrets (AUTH_SECRET,
+ * ANTHROPIC_API_KEY) aren't in wrangler.toml so we declare them here.
+ */
+export type Bindings = Env & {
   BOARD: DurableObjectNamespace<Board>;
   CHAT_AGENT: DurableObjectNamespace<ChatAgent>;
-  AI: Ai;
   AUTH_SECRET: string;
   ANTHROPIC_API_KEY: string;
 };
