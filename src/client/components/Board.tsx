@@ -4,7 +4,8 @@ import type { KonvaEventObject } from "konva/lib/Node";
 import Konva from "konva";
 import type { AuthUser } from "../App";
 import { AI_USER_ID } from "@shared/types";
-import type { BoardObject, BoardObjectProps, GameMode } from "@shared/types";
+import type { BoardObject, BoardObjectProps, GameMode, AIModel } from "@shared/types";
+import { AI_MODELS } from "@shared/types";
 import { TRANSFORMER_CONFIG } from "../constants";
 import { useWebSocket } from "../hooks/useWebSocket";
 import { BoardObjectRenderer } from "./BoardObjectRenderer";
@@ -113,6 +114,8 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
   const [chatInitialPrompt, setChatInitialPrompt] = useState<string | undefined>();
   const [boardGenStarted, setBoardGenStarted] = useState(false);
   const [gameMode, setGameMode] = useState<GameMode>("freeform");
+  // GLM 4.7 Flash is the UI default; sent on every message so it overrides WORKERS_AI_MODEL env var
+  const [aiModel, setAIModel] = useState<AIModel>("glm-4.7-flash");
 
   // Hydrate game mode from D1 on mount (so returning users get the right mode)
   useEffect(() => {
@@ -830,6 +833,7 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
             boardId={boardId}
             username={user.username}
             gameMode={gameMode}
+            aiModel={aiModel}
             onClose={() => {}}
             initialPrompt={chatInitialPrompt}
             selectedIds={selectedIds}
@@ -909,6 +913,24 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
             </div>
             <span style={{ color: "#888" }}>{Math.round(scale * 100)}%</span>
             <span>{user.displayName}</span>
+            <select
+              value={aiModel}
+              onChange={(e) => setAIModel(e.target.value as AIModel)}
+              style={{
+                background: "rgba(22, 33, 62, 0.8)",
+                border: "1px solid #334155",
+                borderRadius: 6,
+                color: "#e2e8f0",
+                fontSize: "0.75rem",
+                padding: "2px 8px",
+                cursor: "pointer",
+                outline: "none",
+              }}
+            >
+              {AI_MODELS.map((m) => (
+                <option key={m.id} value={m.id}>{m.label}</option>
+              ))}
+            </select>
             <Button onClick={() => {
               navigator.clipboard.writeText(`${location.origin}/#watch/${boardId}`);
               setCopied(true);
@@ -1297,6 +1319,7 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
           boardId={boardId}
           username={user.username}
           gameMode={gameMode}
+          aiModel={aiModel}
           onClose={() => {
             setChatOpen(false);
             setChatInitialPrompt(undefined);

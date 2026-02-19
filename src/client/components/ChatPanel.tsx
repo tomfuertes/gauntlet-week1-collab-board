@@ -7,7 +7,7 @@ import { colors, getUserColor } from "../theme";
 import { Button } from "./Button";
 import { Modal } from "./Modal";
 import { SCENE_TURN_BUDGET, DEFAULT_PERSONAS } from "../../shared/types";
-import type { GameMode, Persona } from "../../shared/types";
+import type { GameMode, Persona, AIModel } from "../../shared/types";
 import "../styles/animations.css";
 import { BOARD_TEMPLATES } from "../../shared/board-templates";
 import type { ToolName } from "../../server/ai-tools-sdk";
@@ -16,6 +16,8 @@ interface ChatPanelProps {
   boardId: string;
   username?: string;
   gameMode?: GameMode;
+  /** Workers AI model to use (desktop header selector; defaults to env WORKERS_AI_MODEL) */
+  aiModel?: AIModel;
   onClose: () => void;
   initialPrompt?: string;
   selectedIds?: Set<string>;
@@ -219,7 +221,7 @@ const SENDER_RE = /^\[([^\]]+)\]\s*/;
 
 const PERSONA_COLOR_PRESETS = ["#fb923c", "#4ade80", "#f87171", "#60a5fa", "#c084fc", "#fbbf24"];
 
-export function ChatPanel({ boardId, username, gameMode, onClose, initialPrompt, selectedIds, onAIComplete, mobileMode = false }: ChatPanelProps) {
+export function ChatPanel({ boardId, username, gameMode, aiModel, onClose, initialPrompt, selectedIds, onAIComplete, mobileMode = false }: ChatPanelProps) {
   const selectedIdsArray = useMemo(
     () => (selectedIds?.size ? [...selectedIds] : undefined),
     [selectedIds],
@@ -333,7 +335,7 @@ export function ChatPanel({ boardId, username, gameMode, onClose, initialPrompt,
     clearHistory,
   } = useAgentChat({
     agent,
-    body: { selectedIds: selectedIdsArray, username, gameMode },
+    body: { selectedIds: selectedIdsArray, username, gameMode, model: aiModel },
   });
 
   // Prefix [username] for multiplayer attribution in persisted history

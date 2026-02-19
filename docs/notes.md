@@ -9,8 +9,8 @@
 - **No UAT on game modes or token budgets** - verify: hat prompt card + "Next prompt" advances, yes-and beat counter, budget phases + "New Scene" button, gallery badges, two-browser sync
 - **No UAT on custom AI characters** - wrangler dev D1 was returning 500s on signup; feature code is clean (tsc passes), needs manual verification
 - **CF issue filed** - [cloudflare/ai#404](https://github.com/cloudflare/ai/issues/404): `workers-ai-provider` drops `tool_choice` from `buildRunInputs`. Open, no response yet.
-- **GLM-4.7-flash tool calling unverified in prod** - switched from Mistral; shim + native tool calling confirmed locally. Push deployed but needs manual chat test.
-- **Model selector worktree in-flight** - `feat/model-selector` at `../gauntlet-week1-collab-board-model-selector`. Adds header dropdown for 4 Workers AI models. Merge when complete.
+- **GLM-4.7-flash tool calling unverified in prod** - switched from Mistral; shim + native tool calling confirmed locally. Needs manual chat test.
+- **Batch tool worktree in-flight** - `feat/batch-tool` at `../gauntlet-week1-collab-board-batch-tool`. batchExecute meta-tool (tool #12).
 
 ## Roadmap
 
@@ -89,6 +89,7 @@
 | Feb 19 | Spectator-only reaction counting for leaderboard | Players could inflate their own score; spectator reactions are organic signal |
 | Feb 19 | userId (not displayName) for current-user highlighting | displayName is mutable + non-unique; userId is stable identity |
 | Feb 19 | Mobile early-return pattern in Board | Two layouts share all WS hooks; conditional return before final JSX keeps desktop path unchanged |
+| Feb 19 | GLM 4.7 Flash as UI default, not wrangler env | Client always sends model per-message; UI default overrides WORKERS_AI_MODEL env var. Env var is fallback for serverless/director paths that don't receive a body. |
 
 ## AI Model Pricing (Workers AI, $0.011/1K neurons)
 

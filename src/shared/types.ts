@@ -132,6 +132,17 @@ export const GAME_MODES = [
   { mode: "yesand" as const, label: "Yes-And Chain", icon: "\uD83D\uDD17", description: "Build a 10-beat chain" },
 ] as const;
 
+/** Short ID used as the client-side state value for the model selector */
+export type AIModel = "glm-4.7-flash" | "gpt-oss-20b" | "llama-4-scout" | "mistral-small-3.1";
+
+/** All selectable Workers AI models. modelId is the full CF path used in createWorkersAI. */
+export const AI_MODELS = [
+  { id: "glm-4.7-flash" as const, label: "GLM 4.7 Flash", modelId: "@cf/zai-org/glm-4.7-flash" },
+  { id: "gpt-oss-20b" as const, label: "GPT-OSS 20B", modelId: "@cf/openai/gpt-oss-20b" },
+  { id: "llama-4-scout" as const, label: "Llama 4 Scout", modelId: "@cf/meta/llama-4-scout-17b-16e-instruct" },
+  { id: "mistral-small-3.1" as const, label: "Mistral Small 3.1", modelId: "@cf/mistralai/mistral-small-3.1-24b-instruct" },
+] as const;
+
 export interface DailyChallenge {
   id: number;
   date: string;

@@ -27,7 +27,7 @@ import { HAT_PROMPTS, getRandomHatPrompt } from "./hat-prompts";
 import type { Bindings } from "./env";
 import { recordBoardActivity } from "./env";
 import type { BoardObject, BoardObjectProps, GameMode, Persona } from "../shared/types";
-import { SCENE_TURN_BUDGET, DEFAULT_PERSONAS } from "../shared/types";
+import { SCENE_TURN_BUDGET, DEFAULT_PERSONAS, AI_MODELS } from "../shared/types";
 
 /**
  * Sanitize UIMessages to ensure all tool invocation inputs are valid objects.
@@ -116,6 +116,9 @@ export class ChatAgent extends AIChatAgent<Bindings> {
   private _hatExchangeCount = 0;
   private _yesAndCount = 0;
 
+  // Per-message requested model (resets on DO hibernation - client re-sends model on each message)
+  private _requestedModel = "";
+
   // Daily AI budget tracking (resets on DO hibernation - conservative, prevents runaway spend)
   private _dailySpendNeurons = 0;
   private _dailySpendDate = ""; // YYYY-MM-DD UTC, resets when date changes
@@ -161,13 +164,17 @@ export class ChatAgent extends AIChatAgent<Bindings> {
     return String(this.env.ENABLE_ANTHROPIC_API) === "true" && !!this.env.ANTHROPIC_API_KEY;
   }
 
-  /** Choose model: Haiku if Anthropic enabled, else configurable Workers AI model */
+  /** Choose model: Haiku if Anthropic enabled, else per-message requested model or env default */
   private _getModel() {
     if (this._useAnthropic()) {
       return createAnthropic({ apiKey: this.env.ANTHROPIC_API_KEY })("claude-haiku-4-5-20251001");
     }
+    // Prefer the per-message requested model; fall back to env default
+    const modelId = this._requestedModel
+      ? (AI_MODELS.find((m) => m.id === this._requestedModel)?.modelId ?? this.env.WORKERS_AI_MODEL ?? "@cf/mistralai/mistral-small-3.1-24b-instruct")
+      : (this.env.WORKERS_AI_MODEL || "@cf/mistralai/mistral-small-3.1-24b-instruct");
     // workers-ai-provider v3.1.1 drops tool_choice from buildRunInputs (only forwards `tools`).
-    // Mistral Small 3.1 requires explicit tool_choice:"auto" to call tools; shim it in.
+    // All Workers AI models benefit from explicit tool_choice:"auto"; shim applies universally.
     const ai = this.env.AI as any;
     const shimmedBinding = {
       run: (model: string, inputs: Record<string, unknown>, options?: unknown) => {
@@ -183,16 +190,16 @@ export class ChatAgent extends AIChatAgent<Bindings> {
         return ai.run(model, hasTools ? { ...inputs, tool_choice: "auto" } : inputs, options);
       },
     };
-    return (createWorkersAI({ binding: shimmedBinding as any }) as any)(
-      this.env.WORKERS_AI_MODEL || "@cf/zai-org/glm-4.7-flash"
-    );
+    return (createWorkersAI({ binding: shimmedBinding as any }) as any)(modelId);
   }
 
   /** Model name for logging (avoids exposing full model object) */
   private _getModelName(): string {
-    return this._useAnthropic()
-      ? "claude-haiku-4.5"
-      : (this.env.WORKERS_AI_MODEL || "glm-4.7-flash").split("/").pop() || "workers-ai";
+    if (this._useAnthropic()) return "claude-haiku-4.5";
+    if (this._requestedModel) {
+      return AI_MODELS.find((m) => m.id === this._requestedModel)?.modelId.split("/").pop() || this._requestedModel;
+    }
+    return (this.env.WORKERS_AI_MODEL || "glm-4.7-flash").split("/").pop() || "workers-ai";
   }
 
   /** Structured log: AI request started */
@@ -308,6 +315,11 @@ export class ChatAgent extends AIChatAgent<Bindings> {
     // Update game mode from client (sent on every message so it survives DO hibernation)
     if (body?.gameMode && ["hat", "yesand", "freeform"].includes(body.gameMode)) {
       this._gameMode = body.gameMode as GameMode;
+    }
+
+    // Update requested model from client (sent on every message so it survives DO hibernation)
+    if (body?.model && AI_MODELS.some((m) => m.id === body.model)) {
+      this._requestedModel = body.model as string;
     }
 
     // Handle hat mode prompt lifecycle
