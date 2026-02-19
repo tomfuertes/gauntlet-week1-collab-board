@@ -121,24 +121,53 @@ export class ChatAgent extends AIChatAgent<Bindings> {
       : "glm-4.7-flash";
   }
 
+  /** Structured log: AI request started */
+  private _logRequestStart(trigger: string, persona: string, extra?: Record<string, unknown>) {
+    console.debug(
+      JSON.stringify({
+        event: "ai:request:start",
+        boardId: this.name,
+        model: this._getModelName(),
+        promptVersion: PROMPT_VERSION,
+        trigger,
+        persona,
+        ...extra,
+      })
+    );
+  }
+
+  /** Structured log: AI request completed with timing/step metrics */
+  private _logRequestEnd(
+    trigger: string,
+    persona: string,
+    startTime: number,
+    steps: number,
+    toolCalls: number,
+    extra?: Record<string, unknown>,
+  ) {
+    console.debug(
+      JSON.stringify({
+        event: "ai:request:end",
+        boardId: this.name,
+        model: this._getModelName(),
+        promptVersion: PROMPT_VERSION,
+        trigger,
+        persona,
+        steps,
+        toolCalls,
+        durationMs: Date.now() - startTime,
+        ...extra,
+      })
+    );
+  }
+
   async onChatMessage(onFinish: any, options?: { abortSignal?: AbortSignal }) {
     // this.name = boardId (set by client connecting to /agents/ChatAgent/<boardId>)
     this._isGenerating = true;
     this._autonomousExchangeCount = 0; // human spoke - reset cooldown
     const startTime = Date.now();
-    const modelName = this._getModelName();
     const activePersona = PERSONAS[this._activePersonaIndex];
-
-    console.debug(
-      JSON.stringify({
-        event: "ai:request:start",
-        boardId: this.name,
-        model: modelName,
-        promptVersion: PROMPT_VERSION,
-        trigger: "chat",
-        persona: activePersona.name,
-      })
-    );
+    this._logRequestStart("chat", activePersona.name);
 
     // Record chat activity for async notifications (non-blocking)
     this.ctx.waitUntil(
@@ -208,21 +237,7 @@ export class ChatAgent extends AIChatAgent<Bindings> {
         (sum: number, s: { toolCalls?: unknown[] }) => sum + (s.toolCalls?.length ?? 0),
         0,
       ) ?? 0;
-
-      const durationMs = Date.now() - startTime;
-      console.debug(
-        JSON.stringify({
-          event: "ai:request:end",
-          boardId: this.name,
-          model: modelName,
-          promptVersion: PROMPT_VERSION,
-          trigger: "chat",
-          persona: activePersona.name,
-          steps,
-          toolCalls,
-          durationMs,
-        })
-      );
+      this._logRequestEnd("chat", activePersona.name, startTime, steps, toolCalls);
 
       // Ensure active persona's message has the [NAME] prefix (LLMs sometimes forget)
       this._ensurePersonaPrefix(activeIndex);
@@ -300,6 +315,64 @@ export class ChatAgent extends AIChatAgent<Bindings> {
     );
   }
 
+  /** Build a UIMessage from a generateText result with tool-call parts and persona-prefixed text.
+   *  Returns null if the result produced no parts (no tools called, no text). */
+  private _buildGenerateTextMessage(
+    result: { text: string; steps: { toolCalls: any[]; toolResults: { toolCallId: string; output: unknown }[] }[] },
+    personaName: string,
+    fallbackText?: string,
+  ): UIMessage | null {
+    const parts: UIMessage["parts"] = [];
+
+    for (const step of result.steps) {
+      for (const tc of step.toolCalls) {
+        const tr = step.toolResults.find(
+          (r: { toolCallId: string }) => r.toolCallId === tc.toolCallId
+        );
+        const safeInput = isPlainObject(tc.input) ? tc.input : {};
+        if (tr) {
+          parts.push({
+            type: "dynamic-tool" as const,
+            toolName: tc.toolName,
+            toolCallId: tc.toolCallId,
+            state: "output-available" as const,
+            input: safeInput,
+            output: tr.output,
+          });
+        } else {
+          parts.push({
+            type: "dynamic-tool" as const,
+            toolName: tc.toolName,
+            toolCallId: tc.toolCallId,
+            state: "output-error" as const,
+            input: safeInput,
+            errorText: "Tool execution did not return a result",
+          });
+        }
+      }
+    }
+
+    let text: string;
+    if (!result.text) {
+      text = fallbackText ?? "";
+    } else if (result.text.startsWith(`[${personaName}]`)) {
+      text = result.text;
+    } else {
+      text = `[${personaName}] ${result.text}`;
+    }
+    if (text) {
+      parts.push({ type: "text" as const, text });
+    }
+
+    if (parts.length === 0) return null;
+
+    return {
+      id: crypto.randomUUID(),
+      role: "assistant",
+      parts,
+    };
+  }
+
   /** After the active persona finishes, trigger the other persona to react.
    *  Claims _isGenerating mutex BEFORE the delay to prevent TOCTOU races. */
   private async _triggerReactivePersona(activeIndex: number) {
@@ -338,19 +411,8 @@ export class ChatAgent extends AIChatAgent<Bindings> {
     const reactiveIndex = activeIndex === 0 ? 1 : 0;
     const reactivePersona = PERSONAS[reactiveIndex];
     const activePersona = PERSONAS[activeIndex];
-    const modelName = this._getModelName();
     const startTime = Date.now();
-
-    console.debug(
-      JSON.stringify({
-        event: "ai:request:start",
-        boardId: this.name,
-        model: modelName,
-        promptVersion: PROMPT_VERSION,
-        trigger: "reactive",
-        persona: reactivePersona.name,
-      })
-    );
+    this._logRequestStart("reactive", reactivePersona.name);
 
     const doId = this.env.BOARD.idFromName(this.name);
     const boardStub = this.env.BOARD.get(doId);
@@ -380,74 +442,20 @@ export class ChatAgent extends AIChatAgent<Bindings> {
         stopWhen: stepCountIs(3),
       });
 
-      // Build UIMessage from generateText result (same pattern as director nudge)
-      const parts: UIMessage["parts"] = [];
-
-      for (const step of result.steps) {
-        for (const tc of step.toolCalls) {
-          const tr = step.toolResults.find(
-            (r: { toolCallId: string }) => r.toolCallId === tc.toolCallId
-          );
-          const safeInput = isPlainObject(tc.input) ? tc.input : {};
-          if (tr) {
-            parts.push({
-              type: "dynamic-tool" as const,
-              toolName: tc.toolName,
-              toolCallId: tc.toolCallId,
-              state: "output-available" as const,
-              input: safeInput,
-              output: tr.output,
-            });
-          } else {
-            parts.push({
-              type: "dynamic-tool" as const,
-              toolName: tc.toolName,
-              toolCallId: tc.toolCallId,
-              state: "output-error" as const,
-              input: safeInput,
-              errorText: "Tool execution did not return a result",
-            });
-          }
-        }
-      }
-
-      // Add text part with persona prefix
-      const text = result.text
-        ? (result.text.startsWith(`[${reactivePersona.name}]`)
-            ? result.text
-            : `[${reactivePersona.name}] ${result.text}`)
-        : `[${reactivePersona.name}] *reacts to the scene*`;
-      parts.push({ type: "text" as const, text });
-
-      if (parts.length > 0) {
-        const reactiveMessage: UIMessage = {
-          id: crypto.randomUUID(),
-          role: "assistant",
-          parts,
-        };
+      // Build and persist UIMessage from generateText result
+      const reactiveMessage = this._buildGenerateTextMessage(
+        result, reactivePersona.name, `[${reactivePersona.name}] *reacts to the scene*`
+      );
+      if (reactiveMessage) {
         this.messages.push(reactiveMessage);
         await this.persistMessages(this.messages);
       }
 
-      const durationMs = Date.now() - startTime;
       const totalToolCalls = result.steps.reduce(
         (sum, s) => sum + s.toolCalls.length,
         0
       );
-
-      console.debug(
-        JSON.stringify({
-          event: "ai:request:end",
-          boardId: this.name,
-          model: modelName,
-          promptVersion: PROMPT_VERSION,
-          trigger: "reactive",
-          persona: reactivePersona.name,
-          steps: result.steps.length,
-          toolCalls: totalToolCalls,
-          durationMs,
-        })
-      );
+      this._logRequestEnd("reactive", reactivePersona.name, startTime, result.steps.length, totalToolCalls);
     } catch (err) {
       console.error(
         JSON.stringify({
@@ -540,7 +548,6 @@ export class ChatAgent extends AIChatAgent<Bindings> {
 
     this._isGenerating = true;
     const startTime = Date.now();
-    const modelName = this._getModelName();
     const directorPersona = PERSONAS[this._activePersonaIndex];
     const directorIndex = this._activePersonaIndex;
 
@@ -549,18 +556,7 @@ export class ChatAgent extends AIChatAgent<Bindings> {
       (m) => m.role === "user",
     ).length;
     const phase = computeScenePhase(userMessageCount);
-
-    console.debug(
-      JSON.stringify({
-        event: "ai:request:start",
-        boardId: this.name,
-        model: modelName,
-        promptVersion: PROMPT_VERSION,
-        trigger: "director",
-        persona: directorPersona.name,
-        messageCount: this.messages.length,
-      })
-    );
+    this._logRequestStart("director", directorPersona.name, { messageCount: this.messages.length });
 
     const doId = this.env.BOARD.idFromName(this.name);
     const boardStub = this.env.BOARD.get(doId);
@@ -590,55 +586,9 @@ export class ChatAgent extends AIChatAgent<Bindings> {
         stopWhen: stepCountIs(3),
       });
 
-      // Build UIMessage from generateText result
-      const parts: UIMessage["parts"] = [];
-
-      // Add tool call parts from all steps
-      for (const step of result.steps) {
-        for (const tc of step.toolCalls) {
-          const tr = step.toolResults.find(
-            (r: { toolCallId: string }) => r.toolCallId === tc.toolCallId
-          );
-          const safeInput = isPlainObject(tc.input) ? tc.input : {};
-          if (tr) {
-            parts.push({
-              type: "dynamic-tool" as const,
-              toolName: tc.toolName,
-              toolCallId: tc.toolCallId,
-              state: "output-available" as const,
-              input: safeInput,
-              output: tr.output,
-            });
-          } else {
-            parts.push({
-              type: "dynamic-tool" as const,
-              toolName: tc.toolName,
-              toolCallId: tc.toolCallId,
-              state: "output-error" as const,
-              input: safeInput,
-              errorText: "Tool execution did not return a result",
-            });
-          }
-        }
-      }
-
-      // Add text part with persona prefix
-      const text = result.text
-        ? (result.text.startsWith(`[${directorPersona.name}]`)
-            ? result.text
-            : `[${directorPersona.name}] ${result.text}`)
-        : "";
-      if (text) {
-        parts.push({ type: "text" as const, text });
-      }
-
-      // Only persist if we actually generated something
-      if (parts.length > 0) {
-        const directorMessage: UIMessage = {
-          id: crypto.randomUUID(),
-          role: "assistant",
-          parts,
-        };
+      // Build and persist UIMessage from generateText result
+      const directorMessage = this._buildGenerateTextMessage(result, directorPersona.name);
+      if (directorMessage) {
         this.messages.push(directorMessage);
         await this.persistMessages(this.messages);
       }
@@ -647,22 +597,7 @@ export class ChatAgent extends AIChatAgent<Bindings> {
         (sum, s) => sum + s.toolCalls.length,
         0,
       );
-
-      const durationMs = Date.now() - startTime;
-      console.debug(
-        JSON.stringify({
-          event: "ai:request:end",
-          boardId: this.name,
-          model: modelName,
-          promptVersion: PROMPT_VERSION,
-          trigger: "director",
-          persona: directorPersona.name,
-          phase,
-          steps: result.steps.length,
-          toolCalls: totalToolCalls,
-          durationMs,
-        })
-      );
+      this._logRequestEnd("director", directorPersona.name, startTime, result.steps.length, totalToolCalls, { phase });
 
       // Director nudge also triggers the other persona to react
       this._autonomousExchangeCount++;
