@@ -56,9 +56,9 @@ scripts/worktree-prompt-suffix.md      # standard instructions - orchestrator re
 
 When working in a worktree, use absolute paths for file tools. Run git commands directly (not `git -C`) - the working directory is already the repo/worktree.
 
-When printing worktree startup commands for the user, pass the task prompt directly to claude:
+When printing worktree startup commands for the user: write the prompt to `$TMPDIR/prompt-<branch>.txt` using the Write tool, then print a short launch command. This avoids shell quoting issues and terminal paste buffer limits with long prompts.
 ```bash
-cd /path/to/worktree && claude "your task prompt here"
+cd /path/to/worktree && claude "$(cat /private/tmp/claude-501/prompt-<branch>.txt)"
 ```
 This launches Claude with the prompt pre-loaded so the user just hits enter. Always include a specific, actionable prompt describing the feature to build. **Do NOT use "Enter plan mode first"** - it adds an approval gate that blocks the agent and the context exploration can compress away during implementation. Instead, write detailed prompts that specify the approach, and instruct the agent to read CLAUDE.md and relevant source files before implementing.
 
