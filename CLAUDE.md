@@ -27,7 +27,8 @@ CollabBoard - multiplayer improv canvas with AI agent integration. Real-time col
 
 ```bash
 # Dev
-npm run dev              # wrangler dev (backend + frontend, auto-loads worktree.ports)
+npm run dev              # build once + wrangler dev (no HMR/watchers, auto-loads worktree.ports)
+npm run dev:hmr          # Vite HMR + wrangler dev (escape hatch if live editing needed)
 npm run health           # wait for dev server (polls 500ms, auto-detects port from worktree.ports) - use instead of sleep
 
 # Build & Deploy (CF git integration auto-deploys on push to main)
@@ -117,7 +118,7 @@ npx playwright test --reporter=dot     # minimal output (default 'list' floods c
 Worktree agent lifecycle: **implement -> PR review -> fix review issues -> UAT -> commit -> /last-call**. PR review gates UAT. After UAT passes, commit all changes to the feature branch (no PR - the orchestrator merges from main). After committing, run `/last-call` for an end-of-session summary. The branch must be clean-committed when the agent finishes so `git merge feat/<branch>` works from main.
 
 Worktree prompts must explicitly mention:
-- `npm run dev` for interactive development (auto-loads worktree.ports if present, never hardcode ports). **For agent-driven UAT without live editing**, prefer `npm run build && npx wrangler dev` to avoid EMFILE from Vite watchers - no persistent file watchers needed. Kill and rebuild between test rounds.
+- `npm run dev` for all development (build once + serve, no HMR/watchers). Kill and rebuild between test rounds.
 - `scripts/localcurl.sh` instead of `curl` (agents default to raw curl which isn't in the permission allowlist)
 - **Namespace `playwright-cli` sessions in worktrees** - use `-s=<branch-name>` (e.g., `playwright-cli -s=feat-frames open ...`) to avoid conflicts with other worktrees running simultaneously. Without `-s`, all worktrees share the default session.
 - "Read CLAUDE.md and relevant source files before implementing" (not "Enter plan mode first")

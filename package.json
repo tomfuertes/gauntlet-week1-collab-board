@@ -4,9 +4,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "scripts/dev.sh",
-    "dev:client": "vite --port ${VITE_PORT:-5173}",
-    "dev:server": "wrangler dev --port ${WRANGLER_PORT:-8787}",
+    "dev": "npm run build && scripts/serve.sh",
+    "dev:hmr": "scripts/dev.sh",
     "build": "vite build",
     "deploy": "npm run build && wrangler deploy",
     "cf-typegen": "wrangler types",
