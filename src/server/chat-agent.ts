@@ -91,7 +91,9 @@ export class ChatAgent extends AIChatAgent<Bindings> {
   /* eslint-disable @typescript-eslint/no-explicit-any */
 
   // Lightweight mutex: prevents concurrent AI generation (chat + director).
-  // Resets to false on DO hibernation, which is correct (no active generation).
+  // Do NOT replace with _activeStreamId - it's unreliable after DO hibernation.
+  // (ResumableStream.restore() picks up stale stream metadata with a 5-min threshold,
+  // causing false positives that permanently block director nudges on prod.)
   private _isGenerating = false;
 
   /** Choose model: Haiku if ANTHROPIC_API_KEY set, else GLM free tier */
