@@ -283,6 +283,7 @@ export function ChatPanel({ boardId, username, onClose, initialPrompt, selectedI
       zIndex: 30, background: "rgba(15, 23, 42, 0.97)", border: "1px solid #334155",
       borderRadius: 12, boxShadow: "0 8px 32px rgba(0,0,0,0.4)",
       display: "flex", flexDirection: "column",
+      animation: "cb-chat-slide-in 0.3s ease-out",
     }}>
       {/* Header */}
       <div style={{

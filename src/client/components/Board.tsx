@@ -16,10 +16,10 @@ import { colors, toolCursors, getUserColor } from "../theme";
 import { Toolbar, type ToolMode } from "./Toolbar";
 import { Cursors } from "./Cursors";
 import { ChatPanel } from "./ChatPanel";
+import { OnboardModal } from "./OnboardModal";
 import { ConfettiBurst } from "./ConfettiBurst";
 import { BoardGrid } from "./BoardGrid";
 import { PerfOverlay } from "./PerfOverlay";
-import { BOARD_TEMPLATES } from "../../shared/board-templates";
 import "../styles/animations.css";
 
 const MIN_ZOOM = 0.1;
@@ -190,134 +190,6 @@ const BoardObjectRenderer = React.memo(function BoardObjectRenderer({
   return null;
 });
 
-function EmptyBoardOverlay({ onGenerate }: { onGenerate: (prompt: string) => void }) {
-  const [value, setValue] = useState("");
-  const inputRef = useRef<HTMLInputElement>(null);
-  const hasValue = value.trim().length > 0;
-
-  useEffect(() => {
-    const t = setTimeout(() => inputRef.current?.focus(), 100);
-    return () => clearTimeout(t);
-  }, []);
-
-  function submit(): void {
-    const trimmed = value.trim();
-    if (trimmed) onGenerate(trimmed);
-  }
-
-  return (
-    <div style={{
-      position: "absolute", top: "50%", left: "50%",
-      transform: "translate(-50%, -50%)",
-      zIndex: 15, width: 480, maxWidth: "calc(100vw - 120px)",
-      animation: "cb-overlay-in 0.4s ease-out both",
-    }}>
-      <div style={{
-        background: "rgba(15, 23, 42, 0.92)",
-        border: `1px solid ${colors.border}`,
-        borderRadius: 16,
-        padding: "2rem 2rem 1.5rem",
-        backdropFilter: "blur(16px)",
-        boxShadow: `0 0 60px ${colors.accentGlow}, 0 8px 32px rgba(0,0,0,0.5)`,
-      }}>
-        <div style={{
-          textAlign: "center", marginBottom: 16,
-          fontSize: "2rem", lineHeight: 1,
-          animation: "cb-sparkle 3s ease-in-out infinite",
-        }}>
-          &#10024;
-        </div>
-
-        <div style={{
-          textAlign: "center", marginBottom: 20,
-          color: colors.text, fontSize: "1.125rem", fontWeight: 600,
-        }}>
-          Set the scene
-        </div>
-
-        <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
-          <input
-            ref={inputRef}
-            value={value}
-            onChange={(e) => setValue(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") submit();
-              if (e.key !== "Escape") e.stopPropagation();
-            }}
-            onKeyUp={(e) => { if (e.key !== "Escape") e.stopPropagation(); }}
-            placeholder="Describe a scene... e.g. 'A detective who only solves crimes by smell'"
-            style={{
-              flex: 1, background: "rgba(30, 41, 59, 0.8)",
-              border: `1px solid ${colors.border}`,
-              borderRadius: 10, padding: "0.75rem 1rem",
-              color: colors.text, fontSize: "0.875rem",
-              outline: "none", fontFamily: "inherit",
-              transition: "border-color 0.2s",
-            }}
-            onFocus={(e) => { e.currentTarget.style.borderColor = colors.accent; }}
-            onBlur={(e) => { e.currentTarget.style.borderColor = colors.border; }}
-          />
-          <button
-            onClick={submit}
-            disabled={!hasValue}
-            style={{
-              background: hasValue ? colors.accent : colors.accentDark,
-              border: "none", borderRadius: 10, color: "#fff",
-              padding: "0 1.25rem", cursor: hasValue ? "pointer" : "default",
-              fontSize: "0.875rem", fontWeight: 600, flexShrink: 0,
-              opacity: hasValue ? 1 : 0.5,
-              transition: "opacity 0.2s, background 0.2s",
-            }}
-          >
-            Generate
-          </button>
-        </div>
-
-        <div style={{
-          display: "flex", flexWrap: "wrap", gap: 8,
-          justifyContent: "center",
-        }}>
-          {BOARD_TEMPLATES.slice(0, 4).map((chip, i) => (
-            <button
-              key={chip.label}
-              onClick={() => { if (chip.prompt.trim()) onGenerate(chip.prompt); }}
-              style={{
-                background: "rgba(30, 41, 59, 0.6)",
-                border: `1px solid ${colors.border}`,
-                borderRadius: 20, padding: "8px 16px",
-                color: colors.textMuted, fontSize: "0.8125rem",
-                cursor: "pointer", display: "flex", alignItems: "center", gap: 6,
-                transition: "border-color 0.2s, color 0.2s, background 0.2s",
-                animation: `cb-chip-in 0.3s ease-out ${0.1 + i * 0.05}s both`,
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.borderColor = colors.accent;
-                e.currentTarget.style.color = colors.text;
-                e.currentTarget.style.background = colors.accentSubtle;
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.borderColor = colors.border;
-                e.currentTarget.style.color = colors.textMuted;
-                e.currentTarget.style.background = "rgba(30, 41, 59, 0.6)";
-              }}
-            >
-              <span style={{ fontSize: "0.9rem" }}>{chip.icon}</span>
-              {chip.label}
-            </button>
-          ))}
-        </div>
-
-        <div style={{
-          textAlign: "center", marginTop: 16,
-          color: colors.textSubtle, fontSize: "0.6875rem",
-        }}>
-          or double-click the canvas to add props yourself
-        </div>
-      </div>
-    </div>
-  );
-}
-
 export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boardId: string; onLogout: () => void; onBack: () => void }) {
   const stageRef = useRef<Konva.Stage>(null);
   const [stagePos, setStagePos] = useState({ x: 0, y: 0 });
@@ -325,7 +197,7 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
   const [size, setSize] = useState({ width: window.innerWidth, height: window.innerHeight });
   const lastDragSendRef = useRef(0);
   const [toolMode, setToolMode] = useState<ToolMode>("select");
-  const [chatOpen, setChatOpen] = useState(true);
+  const [chatOpen, setChatOpen] = useState(false);
   const [chatInitialPrompt, setChatInitialPrompt] = useState<string | undefined>();
   const [boardGenStarted, setBoardGenStarted] = useState(false);
   const [showShortcuts, setShowShortcuts] = useState(false);
@@ -1044,13 +916,16 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
         </div>
       )}
 
-      {/* Empty board overlay - AI board generation */}
-      {initialized && objects.size === 0 && !boardGenStarted && (
-        <EmptyBoardOverlay onGenerate={(prompt) => {
-          setBoardGenStarted(true);
-          setChatInitialPrompt(prompt);
-          setChatOpen(true);
-        }} />
+      {/* Onboard modal - shown on empty boards until user starts a scene or dismisses */}
+      {initialized && objects.size === 0 && !boardGenStarted && !chatOpen && (
+        <OnboardModal
+          onSubmit={(prompt) => {
+            setBoardGenStarted(true);
+            setChatInitialPrompt(prompt);
+            setChatOpen(true);
+          }}
+          onDismiss={() => setBoardGenStarted(true)}
+        />
       )}
 
       {/* Canvas */}
