@@ -86,7 +86,7 @@ open board -> play scene -> share replay link -> recruit new player
 
 ## Planned Refactors
 
-- **Board.tsx decomposition** (~1800 lines): extract Toolbar.tsx, useKeyboardShortcuts.ts, useDragSelection.ts. Reduces merge conflicts across worktrees.
+- ~~**Board.tsx decomposition** (~1800 lines): extract Toolbar.tsx, useKeyboardShortcuts.ts, useDragSelection.ts.~~ Done (1837 -> 1498 lines). Further reduction possible by extracting BoardObjectRenderer (~100L), EmptyBoardOverlay (~127L), ConnectionToast (~36L).
 
 ---
 
