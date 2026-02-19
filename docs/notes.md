@@ -96,3 +96,4 @@
 | `docs/exploration-tool-approval.md` | Tool approval gates pattern | Feb 19 |
 | `docs/exploration-evaluator-optimizer.md` | Evaluator-optimizer loop pattern | Feb 19 |
 | `docs/exploration-batch-tool.md` | Batch tool design (shipped as tool #12) | Feb 19 |
+| `follow-ups.md` (root) | Code cleanup sprint + feature priorities (all shipped) | Feb 19 |
