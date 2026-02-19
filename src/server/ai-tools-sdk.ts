@@ -113,7 +113,7 @@ async function updateAndMutate(
     );
     return { error: `Failed to update ${id}: ${err instanceof Error ? err.message : String(err)}` };
   }
-  if (!result.ok) return { error: result.error };
+  if (!result.ok) return { error: result.error ?? "Unknown mutation error" };
   return { [resultKey]: id, ...extra };
 }
 
@@ -239,7 +239,7 @@ function stripForLLM(obj: BoardObject): LLMBoardObject {
 
 /** Create the full AI SDK tool registry bound to a specific Board DO stub */
 export function createSDKTools(stub: BoardStub, batchId?: string, ai?: Ai) {
-  return {
+  const baseTools = {
     // 1. createStickyNote
     createStickyNote: tool({
       description:
@@ -704,6 +704,103 @@ export function createSDKTools(stub: BoardStub, batchId?: string, ai?: Ai) {
           batchId,
         );
         return createAndMutate(stub, obj);
+      }),
+    }),
+  };
+
+  // Registry of execute functions from tools 1-11, keyed by name.
+  // Excludes batchExecute itself to prevent recursive batching.
+  // Double-cast through unknown: each tool's execute has Zod-narrowed args, but at runtime
+  // all accept Record<string,unknown> (instrumentExecute guards malformed inputs).
+  type AnyExec = (args: Record<string, unknown>, ctx?: unknown) => Promise<unknown>;
+  const toolRegistry: Record<string, AnyExec> = Object.fromEntries(
+    Object.entries(baseTools).map(([name, t]) => [name, (t as unknown as { execute: AnyExec }).execute]),
+  );
+
+  return {
+    ...baseTools,
+
+    // 12. batchExecute
+    batchExecute: tool({
+      description:
+        "Execute multiple canvas operations in a single call. Use when creating related objects " +
+        "together (e.g. a frame with stickies inside it, or a row of characters). Operations run " +
+        "in order; failures are recorded but do not stop the batch. Max 10 operations per call. " +
+        "Prefer individual tools when you need to act on results between steps (e.g. getBoardState " +
+        "then decide what to create) - batch args are pre-computed and cannot chain across ops.",
+      inputSchema: z.object({
+        operations: z
+          .array(
+            z.object({
+              tool: z
+                .enum([
+                  "createStickyNote",
+                  "createShape",
+                  "createFrame",
+                  "createConnector",
+                  "moveObject",
+                  "resizeObject",
+                  "updateText",
+                  "changeColor",
+                  "getBoardState",
+                  "deleteObject",
+                  "generateImage",
+                ])
+                .describe("Tool name to execute"),
+              args: z.record(z.string(), z.unknown()).describe("Arguments for the tool (same as calling it directly)"),
+            }),
+          )
+          .max(10)
+          .describe("Ordered list of operations to execute sequentially"),
+      }),
+      execute: instrumentExecute("batchExecute", async ({ operations }) => {
+        const errMsg = (err: unknown): string =>
+          err instanceof Error ? err.message : String(err);
+
+        const results: unknown[] = [];
+        let failed = 0;
+        const toolNames = operations.map((op) => op.tool);
+        console.debug(
+          JSON.stringify({ event: "batch:start", count: operations.length, tools: toolNames }),
+        );
+
+        for (const op of operations) {
+          const executeFn = toolRegistry[op.tool];
+          if (!executeFn) {
+            // Programming error: Zod enum should prevent unknown tool names - log for diagnosis
+            console.error(JSON.stringify({ event: "batch:unknown-tool", tool: op.tool }));
+            results.push({ error: `Unknown tool: ${op.tool}` });
+            failed++;
+            continue;
+          }
+          try {
+            const result = await executeFn(op.args);
+            results.push(result);
+            if (isPlainObject(result) && "error" in result) failed++;
+          } catch (err) {
+            // Unexpected throw not caught by instrumentExecute (which rethrows) - log for diagnosis
+            console.error(
+              JSON.stringify({ event: "batch:op:error", tool: op.tool, error: errMsg(err) }),
+            );
+            results.push({ error: `${op.tool} failed: ${errMsg(err)}` });
+            failed++;
+          }
+        }
+
+        if (failed > 0) {
+          console.error(
+            JSON.stringify({ event: "batch:partial-failure", completed: operations.length - failed, failed, tools: toolNames }),
+          );
+        }
+
+        const completed = operations.length - failed;
+        return {
+          completed,
+          failed,
+          results,
+          // Surface partial failures to instrumentExecute's ok check (which looks for "error" key)
+          ...(failed > 0 && { error: `${failed}/${operations.length} operations failed` }),
+        };
       }),
     }),
   };

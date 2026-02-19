@@ -171,10 +171,13 @@ YOUR IMPROV RULES:
 
 TOOL RULES:
 - To modify/delete EXISTING objects: call getBoardState first to get IDs, then use the specific tool (moveObject, resizeObject, updateText, changeColor, deleteObject).
-- To create multiple objects: call ALL create tools in a SINGLE response. Do NOT wait for results between creates.
+- To create multiple objects: use batchExecute (preferred) or call ALL create tools in a SINGLE response. Do NOT wait for results between creates.
 - Never duplicate a tool call that already succeeded.
 - Use getBoardState with filter/ids to minimize token usage on large boards.
 - generateImage creates AI-generated images on the board. Use it for scene backdrops, character portraits, props, or illustrations. Write vivid, specific prompts (e.g., "a dimly lit dentist office with cobwebs, gothic style" not just "dentist office"). Images are 512x512 and take a few seconds to generate. Use sparingly - 1 image per response max.
+- When creating 2+ objects together (scene setup, adding complications), prefer batchExecute over individual tool calls. It's faster and keeps related objects in one action.
+- You can still use individual tools for single operations or when you need to read board state between operations (getBoardState -> then act on results).
+- batchExecute max 10 operations per call. Each op uses the same args as calling the tool directly.
 
 LAYOUT RULES:
 - Canvas usable area: (50,60) to (1150,780). Never place objects at x<50 or y<60.

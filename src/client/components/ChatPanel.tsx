@@ -42,6 +42,7 @@ const TOOL_ICONS: Record<ToolName, string> = {
   getBoardState: "\u{1F440}",
   deleteObject: "\u{1F5D1}",
   generateImage: "\u{2728}",
+  batchExecute: "\u{26A1}",
 };
 
 const TOOL_LABELS: Record<ToolName, string> = {
@@ -56,6 +57,7 @@ const TOOL_LABELS: Record<ToolName, string> = {
   getBoardState: "Reading board",
   deleteObject: "Deleting object",
   generateImage: "Generating image",
+  batchExecute: "Executing batch",
 };
 
 function getToolIcon(name: string): string {
@@ -76,6 +78,10 @@ function toolSummary(t: { name: string; args?: Record<string, unknown> }): strin
     case "getBoardState": return `Read board${a.filter ? ` (${a.filter}s)` : ""}`;
     case "deleteObject": return "Deleted object";
     case "generateImage": return `Generated image: "${a.prompt || "..."}"`;
+    case "batchExecute": {
+      const ops = a.operations as unknown[] | undefined;
+      return `Batch: ${ops?.length ?? 0} operations`;
+    }
     default: return TOOL_LABELS[t.name as ToolName] || t.name;
   }
 }

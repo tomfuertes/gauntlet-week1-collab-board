@@ -10,7 +10,7 @@
 - **No UAT on custom AI characters** - wrangler dev D1 was returning 500s on signup; feature code is clean (tsc passes), needs manual verification
 - **CF issue filed** - [cloudflare/ai#404](https://github.com/cloudflare/ai/issues/404): `workers-ai-provider` drops `tool_choice` from `buildRunInputs`. Open, no response yet.
 - **GLM-4.7-flash tool calling unverified in prod** - switched from Mistral; shim + native tool calling confirmed locally. Needs manual chat test.
-- **Batch tool worktree in-flight** - `feat/batch-tool` at `../gauntlet-week1-collab-board-batch-tool`. batchExecute meta-tool (tool #12).
+- **Prompt eval worktree in-flight** - `feat/prompt-eval` at `../gauntlet-week1-collab-board-prompt-eval`. Quality harness for AI layout tuning.
 
 ## Roadmap
 
@@ -18,7 +18,7 @@
 
 **Core canvas:** Infinite canvas, shapes (sticky/rect/circle/line/connector/text/frame/image), move/resize/rotate, multi-select, copy/paste/dup, undo/redo, delete, cursor sync, presence, keyboard shortcuts, context menu, color picker, floating toolbar.
 
-**AI agent:** 11 tools (Zod schemas, DRY helpers), chat panel (chips, templates, typing, server-side history), selection-aware AI, AI object glow/confetti, batch undo, AI presence (cursor dot, bar), board generation (overlay + suggestion chips), AI image generation (SDXL), defensive tool validation.
+**AI agent:** 12 tools (Zod schemas, DRY helpers), chat panel (chips, templates, typing, server-side history), selection-aware AI, AI object glow/confetti, batch undo, AI presence (cursor dot, bar), board generation (overlay + suggestion chips), AI image generation (SDXL), defensive tool validation, batchExecute meta-tool (N round trips -> 1 for scene setup).
 
 **Multiplayer improv:** Multi-agent personas (SPARK + SAGE defaults, custom AI characters with CRUD API + modal UI, autonomous "yes, and", 3-exchange cooldown), AI Director (scene phases, 60s inactivity nudge, DO schedule alarms), dynamic intent chips, improv game modes (Scenes From a Hat, Yes-And Chain), per-scene token budgets (20-turn, 4 dramatic arc phases).
 
@@ -68,7 +68,7 @@
 | **Task queues** | `this.queue()` for reliable async work with auto-dequeue + retry. | We use `ctx.waitUntil()` for fire-and-forget (reactive persona, activity recording). | Low. Drop-in replacement for waitUntil calls. | Low. Our tasks are best-effort. Queues add retry but we don't need guaranteed delivery. | [exploration-task-queues.md](exploration-task-queues.md) |
 | **Tool approval gates** | `needsApproval` function on tools for human-in-the-loop consent. | We auto-execute all 11 tools. | Low. Add `needsApproval` to deleteObject. | Nice-to-have. Could gate destructive tools (delete, bulk updates) behind user OK. | [exploration-tool-approval.md](exploration-tool-approval.md) |
 | **Evaluator-Optimizer** | Generator LLM produces output; evaluator LLM critiques; loop until quality threshold. | Our AI generates content in one pass (single streamText). | Medium. Add a quality-check step after tool execution. | Interesting for scene setup quality (check layout overlap score, regenerate if bad). | [exploration-evaluator-optimizer.md](exploration-evaluator-optimizer.md) |
-| **Batch tool** | Poor man's Code Mode: one tool accepting an ordered array of operations, executes sequentially in one LLM step. No V8 isolate needed. | We make N tool calls = N round trips. Batch collapses to 1. | Low. Add tool #12 to ai-tools-sdk.ts. | High. Quick win for scene setup (4 calls -> 1). Key limit: can't chain results between ops. | [exploration-batch-tool.md](exploration-batch-tool.md) |
+| **Batch tool** | Poor man's Code Mode: one tool accepting an ordered array of operations, executes sequentially in one LLM step. No V8 isolate needed. | **Shipped** as tool #12. N round trips -> 1. UAT: GLM chose batchExecute unprompted, created frame+3 stickies as "Batch: 4 operations". | - | - | [exploration-batch-tool.md](exploration-batch-tool.md) |
 
 ## Key Decisions (non-obvious, not already in CLAUDE.md)
 
@@ -90,6 +90,9 @@
 | Feb 19 | userId (not displayName) for current-user highlighting | displayName is mutable + non-unique; userId is stable identity |
 | Feb 19 | Mobile early-return pattern in Board | Two layouts share all WS hooks; conditional return before final JSX keeps desktop path unchanged |
 | Feb 19 | GLM 4.7 Flash as UI default, not wrangler env | Client always sends model per-message; UI default overrides WORKERS_AI_MODEL env var. Env var is fallback for serverless/director paths that don't receive a body. |
+| Feb 19 | batchExecute: toolRegistry via double-cast through unknown | ToolExecuteFunction<TArgs> is narrower than Record<string,unknown> so direct cast fails. `as unknown as { execute: AnyExec }` is safe at runtime - instrumentExecute guard rejects non-objects. |
+| Feb 19 | Partial failure surfaces via top-level error key | batchExecute returns `...(failed > 0 && { error: "N/M ops failed" })` - instrumentExecute's ok check looks for "error" key, so partial failures log as ok:false in monitoring without changing the wrapper. |
+| Feb 19 | Contradictory LLM prompt rules cause LLM to ignore later rules | "call ALL create tools in a SINGLE response" overrode "prefer batchExecute" because earlier rules dominate in LLM attention. Fixed by naming batchExecute explicitly in the first rule. |
 
 ## AI Model Pricing (Workers AI, $0.011/1K neurons)
 
