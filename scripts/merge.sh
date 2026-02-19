@@ -49,7 +49,7 @@ git diff "main..${FEAT_BRANCH}" --stat
 
 echo ""
 echo "=== Merging ${FEAT_BRANCH} ==="
-if ! git merge "${FEAT_BRANCH}" --no-edit --no-ff; then
+if ! git merge "${FEAT_BRANCH}" --squash; then
   echo ""
   echo "CONFLICT: Merge has conflicts. Resolve them, then:"
   echo "  git add <resolved-files> && git commit --no-edit"
@@ -57,6 +57,10 @@ if ! git merge "${FEAT_BRANCH}" --no-edit --no-ff; then
   STASHED=false  # don't auto-pop in trap, user needs to resolve first
   exit 1
 fi
+
+# Squash stages but doesn't commit - create the commit here so GPG signing works locally
+COMMIT_MSG=$(git log --oneline "main..${FEAT_BRANCH}" | head -1 | cut -d' ' -f2-)
+git commit --no-edit -m "${COMMIT_MSG:-Merge branch '${FEAT_BRANCH}'}"
 
 echo ""
 echo "=== Typecheck ==="
