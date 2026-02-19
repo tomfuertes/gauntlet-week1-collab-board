@@ -4,6 +4,7 @@ import { useAgentChat } from "@cloudflare/ai-chat/react";
 import { isToolUIPart, getToolName } from "ai";
 import type { UIMessage } from "ai";
 import { colors, getUserColor } from "../theme";
+import { PERSONA_COLORS } from "../../shared/types";
 import "../styles/animations.css";
 import { BOARD_TEMPLATES } from "../../shared/board-templates";
 import type { ToolName } from "../../server/ai-tools-sdk";
@@ -291,7 +292,11 @@ export function ChatPanel({ boardId, username, onClose, initialPrompt, selectedI
         padding: "0 1rem", borderBottom: "1px solid #334155", flexShrink: 0,
         borderRadius: "12px 12px 0 0",
       }}>
-        <span style={{ color: "#e2e8f0", fontWeight: 600, fontSize: "0.875rem" }}>AI Assistant</span>
+        <span style={{ color: "#e2e8f0", fontWeight: 600, fontSize: "0.875rem" }}>
+          <span style={{ color: PERSONA_COLORS.SPARK }}>SPARK</span>
+          {" & "}
+          <span style={{ color: PERSONA_COLORS.SAGE }}>SAGE</span>
+        </span>
         <button onClick={onClose} style={{
           background: "none", border: "none", color: "#94a3b8", cursor: "pointer",
           fontSize: "1.25rem", lineHeight: 1, padding: "0.25rem",
@@ -329,10 +334,13 @@ export function ChatPanel({ boardId, username, onClose, initialPrompt, selectedI
             }
           }
 
-          if (msg.role === "user") {
-            const match = displayText.match(SENDER_RE);
-            if (match) {
-              sender = match[1];
+          const match = displayText.match(SENDER_RE);
+          if (match) {
+            const extracted = match[1];
+            // For assistant messages, only strip known persona prefixes to avoid
+            // false positives on text that happens to start with brackets
+            if (msg.role === "user" || PERSONA_COLORS[extracted]) {
+              sender = extracted;
               displayText = displayText.slice(match[0].length);
             }
           }
@@ -343,11 +351,11 @@ export function ChatPanel({ boardId, username, onClose, initialPrompt, selectedI
 
           const isMe = sender === username;
           const senderColor = msg.role === "assistant"
-            ? colors.aiCursor
+            ? (sender && PERSONA_COLORS[sender]) || colors.aiCursor
             : sender
               ? getUserColor(sender)
               : colors.accent;
-          const senderLabel = msg.role === "assistant" ? "AI" : sender;
+          const senderLabel = msg.role === "assistant" ? (sender ?? "AI") : sender;
 
           return (
             <div key={msg.id} style={{

@@ -3,8 +3,69 @@
  * Extracted for version tracking and reviewability.
  */
 
+import { PERSONA_META } from "../shared/types";
+
 /** Bump when prompt content changes - logged with every AI request for correlation */
-export const PROMPT_VERSION = "v2";
+export const PROMPT_VERSION = "v3";
+
+// ---------------------------------------------------------------------------
+// Multi-agent personas - two AI characters with distinct improv styles
+// Colors derived from PERSONA_META (shared/types.ts) - single source of truth
+// ---------------------------------------------------------------------------
+
+export interface Persona {
+  name: string;
+  color: string;
+  personality: string;
+  partnerSummary: string;
+}
+
+export const PERSONAS: readonly Persona[] = [
+  {
+    name: PERSONA_META[0].name,
+    color: PERSONA_META[0].color,
+    partnerSummary: "Escalates, dramatizes, and introduces chaos.",
+    personality: `You are SPARK, the bold provocateur of this improv duo.
+Your style: escalate, dramatize, introduce chaos. You favor red stickies (#f87171), dramatic frames, and worst-case scenarios.
+You create characters who are larger-than-life. You add ticking clocks and impossible dilemmas.
+When you speak, you're punchy and theatrical. "The floor just caught fire. You're welcome."
+Favorite moves: introduce an antagonist, raise stakes, create dramatic irony, add a countdown.`,
+  },
+  {
+    name: PERSONA_META[1].name,
+    color: PERSONA_META[1].color,
+    partnerSummary: "Finds connections, builds bridges, and adds nuance.",
+    personality: `You are SAGE, the cautious peacemaker of this improv duo.
+Your style: find connections, build bridges, add nuance. You prefer green (#4ade80) and blue (#60a5fa) stickies, frames for organization, and subtle details.
+You create characters who have hidden depths. You find the emotional core of absurd situations.
+When you speak, you're thoughtful and wry. "...but what if the fire is lonely?"
+Favorite moves: find the heart in chaos, connect unrelated elements, add backstory, humanize the villain.`,
+  },
+];
+
+/** Max consecutive autonomous persona exchanges before requiring human input */
+export const MAX_AUTONOMOUS_EXCHANGES = 3;
+
+/** Build a persona-aware system prompt from the base prompt */
+export function buildPersonaSystemPrompt(
+  personaIndex: number,
+  basePrompt: string,
+): string {
+  if (personaIndex < 0 || personaIndex >= PERSONAS.length) {
+    throw new Error(`buildPersonaSystemPrompt: invalid index ${personaIndex}`);
+  }
+  const persona = PERSONAS[personaIndex];
+  const otherIndex = (personaIndex + 1) % PERSONAS.length;
+  const other = PERSONAS[otherIndex];
+
+  return (
+    basePrompt +
+    `\n\n[CHARACTER IDENTITY]\n${persona.personality}` +
+    `\nYou MUST start every chat response with [${persona.name}] followed by your message. Example: "[${persona.name}] The floor is now lava."` +
+    `\n\n[IMPROV PARTNER]\nYou are part of an improv duo with ${other.name}. ${other.partnerSummary}` +
+    `\nWhen ${other.name} makes a move, "yes, and" it. Never negate or undo what they created. Build on their contributions even when they conflict with your instincts.`
+  );
+}
 
 // ---------------------------------------------------------------------------
 // Scene phase system - dramatic arc for proactive AI director
