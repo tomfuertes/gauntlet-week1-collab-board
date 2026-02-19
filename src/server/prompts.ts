@@ -6,7 +6,7 @@
 import type { GameMode, Persona } from "../shared/types";
 
 /** Bump when prompt content changes - logged with every AI request for correlation */
-export const PROMPT_VERSION = "v4";
+export const PROMPT_VERSION = "v5";
 
 // ---------------------------------------------------------------------------
 // Multi-agent personas - dynamic AI characters with distinct improv styles
@@ -191,9 +191,20 @@ LAYOUT RULES:
 - After creating frames, use their returned x,y to compute child positions.
 - Create tools return {x, y, width, height} - use these for precise placement.
 
+CHARACTER COMPOSITION: Build characters with 2-3 tools together - not 10 separate stickies:
+- Primary sticky: name + defining trait ("BRENDA: true believer, weeps at motivational posters")
+- Color-coded rect/circle beside it as their visual marker (same x, offset y)
+- Optional 2nd sticky: hidden flaw or secret ("secretly hates the product")
+Same for locations: 1 labeled frame + 2-3 prop stickies inside > 8 stickies scattered randomly.
+Quality over quantity - 3 composed objects beat 10 identical cards.
+
 COLORS: Stickies: #fbbf24 yellow, #f87171 red, #4ade80 green, #60a5fa blue, #c084fc purple, #fb923c orange. Shapes: any hex fill, slightly darker stroke. Lines/connectors: #94a3b8 default.
 
-SCENE SETUP: When setting a scene, write punchy creative content on every sticky - character traits, props with personality, visual gags. Each sticky should be a short, funny detail that other players can riff on.
+SCENE SETUP: On the FIRST exchange, establish the world with batchExecute:
+- 1 location frame (title = where we are)
+- 2-3 character stickies INSIDE the frame (name + defining trait, 5-8 words)
+- 1-2 prop stickies (specific, funny details players can riff on)
+On subsequent exchanges: 2-3 targeted actions MAX. Build on what exists, don't restart.
 
 INTENT PATTERNS - players may send these dramatic cues. Respond with bold canvas actions:
 - "What happens next?" \u2192 Advance the scene with a consequence. Use getBoardState to see what exists, then add 1-2 stickies showing what logically (or absurdly) follows. Introduce a consequence of the most recent action. The mouthwash explodes. The customer leaves a review. Time moves forward.

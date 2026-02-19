@@ -558,23 +558,28 @@ export class ChatAgent extends AIChatAgent<Bindings> {
   // ---------------------------------------------------------------------------
 
   /** Ensure the last assistant message starts with [PERSONA_NAME] prefix.
+   *  Only checks/patches the FIRST text part - patching all parts causes [NAME] to appear
+   *  mid-text when multi-step streamText produces text before AND after tool calls.
    *  Uses immutable update + persist to avoid mutating SDK-owned objects. */
   private _ensurePersonaPrefix(personaName: string) {
     const lastMsg = this.messages[this.messages.length - 1];
     if (!lastMsg || lastMsg.role !== "assistant") return;
 
-    const needsFix = lastMsg.parts.some(
-      (p) => p.type === "text" && !p.text.startsWith(`[${personaName}]`)
-    );
+    // Only check the first text part to avoid false positives on subsequent parts (e.g. "Done!")
+    const firstTextPart = lastMsg.parts.find((p) => p.type === "text");
+    const needsFix = !!firstTextPart && !firstTextPart.text.startsWith(`[${personaName}]`);
     if (!needsFix) {
-      if (!lastMsg.parts.some((p) => p.type === "text")) {
+      if (!firstTextPart) {
         console.warn(JSON.stringify({ event: "persona:prefix:no-text-part", boardId: this.name, persona: personaName }));
       }
       return;
     }
 
+    // Only prefix the first text part - leave subsequent parts (e.g. "Done!") untouched
+    let patched = false;
     const newParts = lastMsg.parts.map((part) => {
-      if (part.type === "text" && !part.text.startsWith(`[${personaName}]`)) {
+      if (!patched && part.type === "text" && !part.text.startsWith(`[${personaName}]`)) {
+        patched = true;
         return { ...part, text: `[${personaName}] ${part.text}` };
       }
       return part;
@@ -645,6 +650,30 @@ export class ChatAgent extends AIChatAgent<Bindings> {
     };
   }
 
+  /** Summarize the last tool calls made by the active persona for reactive context injection.
+   *  Returns a 1-line summary string; empty string if no tool parts found. */
+  private _describeLastAction(): string {
+    const lastAssistantMsg = [...this.messages].reverse().find((m) => m.role === "assistant");
+    if (!lastAssistantMsg) return "";
+
+    const summaries: string[] = [];
+    const getStr = (v: unknown): string => typeof v === "string" && v.length > 0 ? v : "";
+    for (const part of lastAssistantMsg.parts) {
+      const p = part as Record<string, unknown>;
+      const input = isPlainObject(p.input) ? (p.input as Record<string, unknown>) : {};
+      // Prefer text/title/prompt for label - skip fill (it's a hex color, not a description)
+      const detail = getStr(input.text) || getStr(input.title) || getStr(input.prompt);
+      // tool-* parts: produced by streamText (primary/chat path)
+      if (typeof p.type === "string" && p.type.startsWith("tool-") && p.type !== "dynamic-tool") {
+        summaries.push((p.type as string).replace("tool-", "") + (detail ? `: "${detail}"` : ""));
+      // dynamic-tool parts: produced by generateText (_buildGenerateTextMessage / director nudge path)
+      } else if (p.type === "dynamic-tool" && typeof p.toolName === "string") {
+        summaries.push(p.toolName + (detail ? `: "${detail}"` : ""));
+      }
+    }
+    return summaries.slice(0, 3).join(", ");
+  }
+
   /** After the active persona finishes, trigger the other persona to react.
    *  Claims _isGenerating mutex BEFORE the delay to prevent TOCTOU races. */
   private async _triggerReactivePersona(activeIndex: number, personas?: Persona[]) {
@@ -687,8 +716,17 @@ export class ChatAgent extends AIChatAgent<Bindings> {
       return;
     }
 
-    // Load personas if not passed in (director nudge path)
-    const effectivePersonas = personas ?? await this._getPersonas();
+    // Load personas if not passed in (director nudge path).
+    // Guard: _getPersonas() is documented to never throw, but wrap anyway -
+    // any unexpected throw here would leave _isGenerating stuck at true for the DO lifetime.
+    let effectivePersonas: Persona[];
+    try {
+      effectivePersonas = personas ?? await this._getPersonas();
+    } catch (err) {
+      this._isGenerating = false;
+      console.error(JSON.stringify({ event: "reactive:personas-error", boardId: this.name, error: String(err) }));
+      return;
+    }
     // Skip reactive if only 1 persona (can't react to yourself)
     if (effectivePersonas.length <= 1) {
       this._isGenerating = false;
@@ -715,12 +753,14 @@ export class ChatAgent extends AIChatAgent<Bindings> {
     };
     const reactiveGameModeBlock = buildGameModePromptBlock(this._gameMode, reactiveGameModeState);
 
+    // Extract what the active persona just created for context injection
+    const lastActionSummary = this._describeLastAction();
+
     const reactiveSystem =
       buildPersonaSystemPrompt(reactivePersona, activePersona, SYSTEM_PROMPT, reactiveGameModeBlock) +
-      `\n\n[REACTIVE MODE] You are responding autonomously to what just happened. ` +
-      `Your improv partner ${activePersona.name} just made their move. ` +
-      `React to it and the human's prompt. Keep it brief - 1 sentence of chat and 1-2 canvas actions max. ` +
-      `Do NOT repeat or summarize what ${activePersona.name} did - build on it.`;
+      `\n\n[REACTIVE MODE] ${activePersona.name} just placed: ${lastActionSummary || "objects on the canvas"}. ` +
+      `React in character with exactly 1 spoken sentence (required - always produce text). ` +
+      `Optionally place 1 canvas object that BUILDS on theirs (same area, related content) - do NOT use batchExecute.`;
 
     const model = this._getModel();
 
@@ -735,12 +775,12 @@ export class ChatAgent extends AIChatAgent<Bindings> {
         system: reactiveSystem,
         messages: await convertToModelMessages(sanitizeMessages(this.messages)),
         tools,
-        stopWhen: stepCountIs(3),
+        stopWhen: stepCountIs(2),
       });
 
       // Build and persist UIMessage from generateText result
       const reactiveMessage = this._buildGenerateTextMessage(
-        result, reactivePersona.name, `[${reactivePersona.name}] *reacts to the scene*`
+        result, reactivePersona.name, `[${reactivePersona.name}] ...`
       );
       if (reactiveMessage) {
         this.messages.push(reactiveMessage);
@@ -760,6 +800,8 @@ export class ChatAgent extends AIChatAgent<Bindings> {
           persona: reactivePersona.name,
           autonomousExchangeCount: this._autonomousExchangeCount,
           error: String(err),
+          // Include stack trace to distinguish programming bugs from transient AI/network errors
+          stack: err instanceof Error ? err.stack : undefined,
         })
       );
     } finally {

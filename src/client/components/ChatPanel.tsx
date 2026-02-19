@@ -536,11 +536,14 @@ export function ChatPanel({ boardId, username, gameMode, aiModel, onClose, initi
           const match = displayText.match(SENDER_RE);
           if (match) {
             const extracted = match[1];
-            // For assistant messages, only strip known persona prefixes to avoid
-            // false positives on text that happens to start with brackets
-            if (msg.role === "user" || personaColorMap[extracted]) {
+            // Accept known persona from color map, or all-caps name (handles custom personas
+            // not yet loaded in colorMap when initial history renders before refreshPersonas completes)
+            const looksLikePersona = /^[A-Z][A-Z0-9]*$/.test(extracted);
+            if (msg.role === "user" || personaColorMap[extracted] || (msg.role === "assistant" && looksLikePersona)) {
               sender = extracted;
-              displayText = displayText.slice(match[0].length);
+              // Strip ALL occurrences of this prefix - multi-step LLM repeats [NAME] at start of
+              // each text part (e.g. pre-tool text + post-tool text both get [SPARK] prefix)
+              displayText = displayText.replace(new RegExp(`\\[${extracted}\\]\\s*`, "g"), "").trim();
             }
           }
 
@@ -555,6 +558,13 @@ export function ChatPanel({ boardId, username, gameMode, aiModel, onClose, initi
               ? getUserColor(sender)
               : colors.accent;
           const senderLabel = msg.role === "assistant" ? (sender ?? "AI") : sender;
+
+          // Skip empty assistant messages (no text, no tools) - avoids blank "AI" bubbles
+          // from streaming artifacts or tool-only steps that produced no recognized parts
+          if (msg.role === "assistant" && !content && tools.length === 0) {
+            console.debug("[ChatPanel] suppressed empty assistant message", msg.id);
+            return null;
+          }
 
           return (
             <div key={msg.id} style={{

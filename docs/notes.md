@@ -32,7 +32,7 @@
 
 **AI agent:** 12 tools (Zod schemas, DRY helpers), chat panel (chips, templates, typing, server-side history), selection-aware AI, AI object glow/confetti, batch undo, AI presence (cursor dot, bar), board generation (overlay + suggestion chips), AI image generation (SDXL), defensive tool validation, batchExecute meta-tool (N round trips -> 1 for scene setup), quality telemetry (`ai:quality` events), prompt eval harness.
 
-**Multiplayer improv:** Multi-agent personas (SPARK + SAGE defaults, custom AI characters with CRUD API + modal UI, autonomous "yes, and", 3-exchange cooldown), AI Director (scene phases, 60s inactivity nudge, DO schedule alarms), dynamic intent chips, improv game modes (Scenes From a Hat, Yes-And Chain), per-scene token budgets (20-turn, 4 dramatic arc phases).
+**Multiplayer improv:** Multi-agent personas (SPARK + SAGE defaults, custom AI characters with CRUD API + modal UI, autonomous "yes, and", 3-exchange cooldown), AI Director (scene phases, 60s inactivity nudge, DO schedule alarms), dynamic intent chips, improv game modes (Scenes From a Hat, Yes-And Chain), per-scene token budgets (20-turn, 4 dramatic arc phases). **Persona chat quality fixes** (f5cccb1): empty-bubble suppression, global prefix strip, reactive context injection, CHARACTER COMPOSITION + structured SCENE SETUP prompt, PROMPT_VERSION v5.
 
 **Sharing/discovery:** Scene playback (event recording, public replay, ReplayViewer), scene gallery (public grid, gradient thumbnails), spectator mode (#watch, emoji reactions, spectator count), async notifications (unread badges), daily scene challenges + leaderboard.
 
@@ -50,6 +50,8 @@
 
 ### Architecture
 - ChatAgent error handling loose - tool failures logged but swallowed, LLM unaware of partial success
+- Reactive first-exchange timing gap: `_triggerReactivePersona` (via `ctx.waitUntil`) runs before AIChatAgent base class adds the new assistant message to `this.messages`, so the first reactive call always skips with `no-assistant-message`. SAGE reliably triggers on the 2nd+ exchange. Low priority - no fix needed, just a known quirk.
+- GLM 4.7 Flash reactive latency: second concurrent `generateText` call takes 30-40s on GLM (cold path, no streaming). UAT must wait 45-60s or send a follow-up message before testing reactive.
 
 ### UX/Polish
 - Circles have no resize handles
@@ -75,6 +77,7 @@
 |------|----------|-----------|
 | Feb 19 | Rate limit check before _isGenerating mutex | If _checkUserRateLimit throws, mutex won't leak permanently blocking director/reactive. Check first, claim mutex only if passing. |
 | Feb 19 | AiCursor activeTweenRef ownership | Konva Tweens outlive React effect cleanup; single `activeTweenRef` lets any path destroy the in-flight animation. setTimeout uses `groupRef.current` not closed-over node to guard against unmount during delay. |
+| Feb 19 | Global prefix strip over single-slice in ChatPanel | Multi-step streamText produces [NAME] at start of each text part; slice only removed first. Use regex global replace. |
 | Feb 19 | GLM-4.7-flash over Mistral Small 3.1 | Mistral ignores tool_choice:auto in streaming. GLM native tool calling + 6x cheaper. |
 | Feb 19 | Earlier LLM prompt rules dominate later ones | "call ALL creates in SINGLE response" overrode "prefer batchExecute". Fix: name batchExecute in the first rule. |
 | Feb 19 | Killed Contextual AI Actions | Clustering via LLM is unreliable; spatial grouping needs deterministic algorithm. |
