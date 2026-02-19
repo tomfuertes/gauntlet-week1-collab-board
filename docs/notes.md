@@ -24,7 +24,7 @@
 
 **Sharing/discovery:** Scene playback (event recording, public replay, ReplayViewer), scene gallery (public grid, gradient thumbnails), spectator mode (#watch, emoji reactions, spectator count), async notifications (unread badges).
 
-**Infra/DX:** Custom auth (PBKDF2, D1 sessions), hash routing, onboard modal, connection toasts, perf overlay, AI architecture audit (prompt versioning, structured logging), vendor chunk splitting, Board.tsx decomposition, code cleanup sprint (16 items), AI model upgrade (Mistral Small 3.1, $5/day cap, Anthropic toggle).
+**Infra/DX:** Custom auth (PBKDF2, D1 sessions), hash routing, onboard modal, connection toasts, perf overlay (always-on, Shift+P toggle), AI architecture audit (prompt versioning, structured logging), vendor chunk splitting, Board.tsx decomposition, code cleanup sprint (16 items), AI model upgrade (GLM-4.7-flash default, runtime model selector dropdown, $5/day cap, Anthropic toggle), tool_choice shim (belt-and-suspenders for Workers AI models).
 
 **Killed:** Contextual AI Actions (clustering unreliable), Intent Preview (overlap with batch undo at 3x cost).
 
