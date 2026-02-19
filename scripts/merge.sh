@@ -49,7 +49,14 @@ git diff "main..${FEAT_BRANCH}" --stat
 
 echo ""
 echo "=== Merging ${FEAT_BRANCH} ==="
-git -c commit.gpgsign=false merge "${FEAT_BRANCH}" --no-edit --no-ff
+if ! git -c commit.gpgsign=false merge "${FEAT_BRANCH}" --no-edit --no-ff; then
+  echo ""
+  echo "CONFLICT: Merge has conflicts. Resolve them, then:"
+  echo "  git add <resolved-files> && git commit --no-edit"
+  [[ "$STASHED" == true ]] && echo "  git stash pop  # restore your uncommitted changes"
+  STASHED=false  # don't auto-pop in trap, user needs to resolve first
+  exit 1
+fi
 
 echo ""
 echo "=== Typecheck ==="
