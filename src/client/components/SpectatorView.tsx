@@ -4,6 +4,7 @@ import type { BoardObject } from "@shared/types";
 import { AI_USER_ID } from "@shared/types";
 import { useSpectatorSocket } from "../hooks/useSpectatorSocket";
 import { colors } from "../theme";
+import { Button } from "./Button";
 import { Cursors } from "./Cursors";
 import { BoardGrid } from "./BoardGrid";
 import "../styles/animations.css";
@@ -176,10 +177,7 @@ export function SpectatorView({ boardId, onBack }: SpectatorViewProps) {
         background: colors.overlayHeader, borderBottom: `1px solid ${colors.border}`,
       }}>
         <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
-          <button onClick={onBack} style={{
-            background: "none", border: "none", color: colors.textMuted, cursor: "pointer",
-            fontSize: "0.875rem", padding: 0,
-          }}>&larr; Back</button>
+          <Button variant="link" onClick={onBack} style={{ color: colors.textMuted, fontSize: "0.875rem" }}>&larr; Back</Button>
           <span style={{ fontWeight: 600 }}>Live View</span>
           <span style={{
             background: "rgba(239, 68, 68, 0.2)", color: "#f87171",
@@ -215,16 +213,16 @@ export function SpectatorView({ boardId, onBack }: SpectatorViewProps) {
             </span>
           )}
           <span style={{ color: colors.textDim }}>{Math.round(scale * 100)}%</span>
-          <button onClick={() => {
+          <Button onClick={() => {
             navigator.clipboard.writeText(`${location.origin}/#watch/${boardId}`)
               .then(() => {
                 setCopied(true);
                 setTimeout(() => setCopied(false), 2000);
               })
               .catch(() => { /* clipboard blocked (unfocused, HTTP, etc.) */ });
-          }} style={{ background: "none", border: `1px solid ${colors.borderLight}`, borderRadius: 4, color: colors.textMuted, padding: "0.25rem 0.5rem", cursor: "pointer", fontSize: "0.75rem" }}>
+          }}>
             {copied ? "Copied!" : "Share Link"}
-          </button>
+          </Button>
         </div>
       </div>
 
@@ -266,10 +264,7 @@ export function SpectatorView({ boardId, onBack }: SpectatorViewProps) {
           }}>
             <div style={{ textAlign: "center", color: colors.textMuted }}>
               <div style={{ fontSize: "1.25rem", marginBottom: 8 }}>Board unavailable</div>
-              <button onClick={onBack} style={{
-                background: "none", border: `1px solid ${colors.border}`, borderRadius: 4,
-                color: colors.textMuted, padding: "0.5rem 1rem", cursor: "pointer",
-              }}>Back</button>
+              <Button onClick={onBack} style={{ padding: "0.5rem 1rem" }}>Back</Button>
             </div>
           </div>
         )}

@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import type { AuthUser } from "../App";
 import { colors } from "../theme";
+import { Button } from "./Button";
 
 interface BoardMeta {
   id: string;
@@ -85,19 +86,11 @@ export function BoardList({ user, onSelectBoard, onLogout }: {
       }}>
         <span style={{ fontWeight: 600 }}>CollabBoard</span>
         <div style={{ display: "flex", alignItems: "center", gap: "1rem" }}>
-          <button onClick={() => { location.hash = "gallery"; }} style={{
-            background: "none", border: `1px solid ${colors.borderLight}`, borderRadius: 4,
-            color: colors.accentLight, padding: "0.25rem 0.5rem", cursor: "pointer", fontSize: "0.75rem",
-          }}>
+          <Button onClick={() => { location.hash = "gallery"; }} style={{ color: colors.accentLight }}>
             Gallery
-          </button>
+          </Button>
           <span>{user.displayName}</span>
-          <button onClick={handleLogout} style={{
-            background: "none", border: `1px solid ${colors.borderLight}`, borderRadius: 4,
-            color: colors.textMuted, padding: "0.25rem 0.5rem", cursor: "pointer", fontSize: "0.75rem",
-          }}>
-            Logout
-          </button>
+          <Button onClick={handleLogout}>Logout</Button>
         </div>
       </div>
 
@@ -162,16 +155,13 @@ export function BoardList({ user, onSelectBoard, onLogout }: {
                   </div>
                 </div>
                 {board.created_by !== "system" && (
-                  <button
+                  <Button
+                    variant="danger"
                     onClick={(e) => handleDelete(e, board.id)}
-                    style={{
-                      alignSelf: "flex-end", background: "none", border: `1px solid ${colors.borderLight}`,
-                      borderRadius: 4, color: colors.error, padding: "0.2rem 0.5rem",
-                      cursor: "pointer", fontSize: "0.7rem", marginTop: 8,
-                    }}
+                    style={{ alignSelf: "flex-end", fontSize: "0.7rem", padding: "0.2rem 0.5rem", marginTop: 8 }}
                   >
                     Delete
-                  </button>
+                  </Button>
                 )}
               </div>
             ))}

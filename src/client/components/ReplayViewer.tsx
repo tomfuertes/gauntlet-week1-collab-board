@@ -3,6 +3,7 @@ import { Stage, Layer, Rect, Text, Group, Ellipse, Line as KonvaLine, Arrow, Ima
 import type { BoardObject, ReplayEvent } from "@shared/types";
 import { colors } from "../theme";
 import { OBJECT_DEFAULTS } from "../constants";
+import { Button } from "./Button";
 
 // Component for rendering base64 images (needs hooks for async loading)
 function ReplayImageObj({ obj }: { obj: BoardObject }) {
@@ -282,9 +283,7 @@ export function ReplayViewer({ boardId, onBack }: ReplayViewerProps) {
     return (
       <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", height: "100vh", background: colors.bg, color: colors.text, gap: "1rem" }}>
         <span style={{ color: colors.error }}>Failed to load replay: {error}</span>
-        <button onClick={onBack} style={{ background: "none", border: `1px solid ${colors.border}`, borderRadius: 4, color: colors.textMuted, padding: "0.5rem 1rem", cursor: "pointer" }}>
-          Back
-        </button>
+        <Button onClick={onBack} style={{ padding: "0.5rem 1rem" }}>Back</Button>
       </div>
     );
   }
@@ -298,10 +297,7 @@ export function ReplayViewer({ boardId, onBack }: ReplayViewerProps) {
         background: colors.overlayHeader, borderBottom: `1px solid ${colors.border}`,
       }}>
         <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
-          <button onClick={onBack} style={{
-            background: "none", border: "none", color: colors.textMuted, cursor: "pointer",
-            fontSize: "0.875rem", padding: 0,
-          }}>&larr; Back</button>
+          <Button variant="link" onClick={onBack} style={{ color: colors.textMuted, fontSize: "0.875rem" }}>&larr; Back</Button>
           <span style={{ fontWeight: 600 }}>Scene Replay</span>
         </div>
         <span style={{ color: colors.textDim }}>
@@ -325,17 +321,14 @@ export function ReplayViewer({ boardId, onBack }: ReplayViewerProps) {
         height: controlsH, display: "flex", alignItems: "center", gap: "1rem",
         padding: "0 1rem", background: colors.overlayHeader, borderTop: `1px solid ${colors.border}`,
       }}>
-        <button
+        <Button
+          variant="primary"
           onClick={handlePlayPause}
           disabled={events.length === 0}
-          style={{
-            background: colors.accent, border: "none", borderRadius: 4, color: "#fff",
-            padding: "0.25rem 1rem", cursor: events.length > 0 ? "pointer" : "default",
-            fontSize: "0.875rem", fontWeight: 600, opacity: events.length === 0 ? 0.5 : 1,
-          }}
+          style={{ padding: "0.25rem 1rem", fontSize: "0.875rem", fontWeight: 600 }}
         >
           {playing ? "Pause" : currentIndex >= events.length - 1 && currentIndex >= 0 ? "Replay" : "Play"}
-        </button>
+        </Button>
 
         {/* Progress bar */}
         <div style={{ flex: 1, height: 4, background: colors.border, borderRadius: 2, overflow: "hidden" }}>
