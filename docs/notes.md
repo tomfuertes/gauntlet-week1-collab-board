@@ -69,6 +69,7 @@ open board -> play scene -> share replay link -> recruit new player
 - Board.tsx decomposition (1836 -> 1529 lines, extracted Toolbar.tsx, useKeyboardShortcuts.ts, useDragSelection.ts)
 - Fix: Director nudge (waitUntil for schedule ops, _isGenerating mutex replacing stale _activeStreamId)
 - Fix: Board discovery (SQL: show boards user has visited via user_board_seen join)
+- Build perf (vendor chunk splitting: react/canvas/ai, ulimit in dev.sh, chokidar ignore patterns)
 
 **Killed (PM eval):** Contextual AI Actions (clustering unreliable on free-tier LLM), Intent Preview (problem overlap with batch undo at 3x cost).
 
