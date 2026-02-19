@@ -11,7 +11,7 @@
   4. Token budgets - Act 3/Finale badges visible, "New Scene" button at scene-over phase
   5. Custom AI characters - create persona, see it respond with correct name/color, delete reverts to defaults
   6. Mobile chat - resize browser to <768px, chat becomes primary, canvas preview strip at top, tap to expand
-- **AI canvas cursor animation** - "AI presence (cursor dot, bar)" shipped. Full canvas robot cursor (purple, animates to each creation point) from sprint plan unclear - verify or add to unshipped.
+- **AI canvas cursor animation** - Shipped (feat/ai-cursor branch). Purple dot animates to each AI creation point, fades in/out, lerps at 0.12 factor. UAT verified.
 - **GLM-4.7-flash unverified in prod** - needs manual chat test confirming tool calls work end-to-end
 - **CF issue** - [cloudflare/ai#404](https://github.com/cloudflare/ai/issues/404): `workers-ai-provider` drops `tool_choice`. Open. `tool_choice: "auto"` shim added as belt-and-suspenders.
 - **Upgrade `@cloudflare/ai-chat`** - already on v0.1.2 + agents@0.5.0 (latest). Enable `maxPersistedMessages` to cap SQLite storage. Explore persistent tool approvals for deleteObject.
@@ -21,7 +21,7 @@
 
 | Feature | Priority | Notes |
 |---------|----------|-------|
-| AI canvas cursor presence | High | Cursor animates to each creation point (purple, robot icon). Presence bar shipped; canvas animation TBD. |
+| AI canvas cursor presence | **Shipped** | Purple dot (#a855f7) animates to each AI creation point with lerp + Konva Tween fade. `AiCursor.tsx` + `useAiObjectEffects.ts`. |
 | Narrative/relationship state | Medium | Who-hates-whom graph, structural multi-agent memory. Architectural - needs opus worktree. |
 
 ## Roadmap
@@ -74,6 +74,7 @@
 | Date | Decision | Rationale |
 |------|----------|-----------|
 | Feb 19 | Rate limit check before _isGenerating mutex | If _checkUserRateLimit throws, mutex won't leak permanently blocking director/reactive. Check first, claim mutex only if passing. |
+| Feb 19 | AiCursor activeTweenRef ownership | Konva Tweens outlive React effect cleanup; single `activeTweenRef` lets any path destroy the in-flight animation. setTimeout uses `groupRef.current` not closed-over node to guard against unmount during delay. |
 | Feb 19 | GLM-4.7-flash over Mistral Small 3.1 | Mistral ignores tool_choice:auto in streaming. GLM native tool calling + 6x cheaper. |
 | Feb 19 | Earlier LLM prompt rules dominate later ones | "call ALL creates in SINGLE response" overrode "prefer batchExecute". Fix: name batchExecute in the first rule. |
 | Feb 19 | Killed Contextual AI Actions | Clustering via LLM is unreliable; spatial grouping needs deterministic algorithm. |

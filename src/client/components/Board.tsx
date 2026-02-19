@@ -18,6 +18,7 @@ import { useThrottledCallback } from "../hooks/useThrottledCallback";
 import { colors, toolCursors, getUserColor } from "../theme";
 import { Toolbar, type ToolMode } from "./Toolbar";
 import { Cursors } from "./Cursors";
+import { AiCursor } from "./AiCursor";
 import { ChatPanel } from "./ChatPanel";
 import { CanvasPreview } from "./CanvasPreview";
 import { OnboardModal } from "./OnboardModal";
@@ -162,7 +163,7 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
   );
 
   const { createObject, updateObject, deleteObject, startBatch, commitBatch, undo, redo, pushExternalBatch, topTag } = useUndoRedo(objects, wsCreate, wsUpdate, wsDelete);
-  const { aiGlowIds, confettiPos, confettiKey, clearConfetti } = useAiObjectEffects(objects, initialized, scale, stagePos, size);
+  const { aiGlowIds, confettiPos, confettiKey, clearConfetti, aiCursorTarget } = useAiObjectEffects(objects, initialized, scale, stagePos, size);
 
   // Stable refs to avoid recreating callbacks on every state change
   const objectsRef = useRef(objects);
@@ -1122,8 +1123,9 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
           />
         </Layer>
 
-        {/* Cursor layer on top */}
+        {/* Cursor layer on top - AI cursor below human cursors */}
         <Layer>
+          <AiCursor target={aiCursorTarget} />
           <Cursors cursors={cursors} />
         </Layer>
       </Stage>

@@ -38,11 +38,16 @@ export function useAiObjectEffects(
   const [aiGlowIds, setAiGlowIds] = useState<Set<string>>(new Set());
   const glowTimersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
 
-  // Cancel all glow timers on unmount
+  // AI cursor target - world coords of most recently created AI object
+  const [aiCursorTarget, setAiCursorTarget] = useState<{ x: number; y: number } | null>(null);
+  const aiCursorTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Cancel all timers on unmount
   useEffect(() => {
     return () => {
       for (const t of glowTimersRef.current) clearTimeout(t);
       glowTimersRef.current = [];
+      if (aiCursorTimerRef.current) clearTimeout(aiCursorTimerRef.current);
     };
   }, []);
 
@@ -83,6 +88,13 @@ export function useAiObjectEffects(
 
     if (newAiObjects.length === 0) return;
 
+    // Update AI cursor target to the last created object's center (world coords)
+    const last = newAiObjects[newAiObjects.length - 1];
+    setAiCursorTarget({ x: last.x, y: last.y });
+    if (aiCursorTimerRef.current) clearTimeout(aiCursorTimerRef.current);
+    // Clear target after 1s of inactivity; AiCursor fades out 500ms after null
+    aiCursorTimerRef.current = setTimeout(() => setAiCursorTarget(null), 1000);
+
     // Remove IDs from aiGlowIds after timeout; visual fade is applied by Board.tsx
     const newGlowIds = newAiObjects.map((o) => o.id);
     setAiGlowIds((prev) => {
@@ -96,6 +108,8 @@ export function useAiObjectEffects(
         for (const id of newGlowIds) next.delete(id);
         return next;
       });
+      // Prune expired handle so the array doesn't grow unboundedly in long sessions
+      glowTimersRef.current = glowTimersRef.current.filter((t) => t !== timer);
     }, AI_GLOW_DURATION_MS);
     glowTimersRef.current.push(timer);
 
@@ -123,5 +137,5 @@ export function useAiObjectEffects(
     }
   }, [objects, initialized, scale, stagePos]);
 
-  return { aiGlowIds, confettiPos, confettiKey, clearConfetti: () => setConfettiPos(null) };
+  return { aiGlowIds, confettiPos, confettiKey, clearConfetti: () => setConfettiPos(null), aiCursorTarget };
 }

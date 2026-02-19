@@ -158,6 +158,7 @@ src/
       SpectatorView.tsx # Live read-only board view with emoji reactions (public, no auth)
       SceneGallery.tsx  # Public gallery grid of replayable scenes (#gallery route)
       PerfOverlay.tsx   # Performance overlay (FPS, msg age, nodes, connection state) - always on, Shift+P toggle
+      AiCursor.tsx      # Purple canvas cursor (#a855f7) that lerps to each AI object creation point (RAF loop + Konva Tween fade). activeTweenRef owns in-flight animation; any cleanup destroys it.
       ConfettiBurst.tsx # Confetti particle burst animation (extracted from Board)
       BoardGrid.tsx     # Dot grid + radial glow background (extracted from Board)
     hooks/
