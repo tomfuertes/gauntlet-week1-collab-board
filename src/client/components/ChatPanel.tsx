@@ -19,6 +19,8 @@ interface ChatPanelProps {
   initialPrompt?: string;
   selectedIds?: Set<string>;
   onAIComplete?: () => void;
+  /** Mobile mode: fills parent instead of floating as absolute panel; larger touch targets */
+  mobileMode?: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -133,11 +135,12 @@ function getIntentChips(userMessageCount: number, gameMode?: GameMode): IntentCh
   return DEEP_SCENE_INTENTS;
 }
 
-function ChipButton({ label, color, borderRadius, disabled, onClick }: {
+function ChipButton({ label, color, borderRadius, disabled, mobile, onClick }: {
   label: string;
   color: string;
   borderRadius: number;
   disabled: boolean;
+  mobile?: boolean;
   onClick: () => void;
 }) {
   return (
@@ -148,7 +151,9 @@ function ChipButton({ label, color, borderRadius, disabled, onClick }: {
         background: "none",
         border: `1px solid ${color}44`,
         borderRadius,
-        padding: "3px 10px",
+        // 44px minimum touch target on mobile (Apple HIG)
+        padding: mobile ? "10px 14px" : "3px 10px",
+        minHeight: mobile ? 44 : undefined,
         cursor: disabled ? "not-allowed" : "pointer",
         color,
         fontSize: "0.6875rem",
@@ -211,7 +216,7 @@ function ToolHistory({ tools }: { tools: ToolCallDisplay[] }) {
 // Regex to extract [username] prefix from user messages for multiplayer attribution
 const SENDER_RE = /^\[([^\]]+)\]\s*/;
 
-export function ChatPanel({ boardId, username, gameMode, onClose, initialPrompt, selectedIds, onAIComplete }: ChatPanelProps) {
+export function ChatPanel({ boardId, username, gameMode, onClose, initialPrompt, selectedIds, onAIComplete, mobileMode = false }: ChatPanelProps) {
   const selectedIdsArray = useMemo(
     () => (selectedIds?.size ? [...selectedIds] : undefined),
     [selectedIds],
@@ -301,14 +306,29 @@ export function ChatPanel({ boardId, username, gameMode, onClose, initialPrompt,
   const budgetLabel = budgetPct >= 0.8 ? "Finale" : budgetPct >= 0.6 ? "Act 3" : null;
   const budgetColor = budgetPct >= 0.8 ? "#f87171" : "#fbbf24";
 
+  const containerStyle: React.CSSProperties = mobileMode
+    ? {
+        // Fills the flex parent provided by Board's mobile layout
+        position: "relative",
+        height: "100%",
+        width: "100%",
+        zIndex: 1,
+        background: "rgba(15, 23, 42, 0.97)",
+        borderTop: "1px solid #334155",
+        display: "flex",
+        flexDirection: "column",
+        animation: "cb-mobile-chat-in 0.25s ease-out",
+      }
+    : {
+        position: "absolute", top: 16, bottom: 72, right: 16, width: 360,
+        zIndex: 30, background: "rgba(15, 23, 42, 0.97)", border: "1px solid #334155",
+        borderRadius: 12, boxShadow: "0 8px 32px rgba(0,0,0,0.4)",
+        display: "flex", flexDirection: "column",
+        animation: "cb-chat-slide-in 0.3s ease-out",
+      };
+
   return (
-    <div style={{
-      position: "absolute", top: 16, bottom: 72, right: 16, width: 360,
-      zIndex: 30, background: "rgba(15, 23, 42, 0.97)", border: "1px solid #334155",
-      borderRadius: 12, boxShadow: "0 8px 32px rgba(0,0,0,0.4)",
-      display: "flex", flexDirection: "column",
-      animation: "cb-chat-slide-in 0.3s ease-out",
-    }}>
+    <div style={containerStyle}>
       {/* Header */}
       <div style={{
         height: 48, display: "flex", alignItems: "center", justifyContent: "space-between",
@@ -354,12 +374,14 @@ export function ChatPanel({ boardId, username, gameMode, onClose, initialPrompt,
             </span>
           )}
         </div>
-        <button onClick={onClose} style={{
-          background: "none", border: "none", color: "#94a3b8", cursor: "pointer",
-          fontSize: "1.25rem", lineHeight: 1, padding: "0.25rem",
-        }}>
-          ✕
-        </button>
+        {!mobileMode && (
+          <button onClick={onClose} style={{
+            background: "none", border: "none", color: "#94a3b8", cursor: "pointer",
+            fontSize: "1.25rem", lineHeight: 1, padding: "0.25rem",
+          }}>
+            ✕
+          </button>
+        )}
       </div>
 
       {/* Messages */}
@@ -482,7 +504,10 @@ export function ChatPanel({ boardId, username, gameMode, onClose, initialPrompt,
       {/* Chips bar: scene templates when empty, intent chips when in-scene */}
       {!isSceneOver && (
         <div style={{
-          padding: "0.375rem 0.75rem", borderTop: "1px solid #1e293b", flexShrink: 0,
+          padding: mobileMode ? "0.5rem 0.75rem" : "0.375rem 0.75rem",
+          // 44px min height for touch targets on mobile (Apple HIG)
+          minHeight: mobileMode ? 44 : undefined,
+          borderTop: "1px solid #1e293b", flexShrink: 0,
           display: "flex", gap: 6, overflowX: "auto", alignItems: "center",
         }}>
           {uiMessages.length === 0 ? (
@@ -493,6 +518,7 @@ export function ChatPanel({ boardId, username, gameMode, onClose, initialPrompt,
                 color={colors.textMuted}
                 borderRadius={6}
                 disabled={loading}
+                mobile={mobileMode}
                 onClick={() => sendMessage(t.prompt)}
               />
             ))
@@ -504,6 +530,7 @@ export function ChatPanel({ boardId, username, gameMode, onClose, initialPrompt,
                 color={CATEGORY_COLORS[chip.category]}
                 borderRadius={16}
                 disabled={loading || isSceneOver}
+                mobile={mobileMode}
                 onClick={() => sendMessage(chip.prompt)}
               />
             ))
@@ -514,9 +541,11 @@ export function ChatPanel({ boardId, username, gameMode, onClose, initialPrompt,
       {/* Input / Scene complete */}
       {isSceneOver ? (
         <div style={{
-          padding: "0.75rem", borderTop: "1px solid #334155", flexShrink: 0,
+          padding: "0.75rem",
+          paddingBottom: mobileMode ? "max(0.75rem, env(safe-area-inset-bottom))" : "0.75rem",
+          borderTop: "1px solid #334155", flexShrink: 0,
           display: "flex", flexDirection: "column", alignItems: "center", gap: 8,
-          borderRadius: "0 0 12px 12px",
+          borderRadius: mobileMode ? 0 : "0 0 12px 12px",
         }}>
           <span style={{ color: "#94a3b8", fontSize: "0.8125rem", fontWeight: 600 }}>
             Scene complete
@@ -532,8 +561,12 @@ export function ChatPanel({ boardId, username, gameMode, onClose, initialPrompt,
         </div>
       ) : (
         <div style={{
-          padding: "0.75rem", borderTop: "1px solid #334155", flexShrink: 0,
-          display: "flex", gap: "0.5rem", borderRadius: "0 0 12px 12px",
+          padding: "0.75rem",
+          // Safe-area-inset for notched phones (iOS home indicator, etc.)
+          paddingBottom: mobileMode ? "max(0.75rem, env(safe-area-inset-bottom))" : "0.75rem",
+          borderTop: "1px solid #334155", flexShrink: 0,
+          display: "flex", gap: "0.5rem",
+          borderRadius: mobileMode ? 0 : "0 0 12px 12px",
         }}>
           <textarea
             ref={inputRef}

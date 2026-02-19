@@ -18,11 +18,13 @@ import { colors, toolCursors, getUserColor } from "../theme";
 import { Toolbar, type ToolMode } from "./Toolbar";
 import { Cursors } from "./Cursors";
 import { ChatPanel } from "./ChatPanel";
+import { CanvasPreview } from "./CanvasPreview";
 import { OnboardModal } from "./OnboardModal";
 import { ConfettiBurst } from "./ConfettiBurst";
 import { BoardGrid } from "./BoardGrid";
 import { PerfOverlay } from "./PerfOverlay";
 import { Button } from "./Button";
+import { useIsMobile } from "../hooks/useIsMobile";
 import "../styles/animations.css";
 
 const MIN_ZOOM = 0.1;
@@ -98,6 +100,9 @@ const InteractiveBoardObject = React.memo(function InteractiveBoardObject({
 });
 
 export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boardId: string; onLogout: () => void; onBack: () => void }) {
+  const isMobile = useIsMobile();
+  const [canvasExpanded, setCanvasExpanded] = useState(false);
+
   const stageRef = useRef<Konva.Stage>(null);
   const [stagePos, setStagePos] = useState({ x: 0, y: 0 });
   const [scale, setScale] = useState(1);
@@ -112,14 +117,20 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
   // Hydrate game mode from D1 on mount (so returning users get the right mode)
   useEffect(() => {
     fetch(`/api/boards/${boardId}`)
-      .then((r) => r.ok ? r.json() as Promise<{ game_mode?: string }> : null)
+      .then((r) => {
+        if (r.status === 401) { onLogout(); return null; } // session expired
+        return r.ok ? (r.json() as Promise<{ game_mode?: string }>) : null;
+      })
       .then((data) => {
         if (data?.game_mode && ["hat", "yesand"].includes(data.game_mode)) {
           setGameMode(data.game_mode as GameMode);
         }
       })
-      .catch(() => {}); // non-critical - defaults to freeform
-  }, [boardId]);
+      .catch((err) => {
+        // Non-critical: board still usable at freeform default; log for debugging
+        console.warn("[Board] Failed to fetch game mode, defaulting to freeform:", err);
+      });
+  }, [boardId, onLogout]);
   const [showShortcuts, setShowShortcuts] = useState(false);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; objId: string } | null>(null);
   const trRef = useRef<Konva.Transformer>(null);
@@ -759,8 +770,83 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
     onLogout();
   };
 
+  // ---------------------------------------------------------------------------
+  // Mobile layout: chat is primary, canvas preview strip at top
+  // ---------------------------------------------------------------------------
+  if (isMobile && !canvasExpanded) {
+    const previewHeight = Math.round(size.height * 0.3);
+    return (
+      <div style={{ width: "100vw", height: "100vh", display: "flex", flexDirection: "column", background: colors.bg, overflow: "hidden" }}>
+        {/* Condensed header: board name + connection dot + spectator count only */}
+        <div style={{
+          height: 48, flexShrink: 0, zIndex: 10,
+          background: colors.overlayHeader, borderBottom: `1px solid ${colors.border}`,
+          display: "flex", alignItems: "center", justifyContent: "space-between",
+          padding: "0 1rem",
+        }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
+            <Button variant="link" onClick={onBack} style={{ color: colors.textMuted, fontSize: "0.875rem" }}>
+              &larr; Boards
+            </Button>
+            <span style={{ fontWeight: 600, fontSize: "0.875rem", color: colors.text }}>CollabBoard</span>
+            <span
+              data-testid="connection-state"
+              data-state={connectionState}
+              style={{
+                width: 8, height: 8, borderRadius: "50%", display: "inline-block",
+                background: { connected: colors.success, reconnecting: colors.warning, connecting: colors.info, disconnected: colors.error }[connectionState],
+              }}
+              title={connectionState}
+            />
+          </div>
+          {spectatorCount > 0 && (
+            <span style={{ color: colors.textDim, fontSize: "0.75rem" }}>{spectatorCount} watching</span>
+          )}
+        </div>
+
+        {/* Canvas preview strip (~30% height) - tap to expand full-screen */}
+        <div
+          style={{
+            height: previewHeight, flexShrink: 0, cursor: "pointer",
+            position: "relative", overflow: "hidden",
+            borderBottom: `1px solid ${colors.border}`,
+          }}
+          onClick={() => setCanvasExpanded(true)}
+        >
+          <CanvasPreview objects={objects} width={size.width} height={previewHeight} />
+          <div style={{
+            position: "absolute", bottom: 6, right: 8,
+            background: "rgba(0,0,0,0.55)", borderRadius: 4,
+            padding: "2px 8px", fontSize: "0.6875rem", color: colors.textMuted,
+            pointerEvents: "none",
+          }}>
+            Tap to expand
+          </div>
+        </div>
+
+        {/* Chat panel fills remaining space - primary mobile interaction */}
+        <div style={{ flex: 1, overflow: "hidden", minHeight: 0 }}>
+          <ChatPanel
+            boardId={boardId}
+            username={user.username}
+            gameMode={gameMode}
+            onClose={() => {}}
+            initialPrompt={chatInitialPrompt}
+            selectedIds={selectedIds}
+            onAIComplete={handleAIComplete}
+            mobileMode={true}
+          />
+        </div>
+
+        {/* Connection status toast */}
+        <ConnectionToast connectionState={connectionState} />
+      </div>
+    );
+  }
+
   return (
-    <div style={{ width: "100vw", height: "100vh", overflow: "hidden", background: colors.bg, cursor: toolCursors[toolMode] || "default" }}>
+    // cb-canvas-overlay applies slide-in animation when mobile expanded canvas is shown
+    <div className={isMobile && canvasExpanded ? "cb-canvas-overlay" : undefined} style={{ width: "100vw", height: "100vh", overflow: "hidden", background: colors.bg, cursor: toolCursors[toolMode] || "default" }}>
       {/* Header */}
       <div style={{
         position: "absolute", top: 0, left: 0, right: 0, height: 48, zIndex: 10,
@@ -769,46 +855,70 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
         padding: "0 1rem", color: "#eee", fontSize: "0.875rem",
       }}>
         <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
-          <Button variant="link" onClick={onBack} style={{ color: "#94a3b8", fontSize: "0.875rem" }}>&larr; Boards</Button>
+          {isMobile && canvasExpanded ? (
+            <Button variant="link" onClick={() => {
+              setCanvasExpanded(false);
+              // Clear canvas interaction state so it doesn't leak back into chat.
+              // selectedIds especially matters: AI uses it to scope operations, and the
+              // user has no way to see or clear the selection from the chat view.
+              setSelectedIds(new Set());
+              setEditingId(null);
+              setFrameDraft(null);
+              setPendingFrame(null);
+              // Prevent chatInitialPrompt from re-firing on ChatPanel remount
+              setChatInitialPrompt(undefined);
+            }} style={{ color: colors.textMuted, fontSize: "0.875rem" }}>
+              &larr; Chat
+            </Button>
+          ) : (
+            <Button variant="link" onClick={onBack} style={{ color: "#94a3b8", fontSize: "0.875rem" }}>&larr; Boards</Button>
+          )}
           <span style={{ fontWeight: 600 }}>CollabBoard</span>
           <span data-testid="connection-state" data-state={connectionState} style={{
             width: 8, height: 8, borderRadius: "50%", display: "inline-block",
             background: { connected: colors.success, reconnecting: colors.warning, connecting: colors.info, disconnected: colors.error }[connectionState],
           }} title={connectionState} />
         </div>
-        <div style={{ display: "flex", alignItems: "center", gap: "1rem" }}>
-          {/* Presence avatars */}
-          <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
-            {presence.map((p) => {
-              const isAi = p.id === AI_USER_ID;
-              return (
-                <span key={p.id} style={{
-                  background: isAi ? colors.aiCursor : colors.accent,
-                  borderRadius: "50%", width: 24, height: 24,
-                  display: "flex", alignItems: "center", justifyContent: "center",
-                  fontSize: "0.625rem", fontWeight: 600, color: "#fff",
-                }} title={p.username}>
-                  {isAi ? "AI" : p.username[0].toUpperCase()}
+        {/* On mobile expanded canvas, hide desktop-only chrome (presence, zoom, invite, logout) */}
+        {isMobile && canvasExpanded ? (
+          spectatorCount > 0 ? (
+            <span style={{ color: colors.textDim, fontSize: "0.75rem" }}>{spectatorCount} watching</span>
+          ) : null
+        ) : (
+          <div style={{ display: "flex", alignItems: "center", gap: "1rem" }}>
+            {/* Presence avatars */}
+            <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
+              {presence.map((p) => {
+                const isAi = p.id === AI_USER_ID;
+                return (
+                  <span key={p.id} style={{
+                    background: isAi ? colors.aiCursor : colors.accent,
+                    borderRadius: "50%", width: 24, height: 24,
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                    fontSize: "0.625rem", fontWeight: 600, color: "#fff",
+                  }} title={p.username}>
+                    {isAi ? "AI" : p.username[0].toUpperCase()}
+                  </span>
+                );
+              })}
+              {spectatorCount > 0 && (
+                <span style={{ color: colors.textDim, fontSize: "0.75rem", marginLeft: 4 }}>
+                  {spectatorCount} watching
                 </span>
-              );
-            })}
-            {spectatorCount > 0 && (
-              <span style={{ color: colors.textDim, fontSize: "0.75rem", marginLeft: 4 }}>
-                {spectatorCount} watching
-              </span>
-            )}
+              )}
+            </div>
+            <span style={{ color: "#888" }}>{Math.round(scale * 100)}%</span>
+            <span>{user.displayName}</span>
+            <Button onClick={() => {
+              navigator.clipboard.writeText(`${location.origin}/#watch/${boardId}`);
+              setCopied(true);
+              setTimeout(() => setCopied(false), 2000);
+            }}>
+              {copied ? "Copied!" : "Invite Spectators"}
+            </Button>
+            <Button onClick={handleLogout}>Logout</Button>
           </div>
-          <span style={{ color: "#888" }}>{Math.round(scale * 100)}%</span>
-          <span>{user.displayName}</span>
-          <Button onClick={() => {
-            navigator.clipboard.writeText(`${location.origin}/#watch/${boardId}`);
-            setCopied(true);
-            setTimeout(() => setCopied(false), 2000);
-          }}>
-            {copied ? "Copied!" : "Invite Spectators"}
-          </Button>
-          <Button onClick={handleLogout}>Logout</Button>
-        </div>
+        )}
       </div>
 
       {/* Connection status toast */}
@@ -1166,18 +1276,20 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
         />
       )}
 
-      {/* Toolbar + Color Picker + Zoom + Shortcuts */}
-      <Toolbar
-        toolMode={toolMode} setToolMode={setToolMode}
-        selectedIds={selectedIds} objects={objects}
-        chatOpen={chatOpen} setChatOpen={setChatOpen}
-        showShortcuts={showShortcuts} setShowShortcuts={setShowShortcuts}
-        deleteSelected={deleteSelected}
-        onColorChange={handleColorChange}
-        onZoomIn={() => setScale((s) => Math.min(MAX_ZOOM, s * 1.2))}
-        onZoomOut={() => setScale((s) => Math.max(MIN_ZOOM, s / 1.2))}
-        onZoomReset={() => { setScale(1); setStagePos({ x: 0, y: 0 }); }}
-      />
+      {/* Toolbar hidden on mobile - AI creates objects via chat */}
+      {!isMobile && (
+        <Toolbar
+          toolMode={toolMode} setToolMode={setToolMode}
+          selectedIds={selectedIds} objects={objects}
+          chatOpen={chatOpen} setChatOpen={setChatOpen}
+          showShortcuts={showShortcuts} setShowShortcuts={setShowShortcuts}
+          deleteSelected={deleteSelected}
+          onColorChange={handleColorChange}
+          onZoomIn={() => setScale((s) => Math.min(MAX_ZOOM, s * 1.2))}
+          onZoomOut={() => setScale((s) => Math.max(MIN_ZOOM, s / 1.2))}
+          onZoomReset={() => { setScale(1); setStagePos({ x: 0, y: 0 }); }}
+        />
+      )}
 
       {/* AI Chat Panel */}
       {chatOpen && (

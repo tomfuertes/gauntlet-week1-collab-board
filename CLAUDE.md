@@ -137,7 +137,7 @@ src/
     App.tsx             # App shell + hash routing (#board/{id}, #replay/{id}, #watch/{id})
     theme.ts            # Shared color constants (accent, surfaces, borders, cursors)
     components/
-      Board.tsx         # Canvas + chat panel integration
+      Board.tsx         # Canvas + chat panel integration. Mobile-first layout (<=768px): CanvasPreview strip (30vh) + full-width ChatPanel; canvasExpanded state for full-screen canvas overlay. Desktop: unchanged side-by-side.
       Toolbar.tsx       # Floating toolbar - tool buttons, mode switching (extracted from Board)
       BoardObjectRenderer.tsx # Shared Konva shape renderer (sticky, rect, circle, line, text, image)
       ConnectionToast.tsx     # WS connection status toast (extracted from Board)
@@ -145,7 +145,8 @@ src/
       Modal.tsx         # Shared modal overlay component
       TextInput.tsx     # Shared text input component
       BoardList.tsx     # Board grid (CRUD) - landing page after login
-      ChatPanel.tsx     # AI chat sidebar (dynamic intent chips, improv scene interaction)
+      ChatPanel.tsx     # AI chat sidebar (dynamic intent chips, improv scene interaction). mobileMode prop: full-width flow layout, 44px touch targets, safe-area-inset bottom padding
+      CanvasPreview.tsx # Read-only scaled-down Konva Stage for mobile preview strip (listening={false}, auto-fits bounding box)
       ReplayViewer.tsx  # Read-only scene replay player (public, no auth)
       SpectatorView.tsx # Live read-only board view with emoji reactions (public, no auth)
       SceneGallery.tsx  # Public gallery grid of replayable scenes (#gallery route)
@@ -160,6 +161,7 @@ src/
       useAiObjectEffects.ts  # AI glow + confetti trigger logic (extracted from Board)
       useKeyboardShortcuts.ts  # Keyboard handlers: Cmd+Z, Cmd+C, Delete, Escape (extracted from Board)
       useDragSelection.ts      # Marquee/rubber-band selection logic (extracted from Board)
+      useIsMobile.ts           # Responsive breakpoint hook (matchMedia <=768px, SSR-safe)
     styles/
       animations.css    # Shared CSS keyframes (cb-pulse, cb-confetti, cb-reaction-float)
   server/               # CF Worker
