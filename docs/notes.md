@@ -102,16 +102,15 @@ open board -> play scene -> share replay link -> recruit new player
 
 | Feature | Notes |
 |---------|-------|
-| Improv game modes | Scenes From a Hat, Yes-And chains - structured replayability |
-| Audience/spectator mode | Read-only WS + emoji reactions - improv needs witnesses |
+| Improv game modes | Scenes From a Hat, Yes-And chains - structured replayability. Pairs well with token budgets. |
+| Per-scene token budgets | Natural scene endings via turn/token limits. Cost ceiling = dramatic constraint. Quick (~chat-agent.ts only). |
+| Narrative/relationship state | Formalize who-hates-whom graph. Makes multi-agent "yes, and" structural, not emergent. |
+| Custom AI characters | Replace fixed SPARK/SAGE with user-uploaded personalities. Extends multi-agent. |
 | Mobile-first chat view | Canvas as secondary "stage" - phone users |
-| Custom AI characters | Upload personality, share characters |
-| Persistent characters across scenes | Continuity creates attachment |
-| Daily scene challenges + leaderboard | Brings people back daily |
-| ~~AI image generation~~ | **Shipped.** generateImage tool (SDXL 512x512 via CF Workers AI), `image` BoardObject type, base64 in DO SQLite storage, Konva rendering in Board + ReplayViewer |
-| Multi-agent improv | Multiple AI characters with distinct personalities improvising against each other on canvas. Humans throw curveballs, AI agents "yes, and" autonomously |
-| Narrative/relationship state | Formalize scene state: who hates whom, who's fleeing whom, alliances. AI reads/writes relationship graph to make "yes, and" structural, not just emergent |
-| Per-scene token budgets | Natural scene endings via turn/token limits. Improv scenes should end, not run forever. Cost ceiling = dramatic constraint |
+| Daily scene challenges + leaderboard | Brings people back daily. Needs game modes first. |
+| ~~AI image generation~~ | **Shipped.** |
+| ~~Multi-agent improv~~ | **Shipped.** SPARK (provocateur) + SAGE (peacemaker), autonomous "yes, and" exchanges, 3-exchange cooldown. |
+| ~~Audience/spectator mode~~ | **Shipped.** #watch/{id} route, read-only WS, emoji reactions, spectator count in presence. |
 
 ## Known Bugs
 
