@@ -4,6 +4,7 @@ import { cors } from "hono/cors";
 import { getCookie } from "hono/cookie";
 import { routeAgentRequest } from "agents";
 import { auth, getSessionUser } from "./auth";
+import { getRandomHatPrompt } from "./hat-prompts";
 
 import type { Bindings } from "./env";
 import { recordBoardActivity, markBoardSeen } from "./env";
@@ -159,6 +160,121 @@ app.delete("/api/user", async (c) => {
   await c.env.DB.prepare("DELETE FROM users WHERE id = ?").bind(user.id).run();
 
   return c.json({ deleted: true });
+});
+
+// --- Daily Challenge API ---
+
+// Validate a route param is a positive integer (rejects floats like "1.5")
+function parsePositiveInt(raw: string): number {
+  return /^\d+$/.test(raw) ? parseInt(raw, 10) : NaN;
+}
+
+// GET /api/challenges/today - get or create today's challenge; includes userBoardId if authenticated
+app.get("/api/challenges/today", async (c) => {
+  try {
+    const sessionId = getCookie(c, "session");
+    const user = sessionId ? await getSessionUser(c.env.DB, sessionId) : null;
+
+    const today = new Date().toISOString().split("T")[0]; // YYYY-MM-DD UTC
+
+    let challenge = await c.env.DB.prepare(
+      "SELECT id, date, prompt FROM daily_challenges WHERE date = ?"
+    ).bind(today).first<{ id: number; date: string; prompt: string }>();
+
+    if (!challenge) {
+      // INSERT ... RETURNING is not reliably supported in D1 - use INSERT then SELECT
+      const { prompt, index } = getRandomHatPrompt();
+      await c.env.DB.prepare(
+        "INSERT OR IGNORE INTO daily_challenges (date, prompt, hat_prompt_index) VALUES (?, ?, ?)"
+      ).bind(today, prompt, index).run();
+      challenge = await c.env.DB.prepare(
+        "SELECT id, date, prompt FROM daily_challenges WHERE date = ?"
+      ).bind(today).first<{ id: number; date: string; prompt: string }>();
+    }
+
+    if (!challenge) {
+      console.error(JSON.stringify({ event: "challenge:today:not_found", date: today }));
+      return c.json({ error: "Failed to get challenge" }, 500);
+    }
+
+    const userBoardId: string | null = user
+      ? (await c.env.DB.prepare(
+          "SELECT board_id FROM challenge_entries WHERE challenge_id = ? AND user_id = ?"
+        ).bind(challenge.id, user.id).first<{ board_id: string }>())?.board_id ?? null
+      : null;
+
+    return c.json({ ...challenge, userBoardId });
+  } catch (err) {
+    console.error(JSON.stringify({ event: "challenge:today:error", error: String(err) }));
+    return c.json({ error: "Failed to load challenge" }, 500);
+  }
+});
+
+// POST /api/challenges/:id/enter - create board + entry (idempotent - returns existing if already entered)
+app.post("/api/challenges/:id/enter", async (c) => {
+  const user = await requireAuth(c);
+  if (!user) return c.text("Unauthorized", 401);
+
+  const challengeId = parsePositiveInt(c.req.param("id"));
+  if (isNaN(challengeId)) return c.text("Invalid challenge id", 400);
+
+  // Check for existing entry (idempotent)
+  const existing = await c.env.DB.prepare(
+    "SELECT board_id FROM challenge_entries WHERE challenge_id = ? AND user_id = ?"
+  ).bind(challengeId, user.id).first<{ board_id: string }>();
+  if (existing) return c.json({ boardId: existing.board_id });
+
+  const challenge = await c.env.DB.prepare(
+    "SELECT id, prompt FROM daily_challenges WHERE id = ?"
+  ).bind(challengeId).first<{ id: number; prompt: string }>();
+  if (!challenge) return c.text("Challenge not found", 404);
+
+  const boardId = crypto.randomUUID();
+  const boardName = `Daily: ${challenge.prompt.length > 40 ? challenge.prompt.slice(0, 40) + "..." : challenge.prompt}`;
+
+  try {
+    await c.env.DB.prepare(
+      "INSERT INTO boards (id, name, created_by, created_at, updated_at, game_mode) VALUES (?, ?, ?, datetime('now'), datetime('now'), 'hat')"
+    ).bind(boardId, boardName, user.id).run();
+    await recordBoardActivity(c.env.DB, boardId);
+    await markBoardSeen(c.env.DB, user.id, boardId);
+    await c.env.DB.prepare(
+      "INSERT INTO challenge_entries (challenge_id, board_id, user_id, created_at) VALUES (?, ?, ?, datetime('now'))"
+    ).bind(challengeId, boardId, user.id).run();
+  } catch (err) {
+    // UNIQUE constraint fired from concurrent request - re-fetch the winner's entry
+    const raceWinner = await c.env.DB.prepare(
+      "SELECT board_id FROM challenge_entries WHERE challenge_id = ? AND user_id = ?"
+    ).bind(challengeId, user.id).first<{ board_id: string }>();
+    if (raceWinner) return c.json({ boardId: raceWinner.board_id });
+    console.error(JSON.stringify({ event: "challenge:enter:error", error: String(err) }));
+    return c.text("Failed to create challenge entry", 500);
+  }
+
+  return c.json({ boardId }, 201);
+});
+
+// GET /api/challenges/:id/leaderboard - top 20 entries by reaction count (public)
+app.get("/api/challenges/:id/leaderboard", async (c) => {
+  const challengeId = parsePositiveInt(c.req.param("id"));
+  if (isNaN(challengeId)) return c.text("Invalid challenge id", 400);
+
+  try {
+    const { results } = await c.env.DB.prepare(
+      `SELECT ce.board_id AS boardId, ce.user_id AS userId,
+              u.display_name AS username, ce.reaction_count AS reactionCount
+       FROM challenge_entries ce
+       JOIN users u ON u.id = ce.user_id
+       WHERE ce.challenge_id = ?
+       ORDER BY ce.reaction_count DESC
+       LIMIT 20`
+    ).bind(challengeId).all<{ boardId: string; userId: string; username: string; reactionCount: number }>();
+
+    return c.json(results);
+  } catch (err) {
+    console.error(JSON.stringify({ event: "challenge:leaderboard:error", challengeId, error: String(err) }));
+    return c.json([], 500);
+  }
 });
 
 // Public gallery endpoint - boards with replay events (no auth)

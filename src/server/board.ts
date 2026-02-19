@@ -194,6 +194,8 @@ export class Board extends DurableObject<Bindings> {
       this.broadcast(
         { type: "reaction", userId: meta.userId, emoji: msg.emoji, x: msg.x, y: msg.y }
       );
+      // Only spectator reactions count toward the challenge leaderboard
+      if (meta.role === "spectator") this.trackReaction();
       return;
     }
 
@@ -366,6 +368,15 @@ export class Board extends DurableObject<Bindings> {
   /** Fire-and-forget D1 activity increment (non-blocking) */
   private trackActivity(): void {
     this.withBoardId("activity:record", (id) => recordBoardActivity(this.env.DB, id));
+  }
+
+  /** Fire-and-forget challenge reaction count increment (no-op if board not linked to a challenge) */
+  private trackReaction(): void {
+    this.withBoardId("challenge:reaction", (boardId) =>
+      this.env.DB.prepare(
+        "UPDATE challenge_entries SET reaction_count = reaction_count + 1 WHERE board_id = ?"
+      ).bind(boardId).run()
+    );
   }
 
   /** Fire-and-forget mark-seen for a user (non-blocking) */

@@ -100,6 +100,23 @@ export const GAME_MODES = [
   { mode: "yesand" as const, label: "Yes-And Chain", icon: "\uD83D\uDD17", description: "Build a 10-beat chain" },
 ] as const;
 
+export interface DailyChallenge {
+  id: number;
+  date: string;
+  prompt: string;
+  /** null when user has not entered; always present in authenticated responses */
+  userBoardId: string | null;
+}
+
+export interface LeaderboardEntry {
+  boardId: string;
+  /** Used for current-user highlighting; compare to AuthUser.id, not displayName */
+  userId: string;
+  username: string;
+  reactionCount: number;
+  // Ordered by reactionCount DESC server-side; rank = array index - do not re-sort
+}
+
 export interface ReplayEvent {
   type: "obj:create" | "obj:update" | "obj:delete";
   ts: number;

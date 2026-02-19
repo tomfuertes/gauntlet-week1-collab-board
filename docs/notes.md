@@ -4,7 +4,8 @@
 
 ## Loose Ends
 
-- **Remote D1 migration 0004 pending** - `npx wrangler login` then `npm run migrate:remote`
+- **Remote D1 migrations 0004 + 0005 pending** - `npx wrangler login` then `npm run migrate:remote`
+- **Daily challenges UAT incomplete** - API smoke tests passed; browser UAT (challenge card, accept flow, leaderboard view, spectator reaction → leaderboard increment) not yet verified
 - **No UAT on game modes or token budgets** - verify: hat prompt card + "Next prompt" advances, yes-and beat counter, budget phases + "New Scene" button, gallery badges, two-browser sync
 - **5 worktrees need cleanup** - all merged, run `scripts/worktree.sh remove <branch>` for each
 
@@ -31,7 +32,7 @@
 | Narrative/relationship state | Formalize who-hates-whom graph. Makes multi-agent structural, not emergent. |
 | Custom AI characters | Replace fixed SPARK/SAGE with user-uploaded personalities. |
 | Mobile-first chat view | Canvas as secondary "stage" for phone users. |
-| Daily scene challenges + leaderboard | Brings people back daily. Needs game modes first (now shipped). |
+| Daily scene challenges + leaderboard | Shipped (feat/daily-challenges branch). Pending merge + remote migration. |
 
 ## Open Tech Debt
 
@@ -69,6 +70,9 @@
 | Feb 19 | Client re-sends gameMode on every message | DO hibernation resilience; D1 stores for gallery |
 | Feb 19 | String() casts for wrangler literal types | [vars] generate literal types ("false" not string) |
 | Feb 19 | Squash merge in merge.sh | GPG agent socket blocked by sandbox; squash commits locally |
+| Feb 19 | INSERT then SELECT (not INSERT...RETURNING) for D1 | RETURNING not confirmed in D1; safer to INSERT OR IGNORE + re-SELECT |
+| Feb 19 | Spectator-only reaction counting for leaderboard | Players could inflate their own score; spectator reactions are organic signal |
+| Feb 19 | userId (not displayName) for current-user highlighting | displayName is mutable + non-unique; userId is stable identity |
 
 ## AI Model Pricing
 

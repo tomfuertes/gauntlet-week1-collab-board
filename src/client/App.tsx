@@ -6,6 +6,7 @@ import { AuthForm } from "./components/AuthForm";
 import { ReplayViewer } from "./components/ReplayViewer";
 import { SpectatorView } from "./components/SpectatorView";
 import { SceneGallery } from "./components/SceneGallery";
+import { LeaderboardPanel } from "./components/LeaderboardPanel";
 import { colors } from "./theme";
 
 class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
@@ -51,6 +52,10 @@ function parseGallery(): boolean {
   return location.hash === "#gallery";
 }
 
+function parseChallenge(): boolean {
+  return location.hash === "#challenge";
+}
+
 function PrivacyPolicy() {
   return (
     <div style={{ minHeight: "100vh", background: colors.bg, color: colors.text, padding: "2rem" }}>
@@ -91,6 +96,7 @@ function AppContent() {
   const [replayId, setReplayId] = useState<string | null>(parseReplayId);
   const [watchId, setWatchId] = useState<string | null>(parseWatchId);
   const [showGallery, setShowGallery] = useState(parseGallery);
+  const [showChallenge, setShowChallenge] = useState(parseChallenge);
 
   // Sync boardId/replayId with hash changes (back/forward navigation)
   useEffect(() => {
@@ -99,6 +105,7 @@ function AppContent() {
       setReplayId(parseReplayId());
       setWatchId(parseWatchId());
       setShowGallery(parseGallery());
+      setShowChallenge(parseChallenge());
     };
     window.addEventListener("hashchange", onHashChange);
     return () => window.removeEventListener("hashchange", onHashChange);
@@ -151,6 +158,16 @@ function AppContent() {
     return (
       <SceneGallery
         onBack={() => { location.hash = ""; setShowGallery(false); }}
+      />
+    );
+  }
+
+  // Challenge leaderboard is public - before auth gate (user may be null)
+  if (showChallenge) {
+    return (
+      <LeaderboardPanel
+        user={user}
+        onBack={() => { location.hash = ""; setShowChallenge(false); }}
       />
     );
   }

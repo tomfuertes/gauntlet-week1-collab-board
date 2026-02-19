@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import type { AuthUser } from "../App";
+import type { DailyChallenge } from "../../shared/types";
 import { colors } from "../theme";
 import { Button } from "./Button";
 
@@ -19,6 +20,9 @@ export function BoardList({ user, onSelectBoard, onLogout }: {
 }) {
   const [boards, setBoards] = useState<BoardMeta[]>([]);
   const [loading, setLoading] = useState(true);
+  const [challenge, setChallenge] = useState<DailyChallenge | null>(null);
+  const [challengeLoading, setChallengeLoading] = useState(true);
+  const [enteringChallenge, setEnteringChallenge] = useState(false);
 
   const fetchBoards = useCallback((signal?: AbortSignal) => {
     return fetch("/api/boards", { signal })
@@ -43,6 +47,37 @@ export function BoardList({ user, onSelectBoard, onLogout }: {
     const interval = setInterval(() => fetchBoards(), 30_000);
     return () => { controller.abort(); clearInterval(interval); };
   }, [fetchBoards]);
+
+  useEffect(() => {
+    const ac = new AbortController();
+    fetch("/api/challenges/today", { signal: ac.signal })
+      .then((r) => r.ok ? r.json() as Promise<DailyChallenge> : Promise.reject(r.status))
+      .then(setChallenge)
+      .catch((err: unknown) => {
+        if (ac.signal.aborted) return;
+        console.error(JSON.stringify({ event: "challenge:today:fetch:error", error: String(err) }));
+      })
+      .finally(() => { if (!ac.signal.aborted) setChallengeLoading(false); });
+    return () => ac.abort();
+  }, []);
+
+  const handleAcceptChallenge = async () => {
+    if (!challenge) return;
+    setEnteringChallenge(true);
+    try {
+      const res = await fetch(`/api/challenges/${challenge.id}/enter`, { method: "POST" });
+      if (!res.ok) {
+        console.error(JSON.stringify({ event: "challenge:enter:error", status: res.status }));
+        return;
+      }
+      const { boardId } = await res.json() as { boardId: string };
+      onSelectBoard(boardId);
+    } catch (err) {
+      console.error(JSON.stringify({ event: "challenge:enter:fetch:error", error: String(err) }));
+    } finally {
+      setEnteringChallenge(false);
+    }
+  };
 
   const handleCreate = async () => {
     const res = await fetch("/api/boards", {
@@ -86,6 +121,9 @@ export function BoardList({ user, onSelectBoard, onLogout }: {
       }}>
         <span style={{ fontWeight: 600 }}>CollabBoard</span>
         <div style={{ display: "flex", alignItems: "center", gap: "1rem" }}>
+          <Button onClick={() => { location.hash = "challenge"; }} style={{ color: colors.warning }}>
+            Daily Challenge
+          </Button>
           <Button onClick={() => { location.hash = "gallery"; }} style={{ color: colors.accentLight }}>
             Gallery
           </Button>
@@ -96,6 +134,54 @@ export function BoardList({ user, onSelectBoard, onLogout }: {
 
       {/* Board grid */}
       <div style={{ maxWidth: 960, margin: "0 auto", padding: "2rem 1rem" }}>
+        {/* Daily Challenge card */}
+        {!challengeLoading && challenge && (
+          <div style={{
+            background: `linear-gradient(135deg, rgba(250, 204, 21, 0.08) 0%, rgba(251, 146, 60, 0.08) 100%)`,
+            border: `1px solid rgba(250, 204, 21, 0.3)`,
+            borderRadius: 8, padding: "1.25rem 1.5rem",
+            marginBottom: "1.5rem", display: "flex",
+            alignItems: "center", justifyContent: "space-between", gap: "1rem",
+            flexWrap: "wrap",
+          }}>
+            <div>
+              <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: 4 }}>
+                <span style={{ fontSize: "1rem" }}>🎩</span>
+                <span style={{ fontWeight: 700, color: colors.warning, fontSize: "0.875rem", letterSpacing: "0.05em" }}>
+                  TODAY'S DAILY CHALLENGE
+                </span>
+              </div>
+              <div style={{ fontSize: "1rem", fontWeight: 600, color: colors.text }}>
+                {challenge.prompt}
+              </div>
+            </div>
+            <div style={{ display: "flex", gap: "0.5rem", alignItems: "center", flexShrink: 0 }}>
+              <Button
+                variant="link"
+                onClick={() => { location.hash = "challenge"; }}
+                style={{ color: colors.textMuted, fontSize: "0.8125rem" }}
+              >
+                Leaderboard
+              </Button>
+              {challenge.userBoardId ? (
+                <Button
+                  onClick={() => onSelectBoard(challenge.userBoardId!)}
+                  style={{ background: colors.success, color: "#000", fontWeight: 600 }}
+                >
+                  Continue Your Scene
+                </Button>
+              ) : (
+                <Button
+                  onClick={handleAcceptChallenge}
+                  style={{ background: colors.warning, color: "#000", fontWeight: 700 }}
+                >
+                  {enteringChallenge ? "Starting..." : "Accept Challenge"}
+                </Button>
+              )}
+            </div>
+          </div>
+        )}
+
         <h2 style={{ fontSize: "1.25rem", fontWeight: 600, marginBottom: "1rem" }}>Your Boards</h2>
 
         {loading ? (
