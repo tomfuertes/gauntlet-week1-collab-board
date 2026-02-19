@@ -3,6 +3,7 @@ import { Board } from "./components/Board";
 import { BoardList } from "./components/BoardList";
 import { AuthForm } from "./components/AuthForm";
 import { ReplayViewer } from "./components/ReplayViewer";
+import { SpectatorView } from "./components/SpectatorView";
 import { SceneGallery } from "./components/SceneGallery";
 import { colors } from "./theme";
 
@@ -19,6 +20,11 @@ function parseBoardId(): string | null {
 
 function parseReplayId(): string | null {
   const match = location.hash.match(/^#replay\/(.+)$/);
+  return match ? match[1] : null;
+}
+
+function parseWatchId(): string | null {
+  const match = location.hash.match(/^#watch\/(.+)$/);
   return match ? match[1] : null;
 }
 
@@ -62,6 +68,7 @@ export function App() {
   const [loading, setLoading] = useState(true);
   const [boardId, setBoardId] = useState<string | null>(parseBoardId);
   const [replayId, setReplayId] = useState<string | null>(parseReplayId);
+  const [watchId, setWatchId] = useState<string | null>(parseWatchId);
   const [showGallery, setShowGallery] = useState(parseGallery);
 
   // Sync boardId/replayId with hash changes (back/forward navigation)
@@ -69,6 +76,7 @@ export function App() {
     const onHashChange = () => {
       setBoardId(parseBoardId());
       setReplayId(parseReplayId());
+      setWatchId(parseWatchId());
       setShowGallery(parseGallery());
     };
     window.addEventListener("hashchange", onHashChange);
@@ -102,6 +110,17 @@ export function App() {
         key={replayId}
         boardId={replayId}
         onBack={() => { location.hash = ""; setReplayId(null); }}
+      />
+    );
+  }
+
+  // Live spectator view is public - before auth gate
+  if (watchId) {
+    return (
+      <SpectatorView
+        key={watchId}
+        boardId={watchId}
+        onBack={() => { location.hash = ""; setWatchId(null); }}
       />
     );
   }

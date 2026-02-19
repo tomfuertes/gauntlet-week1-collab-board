@@ -1,60 +1,29 @@
 import { useEffect, useRef, useCallback, useState } from "react";
 import type { WSClientMessage, WSServerMessage, BoardObject } from "@shared/types";
+import type { ConnectionState, CursorState, Reaction } from "./useWebSocket";
 
-export type ConnectionState = "connecting" | "connected" | "reconnecting" | "disconnected";
-
-export interface CursorState {
-  userId: string;
-  username: string;
-  x: number;
-  y: number;
-}
-
-export interface TextCursorState {
-  userId: string;
-  username: string;
-  objectId: string;
-  position: number;
-  lastSeen: number;
-}
-
-const TEXT_CURSOR_TTL_MS = 5000; // clear stale editing indicators if no update within 5s
-
-export interface Reaction {
-  id: string;
-  emoji: string;
-  x: number;
-  y: number;
-  ts: number;
-}
-
-interface UseWebSocketReturn {
+interface UseSpectatorSocketReturn {
   connectionState: ConnectionState;
   initialized: boolean;
   cursors: Map<string, CursorState>;
-  textCursors: Map<string, TextCursorState>;
   objects: Map<string, BoardObject>;
   presence: { id: string; username: string }[];
   spectatorCount: number;
   reactions: Reaction[];
-  send: (msg: WSClientMessage) => void;
-  createObject: (obj: BoardObject) => void;
-  updateObject: (partial: Partial<BoardObject> & { id: string }) => void;
-  deleteObject: (id: string) => void;
-  batchUndo: (batchId: string) => void;
-  lastServerMessageAt: React.RefObject<number>;
+  sendCursor: (x: number, y: number) => void;
+  sendReaction: (emoji: string, x: number, y: number) => void;
 }
 
 const BACKOFF_BASE_MS = 1000;
 const BACKOFF_CAP_MS = 8000;
+// Reactions older than this are cleaned up
+const REACTION_TTL_MS = 3000;
 
-export function useWebSocket(boardId: string): UseWebSocketReturn {
+export function useSpectatorSocket(boardId: string): UseSpectatorSocketReturn {
   const wsRef = useRef<WebSocket | null>(null);
-  const lastServerMessageAt = useRef(0);
   const [connectionState, setConnectionState] = useState<ConnectionState>("connecting");
   const [initialized, setInitialized] = useState(false);
   const [cursors, setCursors] = useState<Map<string, CursorState>>(new Map());
-  const [textCursors, setTextCursors] = useState<Map<string, TextCursorState>>(new Map());
   const [objects, setObjects] = useState<Map<string, BoardObject>>(new Map());
   const [presence, setPresence] = useState<{ id: string; username: string }[]>([]);
   const [spectatorCount, setSpectatorCount] = useState(0);
@@ -69,7 +38,7 @@ export function useWebSocket(boardId: string): UseWebSocketReturn {
       if (intentionalClose) return;
 
       const protocol = location.protocol === "https:" ? "wss:" : "ws:";
-      const ws = new WebSocket(`${protocol}//${location.host}/ws/board/${boardId}`);
+      const ws = new WebSocket(`${protocol}//${location.host}/ws/watch/${boardId}`);
       wsRef.current = ws;
 
       ws.onopen = () => {
@@ -77,32 +46,29 @@ export function useWebSocket(boardId: string): UseWebSocketReturn {
         setConnectionState("connected");
       };
 
-      ws.onclose = (event: CloseEvent) => {
+      ws.onclose = () => {
         wsRef.current = null;
         if (intentionalClose) {
           setConnectionState("disconnected");
           return;
         }
-        console.warn(`[WS] closed: code=${event.code} reason="${event.reason}" clean=${event.wasClean}`);
         setConnectionState("reconnecting");
         const base = Math.min(BACKOFF_BASE_MS * 2 ** attempt, BACKOFF_CAP_MS);
-        const delay = base * (0.5 + Math.random() * 0.5); // jitter to avoid thundering herd
+        const delay = base * (0.5 + Math.random() * 0.5);
         attempt++;
         reconnectTimer = setTimeout(connect, delay);
       };
 
-      // When onerror fires, onclose always follows - reconnect logic lives in onclose
       ws.onerror = () => {
-        console.error(`[WS] error on board ${boardId} (attempt ${attempt})`);
+        console.error(`[WS:spectator] error on board ${boardId} (attempt ${attempt})`);
       };
 
       ws.onmessage = (event) => {
-        lastServerMessageAt.current = performance.now();
         let msg: WSServerMessage;
         try {
           msg = JSON.parse(event.data) as WSServerMessage;
         } catch { // intentional: malformed server messages are non-recoverable
-          console.error("[WS] failed to parse message:", event.data);
+          console.error("[WS:spectator] failed to parse message:", event.data);
           return;
         }
 
@@ -110,7 +76,6 @@ export function useWebSocket(boardId: string): UseWebSocketReturn {
           case "init":
             setObjects(new Map(msg.objects.map((o) => [o.id, o])));
             setCursors(new Map());
-            setTextCursors(new Map());
             setInitialized(true);
             break;
           case "cursor":
@@ -120,27 +85,12 @@ export function useWebSocket(boardId: string): UseWebSocketReturn {
               return next;
             });
             break;
-          case "text:cursor":
-            setTextCursors((prev) => {
-              const next = new Map(prev);
-              next.set(msg.userId, { userId: msg.userId, username: msg.username, objectId: msg.objectId, position: msg.position, lastSeen: Date.now() });
-              return next;
-            });
-            break;
-          case "text:blur":
-            setTextCursors((prev) => {
-              const next = new Map(prev);
-              next.delete(msg.userId);
-              return next;
-            });
-            break;
           case "presence":
             setPresence(msg.users);
             setSpectatorCount(msg.spectatorCount);
-            // Remove cursors for players no longer present (cleans up AI ghost cursor).
-            // Skip spectator-* IDs - they aren't in the users list by design.
+            // Skip spectator-* IDs in cursor cleanup - they aren't in the users list
             setCursors((prev) => {
-              const activeIds = new Set(msg.users.map((u: { id: string }) => u.id));
+              const activeIds = new Set(msg.users.map((u) => u.id));
               let changed = false;
               const next = new Map(prev);
               for (const userId of next.keys()) {
@@ -158,7 +108,6 @@ export function useWebSocket(boardId: string): UseWebSocketReturn {
               const next = new Map(prev);
               const existing = next.get(msg.obj.id);
               if (!existing) return prev;
-              // Server sends full object - LWW: apply if same age or newer
               const merged = msg.obj as BoardObject;
               if (merged.updatedAt && merged.updatedAt >= existing.updatedAt) {
                 next.set(msg.obj.id, merged);
@@ -180,7 +129,6 @@ export function useWebSocket(boardId: string): UseWebSocketReturn {
             ]);
             break;
           case "board:deleted":
-            // Board was deleted by owner - navigate away
             intentionalClose = true;
             wsRef.current?.close();
             setConnectionState("disconnected");
@@ -203,29 +151,10 @@ export function useWebSocket(boardId: string): UseWebSocketReturn {
     };
   }, [boardId]);
 
-  // Sweep stale text cursors - handles text:blur dropped on WS disconnect
+  // Clean up expired reactions
   useEffect(() => {
     const id = setInterval(() => {
-      const now = Date.now();
-      setTextCursors((prev) => {
-        let changed = false;
-        const next = new Map(prev);
-        for (const [userId, tc] of next) {
-          if (now - tc.lastSeen > TEXT_CURSOR_TTL_MS) {
-            next.delete(userId);
-            changed = true;
-          }
-        }
-        return changed ? next : prev;
-      });
-    }, 2000);
-    return () => clearInterval(id);
-  }, []);
-
-  // Clean up expired reactions (3s TTL)
-  useEffect(() => {
-    const id = setInterval(() => {
-      const cutoff = Date.now() - 3000;
+      const cutoff = Date.now() - REACTION_TTL_MS;
       setReactions((prev) => {
         const next = prev.filter((r) => r.ts > cutoff);
         return next.length === prev.length ? prev : next;
@@ -234,43 +163,17 @@ export function useWebSocket(boardId: string): UseWebSocketReturn {
     return () => clearInterval(id);
   }, []);
 
-  const send = useCallback((msg: WSClientMessage) => {
+  const sendCursor = useCallback((x: number, y: number) => {
     if (wsRef.current?.readyState === WebSocket.OPEN) {
-      wsRef.current.send(JSON.stringify(msg));
-    } else if (msg.type !== "cursor" && msg.type !== "text:cursor" && msg.type !== "text:blur") {
-      console.warn("[WS] dropping message while disconnected:", msg.type);
+      wsRef.current.send(JSON.stringify({ type: "cursor", x, y } satisfies WSClientMessage));
     }
   }, []);
 
-  const createObject = useCallback((obj: BoardObject) => {
-    setObjects((prev) => new Map(prev).set(obj.id, obj));
-    send({ type: "obj:create", obj });
-  }, [send]);
+  const sendReaction = useCallback((emoji: string, x: number, y: number) => {
+    if (wsRef.current?.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify({ type: "reaction", emoji, x, y } satisfies WSClientMessage));
+    }
+  }, []);
 
-  const updateObject = useCallback((partial: Partial<BoardObject> & { id: string }) => {
-    const now = Date.now();
-    setObjects((prev) => {
-      const next = new Map(prev);
-      const existing = next.get(partial.id);
-      if (existing) next.set(partial.id, { ...existing, ...partial, updatedAt: now });
-      return next;
-    });
-    send({ type: "obj:update", obj: { ...partial, updatedAt: now } });
-  }, [send]);
-
-  const deleteObject = useCallback((id: string) => {
-    setObjects((prev) => {
-      const next = new Map(prev);
-      next.delete(id);
-      return next;
-    });
-    send({ type: "obj:delete", id });
-  }, [send]);
-
-  /** Send batch:undo to Board DO via WS - deletes all objects with matching batchId server-side */
-  const batchUndo = useCallback((batchId: string) => {
-    send({ type: "batch:undo", batchId });
-  }, [send]);
-
-  return { connectionState, initialized, cursors, textCursors, objects, presence, spectatorCount, reactions, send, createObject, updateObject, deleteObject, batchUndo, lastServerMessageAt };
+  return { connectionState, initialized, cursors, objects, presence, spectatorCount, reactions, sendCursor, sendReaction };
 }

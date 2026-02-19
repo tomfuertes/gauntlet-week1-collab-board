@@ -112,3 +112,27 @@
 .chat-pulse-text {
   animation: chat-pulse 2s ease-in-out infinite;
 }
+
+/* Spectator reaction - emoji floats up and fades out */
+@keyframes cb-reaction-float {
+  0% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+  70% {
+    opacity: 1;
+    transform: translateY(-60px) scale(1.2);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-100px) scale(0.8);
+  }
+}
+
+.cb-reaction {
+  position: absolute;
+  pointer-events: none;
+  font-size: 2rem;
+  animation: cb-reaction-float 2.5s ease-out forwards;
+  z-index: 50;
+}

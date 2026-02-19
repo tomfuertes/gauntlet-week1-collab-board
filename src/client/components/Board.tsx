@@ -347,7 +347,7 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
   // Bulk drag state
   const dragStartPositionsRef = useRef<Map<string, { x: number; y: number }>>(new Map());
 
-  const { connectionState, initialized, cursors, textCursors, objects, presence, send, createObject: wsCreate, updateObject: wsUpdate, deleteObject: wsDelete, batchUndo, lastServerMessageAt } = useWebSocket(boardId);
+  const { connectionState, initialized, cursors, textCursors, objects, presence, spectatorCount, reactions, send, createObject: wsCreate, updateObject: wsUpdate, deleteObject: wsDelete, batchUndo, lastServerMessageAt } = useWebSocket(boardId);
 
   const { createObject, updateObject, deleteObject, startBatch, commitBatch, undo, redo, pushExternalBatch, topTag } = useUndoRedo(objects, wsCreate, wsUpdate, wsDelete);
   const { aiGlowIds, confettiPos, confettiKey, clearConfetti } = useAiObjectEffects(objects, initialized, scale, stagePos, size);
@@ -986,7 +986,7 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: "1rem" }}>
           {/* Presence avatars */}
-          <div style={{ display: "flex", gap: 4 }}>
+          <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
             {presence.map((p) => {
               const isAi = p.id === AI_USER_ID;
               return (
@@ -1000,15 +1000,20 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
                 </span>
               );
             })}
+            {spectatorCount > 0 && (
+              <span style={{ color: colors.textDim, fontSize: "0.75rem", marginLeft: 4 }}>
+                {spectatorCount} watching
+              </span>
+            )}
           </div>
           <span style={{ color: "#888" }}>{Math.round(scale * 100)}%</span>
           <span>{user.displayName}</span>
           <button onClick={() => {
-            navigator.clipboard.writeText(`${location.origin}/#replay/${boardId}`);
+            navigator.clipboard.writeText(`${location.origin}/#watch/${boardId}`);
             setCopied(true);
             setTimeout(() => setCopied(false), 2000);
           }} style={{ background: "none", border: "1px solid #475569", borderRadius: 4, color: "#94a3b8", padding: "0.25rem 0.5rem", cursor: "pointer", fontSize: "0.75rem" }}>
-            {copied ? "Copied!" : "Share Scene"}
+            {copied ? "Copied!" : "Invite Spectators"}
           </button>
           <button onClick={handleLogout} style={{ background: "none", border: "1px solid #475569", borderRadius: 4, color: "#94a3b8", padding: "0.25rem 0.5rem", cursor: "pointer", fontSize: "0.75rem" }}>
             Logout
@@ -1476,6 +1481,17 @@ export function Board({ user, boardId, onLogout, onBack }: { user: AuthUser; boa
 
       {/* Confetti burst (first object + AI multi-create) */}
       {confettiPos && <ConfettiBurst key={confettiKey} x={confettiPos.x} y={confettiPos.y} onDone={clearConfetti} />}
+
+      {/* Floating reactions from spectators */}
+      {reactions.map((r) => {
+        const screenX = r.x * scale + stagePos.x;
+        const screenY = r.y * scale + stagePos.y;
+        return (
+          <span key={r.id} className="cb-reaction" style={{ left: screenX, top: screenY }}>
+            {r.emoji}
+          </span>
+        );
+      })}
 
       {/* Performance overlay (Shift+P or backtick to toggle) */}
       <PerfOverlay
