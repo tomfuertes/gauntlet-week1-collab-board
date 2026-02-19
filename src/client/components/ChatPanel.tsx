@@ -5,7 +5,7 @@ import { isToolUIPart, getToolName } from "ai";
 import type { UIMessage } from "ai";
 import { colors, getUserColor } from "../theme";
 import { Button } from "./Button";
-import { PERSONA_COLORS } from "../../shared/types";
+import { PERSONA_COLORS, SCENE_TURN_BUDGET } from "../../shared/types";
 import "../styles/animations.css";
 import { BOARD_TEMPLATES } from "../../shared/board-templates";
 import type { ToolName } from "../../server/ai-tools-sdk";
@@ -208,6 +208,7 @@ export function ChatPanel({ boardId, username, onClose, initialPrompt, selectedI
     sendMessage: sdkSendMessage,
     status: sdkStatus,
     error: sdkError,
+    clearHistory,
   } = useAgentChat({
     agent,
     body: { selectedIds: selectedIdsArray, username },
@@ -278,6 +279,10 @@ export function ChatPanel({ boardId, username, onClose, initialPrompt, selectedI
   };
 
   const userMessageCount = uiMessages.filter((m) => m.role === "user").length;
+  const budgetPct = userMessageCount / SCENE_TURN_BUDGET;
+  const isSceneOver = userMessageCount >= SCENE_TURN_BUDGET && !loading;
+  const budgetLabel = budgetPct >= 0.8 ? "Finale" : budgetPct >= 0.6 ? "Act 3" : null;
+  const budgetColor = budgetPct >= 0.8 ? "#f87171" : "#fbbf24";
 
   return (
     <div style={{
@@ -293,10 +298,26 @@ export function ChatPanel({ boardId, username, onClose, initialPrompt, selectedI
         padding: "0 1rem", borderBottom: "1px solid #334155", flexShrink: 0,
         borderRadius: "12px 12px 0 0",
       }}>
-        <span style={{ color: "#e2e8f0", fontWeight: 600, fontSize: "0.875rem" }}>
-          <span style={{ color: PERSONA_COLORS.SPARK }}>SPARK</span>
-          {" & "}
-          <span style={{ color: PERSONA_COLORS.SAGE }}>SAGE</span>
+        <span style={{ color: "#e2e8f0", fontWeight: 600, fontSize: "0.875rem", display: "flex", alignItems: "center", gap: 8 }}>
+          <span>
+            <span style={{ color: PERSONA_COLORS.SPARK }}>SPARK</span>
+            {" & "}
+            <span style={{ color: PERSONA_COLORS.SAGE }}>SAGE</span>
+          </span>
+          {budgetLabel && (
+            <span style={{
+              fontSize: "0.625rem",
+              fontWeight: 700,
+              color: budgetColor,
+              background: `${budgetColor}18`,
+              border: `1px solid ${budgetColor}44`,
+              borderRadius: 10,
+              padding: "1px 8px",
+              animation: budgetPct >= 0.8 ? "cb-pulse 2s ease-in-out infinite" : undefined,
+            }}>
+              {budgetLabel}
+            </span>
+          )}
         </span>
         <button onClick={onClose} style={{
           background: "none", border: "none", color: "#94a3b8", cursor: "pointer",
@@ -424,65 +445,87 @@ export function ChatPanel({ boardId, username, onClose, initialPrompt, selectedI
       </div>
 
       {/* Chips bar: scene templates when empty, intent chips when in-scene */}
-      <div style={{
-        padding: "0.375rem 0.75rem", borderTop: "1px solid #1e293b", flexShrink: 0,
-        display: "flex", gap: 6, overflowX: "auto", alignItems: "center",
-      }}>
-        {uiMessages.length === 0 ? (
-          BOARD_TEMPLATES.map((t) => (
-            <ChipButton
-              key={t.label}
-              label={t.label}
-              color={colors.textMuted}
-              borderRadius={6}
-              disabled={loading}
-              onClick={() => sendMessage(t.prompt)}
-            />
-          ))
-        ) : (
-          getIntentChips(userMessageCount).map((chip) => (
-            <ChipButton
-              key={chip.prompt}
-              label={chip.prompt}
-              color={CATEGORY_COLORS[chip.category]}
-              borderRadius={16}
-              disabled={loading}
-              onClick={() => sendMessage(chip.prompt)}
-            />
-          ))
-        )}
-      </div>
+      {!isSceneOver && (
+        <div style={{
+          padding: "0.375rem 0.75rem", borderTop: "1px solid #1e293b", flexShrink: 0,
+          display: "flex", gap: 6, overflowX: "auto", alignItems: "center",
+        }}>
+          {uiMessages.length === 0 ? (
+            BOARD_TEMPLATES.map((t) => (
+              <ChipButton
+                key={t.label}
+                label={t.label}
+                color={colors.textMuted}
+                borderRadius={6}
+                disabled={loading}
+                onClick={() => sendMessage(t.prompt)}
+              />
+            ))
+          ) : (
+            getIntentChips(userMessageCount).map((chip) => (
+              <ChipButton
+                key={chip.prompt}
+                label={chip.prompt}
+                color={CATEGORY_COLORS[chip.category]}
+                borderRadius={16}
+                disabled={loading || isSceneOver}
+                onClick={() => sendMessage(chip.prompt)}
+              />
+            ))
+          )}
+        </div>
+      )}
 
-      {/* Input */}
-      <div style={{
-        padding: "0.75rem", borderTop: "1px solid #334155", flexShrink: 0,
-        display: "flex", gap: "0.5rem", borderRadius: "0 0 12px 12px",
-      }}>
-        <textarea
-          ref={inputRef}
-          placeholder="Ask the AI..."
-          onKeyDown={handleKeyDown}
-          rows={1}
-          style={{
-            flex: 1, resize: "none", background: "#1e293b", border: "1px solid #334155",
-            borderRadius: 8, padding: "0.5rem 0.75rem", color: "#e2e8f0",
-            fontSize: "0.8125rem", outline: "none", fontFamily: "inherit",
-            maxHeight: 120, overflowY: "auto",
-          }}
-        />
-        <Button
-          variant="primary"
-          size="md"
-          onClick={handleSubmit}
-          disabled={loading}
-          style={{
-            background: loading ? colors.accentDark : colors.accent,
-            borderRadius: 8, fontSize: "0.8125rem", fontWeight: 600, flexShrink: 0,
-          }}
-        >
-          Send
-        </Button>
-      </div>
+      {/* Input / Scene complete */}
+      {isSceneOver ? (
+        <div style={{
+          padding: "0.75rem", borderTop: "1px solid #334155", flexShrink: 0,
+          display: "flex", flexDirection: "column", alignItems: "center", gap: 8,
+          borderRadius: "0 0 12px 12px",
+        }}>
+          <span style={{ color: "#94a3b8", fontSize: "0.8125rem", fontWeight: 600 }}>
+            Scene complete
+          </span>
+          <Button
+            variant="primary"
+            size="md"
+            onClick={() => clearHistory()}
+            style={{ borderRadius: 8, fontSize: "0.8125rem", fontWeight: 600 }}
+          >
+            New Scene
+          </Button>
+        </div>
+      ) : (
+        <div style={{
+          padding: "0.75rem", borderTop: "1px solid #334155", flexShrink: 0,
+          display: "flex", gap: "0.5rem", borderRadius: "0 0 12px 12px",
+        }}>
+          <textarea
+            ref={inputRef}
+            placeholder="Ask the AI..."
+            onKeyDown={handleKeyDown}
+            rows={1}
+            style={{
+              flex: 1, resize: "none", background: "#1e293b", border: "1px solid #334155",
+              borderRadius: 8, padding: "0.5rem 0.75rem", color: "#e2e8f0",
+              fontSize: "0.8125rem", outline: "none", fontFamily: "inherit",
+              maxHeight: 120, overflowY: "auto",
+            }}
+          />
+          <Button
+            variant="primary"
+            size="md"
+            onClick={handleSubmit}
+            disabled={loading}
+            style={{
+              background: loading ? colors.accentDark : colors.accent,
+              borderRadius: 8, fontSize: "0.8125rem", fontWeight: 600, flexShrink: 0,
+            }}
+          >
+            Send
+          </Button>
+        </div>
+      )}
     </div>
   );
 }

@@ -89,6 +89,9 @@ export const PERSONA_META = [
 export const PERSONA_COLORS: Record<string, string> =
   Object.fromEntries(PERSONA_META.map((p) => [p.name, p.color]));
 
+/** Max human turns per scene before AI wraps up */
+export const SCENE_TURN_BUDGET = 20;
+
 export interface ReplayEvent {
   type: "obj:create" | "obj:update" | "obj:delete";
   ts: number;

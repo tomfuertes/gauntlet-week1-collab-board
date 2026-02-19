@@ -6,7 +6,7 @@
 import { PERSONA_META } from "../shared/types";
 
 /** Bump when prompt content changes - logged with every AI request for correlation */
-export const PROMPT_VERSION = "v3";
+export const PROMPT_VERSION = "v4";
 
 // ---------------------------------------------------------------------------
 // Multi-agent personas - two AI characters with distinct improv styles
@@ -97,6 +97,35 @@ export const DIRECTOR_PROMPTS: Record<ScenePhase, string> = {
     "Maximum tension. Everything should converge. Reference callbacks from earlier in the scene. Use getBoardState to find early elements and bring them back at the worst possible moment.",
   callback:
     "Full circle. Reference the very first elements of the scene. Create a callback that ties everything together with a twist. Check getBoardState for the oldest objects.",
+};
+
+// ---------------------------------------------------------------------------
+// Per-scene turn budget - dramatic constraint that creates natural endings
+// Budget counts human turns only; AI/director turns don't consume budget.
+// ---------------------------------------------------------------------------
+
+export type BudgetPhase = "normal" | "act3" | "final-beat" | "scene-over";
+
+export function computeBudgetPhase(humanTurns: number, budget: number): BudgetPhase {
+  const pct = humanTurns / budget;
+  if (pct < 0.6) return "normal";
+  if (pct < 0.8) return "act3";
+  if (pct < 0.95) return "final-beat";
+  return "scene-over";
+}
+
+export const BUDGET_PROMPTS: Record<Exclude<BudgetPhase, "normal">, string> = {
+  "act3":
+    `[SCENE BUDGET: ACT 3] The scene is entering its final act. ` +
+    `Pull threads together. Callback to earlier moments. Begin resolving tensions. ` +
+    `The audience can feel the ending approaching.`,
+  "final-beat":
+    `[SCENE BUDGET: FINALE] This is the last few lines before the bow. ` +
+    `Wrap up. Deliver punchlines, resolve the main tension. Reference the very first elements. ` +
+    `Make every line count.`,
+  "scene-over":
+    `[SCENE BUDGET: FINAL BOW] ONE closing line - a callback to the very first element of the scene. ` +
+    `Then deliver a brief scene summary (2-3 sentences) of the whole arc. Take a bow.`,
 };
 
 export const SYSTEM_PROMPT = `You are an improv scene partner on a shared canvas. This is multiplayer - messages come from different users (their name appears before their message). Address players by name when responding.

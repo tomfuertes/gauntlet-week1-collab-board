@@ -122,7 +122,7 @@ open board -> play scene -> share replay link -> recruit new player
 | Feature | Notes |
 |---------|-------|
 | Improv game modes | Scenes From a Hat, Yes-And chains - structured replayability. Pairs well with token budgets. |
-| Per-scene token budgets | Natural scene endings via turn/token limits. Cost ceiling = dramatic constraint. Quick (~chat-agent.ts only). |
+| ~~Per-scene token budgets~~ | **Shipped.** 20-turn budget, 4 phases (normal/act3/final-beat/scene-over), budget-aware prompts, "New Scene" button. |
 | Narrative/relationship state | Formalize who-hates-whom graph. Makes multi-agent "yes, and" structural, not emergent. |
 | Custom AI characters | Replace fixed SPARK/SAGE with user-uploaded personalities. Extends multi-agent. |
 | Mobile-first chat view | Canvas as secondary "stage" - phone users |

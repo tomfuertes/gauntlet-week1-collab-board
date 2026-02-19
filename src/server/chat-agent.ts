@@ -17,10 +17,13 @@ import {
   PERSONAS,
   MAX_AUTONOMOUS_EXCHANGES,
   buildPersonaSystemPrompt,
+  computeBudgetPhase,
+  BUDGET_PROMPTS,
 } from "./prompts";
 import type { Bindings } from "./env";
 import { recordBoardActivity } from "./env";
 import type { BoardObject, BoardObjectProps } from "../shared/types";
+import { SCENE_TURN_BUDGET } from "../shared/types";
 
 /**
  * Sanitize UIMessages to ensure all tool invocation inputs are valid objects.
@@ -167,7 +170,28 @@ export class ChatAgent extends AIChatAgent<Bindings> {
     this._autonomousExchangeCount = 0; // human spoke - reset cooldown
     const startTime = Date.now();
     const activePersona = PERSONAS[this._activePersonaIndex];
-    this._logRequestStart("chat", activePersona.name);
+    // Budget enforcement: count human turns (the message just added is already in this.messages)
+    const humanTurns = this.messages.filter((m) => m.role === "user").length;
+    const budgetPhase = computeBudgetPhase(humanTurns, SCENE_TURN_BUDGET);
+    this._logRequestStart("chat", activePersona.name, { budgetPhase, humanTurns });
+
+    // Reject if scene is over - the last human message pushed us past the budget
+    if (humanTurns > SCENE_TURN_BUDGET) {
+      this._isGenerating = false;
+      console.debug(JSON.stringify({ event: "budget:reject", boardId: this.name, humanTurns, budget: SCENE_TURN_BUDGET }));
+      // Build a "scene is over" assistant message so the client sees feedback
+      const overMsg: UIMessage = {
+        id: crypto.randomUUID(),
+        role: "assistant",
+        parts: [{ type: "text" as const, text: `[${activePersona.name}] Scene's over! That was a great run. Start a new scene to play again.` }],
+      };
+      this.messages.push(overMsg);
+      await this.persistMessages(this.messages);
+      return new Response(JSON.stringify({ error: "scene-over" }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
 
     // Record chat activity for async notifications (non-blocking)
     this.ctx.waitUntil(
@@ -183,6 +207,11 @@ export class ChatAgent extends AIChatAgent<Bindings> {
 
     // Build persona-aware system prompt with optional selection + multiplayer context
     let systemPrompt = buildPersonaSystemPrompt(this._activePersonaIndex, SYSTEM_PROMPT);
+
+    // Inject budget phase prompt when not in normal phase
+    if (budgetPhase !== "normal") {
+      systemPrompt += `\n\n${BUDGET_PROMPTS[budgetPhase]}`;
+    }
     const body =
       options && "body" in options ? (options as any).body : undefined;
 
@@ -376,6 +405,13 @@ export class ChatAgent extends AIChatAgent<Bindings> {
   /** After the active persona finishes, trigger the other persona to react.
    *  Claims _isGenerating mutex BEFORE the delay to prevent TOCTOU races. */
   private async _triggerReactivePersona(activeIndex: number) {
+    // Guard: scene budget exhausted - no reactive exchanges after scene ends
+    const reactiveHumanTurns = this.messages.filter((m) => m.role === "user").length;
+    if (computeBudgetPhase(reactiveHumanTurns, SCENE_TURN_BUDGET) === "scene-over") {
+      console.debug(JSON.stringify({ event: "reactive:skip", reason: "scene-over", boardId: this.name }));
+      return;
+    }
+
     // Guard: cooldown exceeded (check before claiming mutex)
     if (this._autonomousExchangeCount >= MAX_AUTONOMOUS_EXCHANGES) {
       console.debug(JSON.stringify({ event: "reactive:skip", reason: "cooldown", boardId: this.name }));
@@ -546,17 +582,23 @@ export class ChatAgent extends AIChatAgent<Bindings> {
       return;
     }
 
+    // Guard: skip if scene budget exhausted - don't nudge a completed scene
+    const directorHumanTurns = this.messages.filter((m) => m.role === "user").length;
+    const directorBudget = computeBudgetPhase(directorHumanTurns, SCENE_TURN_BUDGET);
+    if (directorBudget === "scene-over") {
+      console.debug(JSON.stringify({ event: "director:skip", reason: "scene-over", boardId: this.name, humanTurns: directorHumanTurns }));
+      return;
+    }
+
     this._isGenerating = true;
     const startTime = Date.now();
     const directorPersona = PERSONAS[this._activePersonaIndex];
     const directorIndex = this._activePersonaIndex;
 
     // Determine scene phase from user message count
-    const userMessageCount = this.messages.filter(
-      (m) => m.role === "user",
-    ).length;
+    const userMessageCount = directorHumanTurns;
     const phase = computeScenePhase(userMessageCount);
-    this._logRequestStart("director", directorPersona.name, { messageCount: this.messages.length });
+    this._logRequestStart("director", directorPersona.name, { messageCount: this.messages.length, budgetPhase: directorBudget });
 
     const doId = this.env.BOARD.idFromName(this.name);
     const boardStub = this.env.BOARD.get(doId);
@@ -569,14 +611,17 @@ export class ChatAgent extends AIChatAgent<Bindings> {
     });
 
     try {
-      // Director nudge uses the active persona's voice
-      const directorSystem =
+      // Director nudge uses the active persona's voice + budget-aware prompts
+      let directorSystem =
         buildPersonaSystemPrompt(directorIndex, SYSTEM_PROMPT) +
         `\n\n[DIRECTOR MODE] You are the scene director. The players have been quiet for a while. ` +
         `Current scene phase: ${phase.toUpperCase()}. ` +
         DIRECTOR_PROMPTS[phase] +
         `\n\nAct NOW - add something to the canvas to restart momentum. ` +
         `Keep your chat response to 1 sentence max, something provocative that invites players to react.`;
+      if (directorBudget !== "normal") {
+        directorSystem += `\n\n${BUDGET_PROMPTS[directorBudget]}`;
+      }
 
       const result = await generateText({
         model: this._getModel(),
