@@ -65,9 +65,13 @@ cmd_create() {
   git -C "$wt_dir" config filter.git-crypt.smudge cat
   git -C "$wt_dir" config filter.git-crypt.required false
 
-  local key_path
-  key_path="$(git -C "$REPO_ROOT" rev-parse --path-format=absolute --git-common-dir)/git-crypt/keys/default"
-  (cd "$wt_dir" && git-crypt unlock "$key_path")
+  if command -v git-crypt &>/dev/null; then
+    local key_path
+    key_path="$(git -C "$REPO_ROOT" rev-parse --path-format=absolute --git-common-dir)/git-crypt/keys/default"
+    (cd "$wt_dir" && git-crypt unlock "$key_path")
+  else
+    echo "Skipping git-crypt unlock (not installed). docs/encrypted/ will be unreadable."
+  fi
 
   # Seed node_modules: CoW copy for speed, then npm install for correctness
   if [[ -d "${REPO_ROOT}/node_modules" ]]; then
