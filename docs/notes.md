@@ -2,284 +2,79 @@
 
 *Internal project management scratch. Not a deliverable.*
 
-## AI Model Upgrade Session (Feb 19, 2026)
+## Loose Ends
 
-### What Was Done
-- **Model swap:** GLM-4.7-Flash -> Mistral Small 3.1 24B (`@cf/mistralai/mistral-small-3.1-24b-instruct`). More creative, better tool calling.
-- **Daily budget cap:** `DAILY_AI_BUDGET_USD = "5.00"` in wrangler.toml [vars]. Class-level neuron tracking in ChatAgent DO (resets on date change or hibernation). Rejects messages with friendly "over budget" when exceeded.
-- **ENABLE_ANTHROPIC_API toggle:** Default `"false"`. When `"true"` + `ANTHROPIC_API_KEY` secret set, routes to Claude Haiku 4.5 instead of Workers AI. Budget cap only applies to Workers AI (Anthropic has its own billing).
-- **Configurable model:** `WORKERS_AI_MODEL` var in wrangler.toml - swap models without redeploying.
-- **DX:** merge.sh --no-gpg-sign fix, worktree prompt temp file pattern, npm run health for agents.
-
-### Key Decisions
-| Date | Decision | Rationale |
-|------|----------|-----------|
-| Feb 19 | Mistral Small 3.1 over GLM-4.7-Flash | More creative responses, better instruction following; $0.011/1K neurons is cheap |
-| Feb 19 | App-level budget cap over CF billing alerts | CF has no hard spend cap; app-level gives per-board control |
-| Feb 19 | Budget in wrangler.toml [vars] over secrets | Not sensitive; visible config is easier to tune |
-| Feb 19 | String() casts for wrangler literal types | wrangler.toml [vars] generate literal types ("false" not string); String() cast is simplest fix |
-
----
-
-## Game Modes Session (Feb 19, 2026)
-
-### What Was Done
-- **Scenes From a Hat + Yes-And Chain** game modes. Full vertical slice: `GameMode` type, 33 hat prompts, `buildGameModePromptBlock()`, ChatAgent mode state, PATCH endpoint, D1 migration 0004, OnboardModal mode selector, ChatPanel mode-specific chips/badges, gallery mode badges.
-- **PR review fixes:** ownership check on PATCH, off-by-one counter, undefined guard in `getRandomHatPrompt`, `GET /api/boards/:boardId` for mode hydration on mount.
-- **CLAUDE.md AI section restructured** from single mega-paragraph to 7 sub-bullets.
-
-### Loose Ends
-- **Remote D1 migration pending** - wrangler OAuth token expired. Run `npx wrangler login` then `npm run migrate:remote` to apply migration 0004.
-- **No UAT this session** - needs dev server. Verify: freeform unchanged, hat prompt card + "Next prompt" advances, yes-and beat counter, gallery badges, two-browser sync.
-
-### Key Decisions
-| Date | Decision | Rationale |
-|------|----------|-----------|
-| Feb 19 | `[NEXT-HAT-PROMPT]` marker protocol | Avoids custom WS message types; ChatAgent detects marker in user message text |
-| Feb 19 | Client re-sends gameMode on every message | DO hibernation resilience; D1 stores mode for gallery, ChatAgent uses client value |
-| Feb 19 | `GET /api/boards/:boardId` endpoint | Hydrate mode on mount so returning users get correct mode |
-
----
-
-## Code Cleanup Sprint (Feb 19, 2026)
-
-### What Was Done
-- **3 parallel worktrees** for code cleanup: quick-wins, board-decomp, shared-components
-- **Quick wins (#1-10):** DRY chat-agent.ts (_getModel, _logRequestStart/End, director message builder), delete unused types, readAndCenter helper, BoardMutation moved to shared
-- **Board decomp (#11, #13, #14):** Shared BoardObjectRenderer replaces 3 duplicate switch statements (Board/Replay/Spectator), ConnectionToast extracted, discriminated union for BoardObject.props
-- **Shared UI (#12, #15, #16):** Button, Modal, TextInput components extracted and adopted across 10 files, BoardStub interface in shared/types.ts
-- **DX fixes:** worktree.sh git-crypt install guard, worktree prompts via temp file (shell quoting fix), merge.sh squash merge (GPG sandbox fix)
-
-### Key Decisions
-| Date | Decision | Rationale |
-|------|----------|-----------|
-| Feb 19 | Squash merge in merge.sh over --no-ff | GPG agent socket blocked by sandbox; squash lets commit happen locally |
-| Feb 19 | Worktree prompts via $TMPDIR file | Long prompts break terminal paste buffer; $(cat file) avoids all quoting |
-| Feb 19 | command -v guard for git-crypt | Skip gracefully when not installed; filter overrides already handle encrypted files |
-
----
-
-## Spectator Mode Session (Feb 18, 2026 - worktree)
-
-### What Was Done
-- **Spectator mode:** Live read-only view of active boards via `#watch/{boardId}`. Unauthenticated WebSocket at `/ws/watch/:boardId`. Board DO gates mutations by `ConnectionMeta.role` (discriminated union: player | spectator). Spectators see real-time canvas updates, cursors, and presence.
-- **Emoji reactions:** Spectators (and players) can send emoji reactions that float up and fade out. Server-side whitelist validation (6 allowed emojis) + 1/sec rate limit per user.
-- **Spectator count:** `spectatorCount` added to presence message. Board header shows "N watching" badge. "Invite Spectators" button copies watch URL.
-- **PR review fixes:** 3 specialized agents (code-reviewer, silent-failure-hunter, type-design-analyzer) reviewed in parallel. Fixed 11 issues: emoji validation, rate limiting, cursor cleanup bug, discriminated union for ConnectionMeta, type deduplication, error logging, clipboard error handling, spectator ID collision space, blocked message logging.
-
-### UAT Status
-- **Blocked by wrangler OAuth token expiry** - `npx wrangler login` needed to refresh. Build, typecheck, and lint all pass.
-
-### Key Decisions
-| Date | Decision | Rationale |
-|------|----------|-----------|
-| Feb 18 | Spectators excluded from presence users list (count only) | Anonymous spectators shouldn't leak usernames; count is sufficient for audience awareness |
-| Feb 18 | Emoji whitelist over length validation | Unauthenticated endpoint - belt and suspenders. Whitelist prevents all injection, not just large payloads |
-| Feb 18 | ConnectionMeta discriminated union over flat interface | Prevents editingObjectId on spectator connections at compile time |
-| Feb 18 | spectator-* ID prefix convention | Cursor cleanup skips spectator IDs in presence purge; prevents flickering cursors |
-
----
-
-## Session 18 Context (Feb 18, 2026)
-
-### What Was Done
-- **Perf overlay (merged + reviewed):** FPS, msg age, object count, Konva nodes, connection state. Review caught broken WS latency measurement (replaced with honest msg age), bare catch, stale FPS buffer, refs in deps array.
-- **UX intents (merged):** Dynamic intent chips + AI intent patterns for improv canvas.
-- **AI Director (merged):** Proactive mode - scene complications after 60s inactivity, scene phase tracking in DO, dramatic structure system prompt.
-- **Scene playback (merged):** Event recording in DO, public replay endpoint, ReplayViewer with play/pause, share scene button, `#replay/{id}` route.
-- **Async notifications (merged):** D1 activity tracking (migration 0003), activity endpoint, unread badges in BoardList.
-- **Scene gallery (merged):** Public `#gallery` route, `/api/boards/public` endpoint, SceneGallery grid with replay links.
-- **AI architecture audit (merged):** Extracted prompts to `src/server/prompts.ts` with version constants, structured tool call logging (`instrumentExecute()`), optimized `getBoardState` token usage, `docs/ai-architecture.md`.
-- **CI fix:** Skipped heavy 5-user perf test in CI (runner OOM), tagged `@heavy`.
-- **Worktree DX:** Added `wrangler types` to worktree setup, codified lifecycle (implement -> review -> fix -> UAT -> commit, no PR).
-
-### UAT Results (Prod)
-- 14/17 pass -> 16/17 after bug fixes (director nudge needs prod deploy to fully validate)
-- Core viral loop works: auth -> board -> scene -> AI objects -> share replay -> watch replay
-
-### Bug Fix Session (Feb 18)
-- `72292fa` fix: director nudge + board discovery bugs
-- **Director nudge root cause:** `_activeStreamId` guard blocked nudge after DO hibernation. `ResumableStream.restore()` picks up stale stream metadata (5-min threshold) on wake, setting `_activeStreamId` truthy. Replaced with lightweight `_isGenerating` boolean (resets to false on hibernation). Also wrapped `_resetDirectorTimer` in `ctx.waitUntil` for reliability.
-- **Board discovery root cause:** `GET /api/boards` WHERE clause only matched `created_by = user OR system`. Added `OR s.user_id IS NOT NULL` to include boards with `user_board_seen` records (created on WS connect/disconnect).
-- Review fixes: empty `.catch(() => {})` blocks replaced with logging, missing `boardId` in error logs.
-
-### The Loop
-
-```
-open board -> play scene -> share replay link -> recruit new player
-                                 ^                      |
-                                 |   async badges       |
-                                 +--- bring them back --+
-```
-
----
-
-## Roadmap Status
-
-### Shipped
-- Pre-search, scaffold, auth
-- Infinite canvas, cursor sync, presence
-- Sticky notes, rectangles, circles, lines, connectors/arrows, standalone text, frames
-- Move/resize/rotate, multi-select, copy/paste/duplicate, undo/redo, delete
-- AI agent (10 tools, DRY helpers, overlap scoring, updateAndMutate, type-linked ToolName)
-- Chat panel (chips, templates, typing indicator, server-side history persistence)
-- Multi-board CRUD, hash routing, color picker, toolbar
-- Connection toasts, loading skeleton, empty state hint
-- Cursor smoothing, entrance animations, confetti, gradient background, cursor trails
-- Keyboard shortcuts, privacy policy, data deletion endpoint, context menu
-- Selection-aware AI, AI object glow, live text sync, remote carets, stale cursor TTL
-- AI batch undo (batchId, Undo AI button, Cmd+Z batch)
-- AI presence lite (cursor dot, presence bar)
-- AI board generation (empty state overlay, suggestion chips, board-templates.ts)
-- Multiplayer chat attribution ([username] prefix, color-coded sender names)
-- Improv mode ("yes, and" prompt, 7 scene templates)
-- UI consistency (theme dedup, animations.css extraction)
-- AI Director proactive mode (scene phases, 60s inactivity nudge, DO schedule alarms)
-- Scene playback (event recording in DO, public replay endpoint, ReplayViewer, share button)
-- Scene gallery (public #gallery route, GET /api/boards/public, gradient thumbnails)
-- Perf overlay (FPS, msg age, nodes, connection state)
-- Dynamic intent chips
-- AI architecture audit (prompt versioning, tool observability, structured logging)
-- Defensive AI tool input validation (sanitizeMessages, instrumentExecute guard)
-- Smooth drag replay (throttled 100ms WS sends, spatial debounce in DO, RAF lerp interpolation in ReplayViewer)
-- Floating toolbar (bottom-center pill, redesigned from left sidebar)
-- AI image generation (SDXL via CF Workers AI, base64 data URL storage, Konva Image rendering, generateImage tool)
-- Board.tsx decomposition (1836 -> 1529 lines, extracted Toolbar.tsx, useKeyboardShortcuts.ts, useDragSelection.ts)
-- Fix: Director nudge (waitUntil for schedule ops, _isGenerating mutex replacing stale _activeStreamId)
-- Fix: Board discovery (SQL: show boards user has visited via user_board_seen join)
-- Build perf (vendor chunk splitting: react/canvas/ai, ulimit in dev.sh, chokidar ignore patterns)
-- Code health quick wins (kill useAIChat shim, co-locate tool metadata, DRY server helpers, auth middleware, OBJECT_DEFAULTS, useThrottledCallback, observability skill)
-- Onboard modal (centered "What's the scene?" modal on empty boards, sidebar reveal on submit, template chips)
-- Spectator mode (live #watch/{id} route, read-only WS, emoji reactions, spectator count in presence)
-- Multi-agent improv (SPARK provocateur + SAGE peacemaker, autonomous "yes, and" exchanges, 3-exchange cooldown, persona-aware director nudges)
-- Code cleanup sprint: all 16 tech debt items resolved (DRY chat-agent, shared BoardObjectRenderer, Button/Modal/TextInput components, discriminated union props, BoardStub interface)
-- Per-scene token budgets (20-turn budget, 4 dramatic arc phases, "New Scene" button)
-- Improv game modes: Scenes From a Hat (random prompts, 5-exchange scenes) + Yes-And Chain (10-beat chain)
-- AI model upgrade: Mistral Small 3.1 24B (from GLM-4.7-Flash), $5/day budget cap, ENABLE_ANTHROPIC_API toggle
-
-**Killed (PM eval):** Contextual AI Actions (clustering unreliable on free-tier LLM), Intent Preview (problem overlap with batch undo at 3x cost).
+- **Remote D1 migration 0004 pending** - `npx wrangler login` then `npm run migrate:remote`
+- **No UAT on game modes or token budgets** - verify: hat prompt card + "Next prompt" advances, yes-and beat counter, budget phases + "New Scene" button, gallery badges, two-browser sync
+- **5 worktrees need cleanup** - all merged, run `scripts/worktree.sh remove <branch>` for each
 
 ## Roadmap
 
+### Shipped (grouped)
+
+**Core canvas:** Infinite canvas, shapes (sticky/rect/circle/line/connector/text/frame/image), move/resize/rotate, multi-select, copy/paste/dup, undo/redo, delete, cursor sync, presence, keyboard shortcuts, context menu, color picker, floating toolbar.
+
+**AI agent:** 11 tools (Zod schemas, DRY helpers), chat panel (chips, templates, typing, server-side history), selection-aware AI, AI object glow/confetti, batch undo, AI presence (cursor dot, bar), board generation (overlay + suggestion chips), AI image generation (SDXL), defensive tool validation.
+
+**Multiplayer improv:** Multi-agent personas (SPARK + SAGE, autonomous "yes, and", 3-exchange cooldown), AI Director (scene phases, 60s inactivity nudge, DO schedule alarms), dynamic intent chips, improv game modes (Scenes From a Hat, Yes-And Chain), per-scene token budgets (20-turn, 4 dramatic arc phases).
+
+**Sharing/discovery:** Scene playback (event recording, public replay, ReplayViewer), scene gallery (public grid, gradient thumbnails), spectator mode (#watch, emoji reactions, spectator count), async notifications (unread badges).
+
+**Infra/DX:** Custom auth (PBKDF2, D1 sessions), hash routing, onboard modal, connection toasts, perf overlay, AI architecture audit (prompt versioning, structured logging), vendor chunk splitting, Board.tsx decomposition, code cleanup sprint (16 items), AI model upgrade (Mistral Small 3.1, $5/day cap, Anthropic toggle).
+
+**Killed:** Contextual AI Actions (clustering unreliable), Intent Preview (overlap with batch undo at 3x cost).
+
+### Unshipped
+
 | Feature | Notes |
 |---------|-------|
-| ~~Improv game modes~~ | **Shipped.** Scenes From a Hat (random prompts, 5-exchange scenes) + Yes-And Chain (10-beat chain). Mode selector in OnboardModal, PATCH /api/boards/:boardId, mode-aware ChatAgent prompts + director, gallery badges. |
-| ~~Per-scene token budgets~~ | **Shipped.** 20-turn budget, 4 phases (normal/act3/final-beat/scene-over), budget-aware prompts, "New Scene" button. |
-| Narrative/relationship state | Formalize who-hates-whom graph. Makes multi-agent "yes, and" structural, not emergent. |
-| Custom AI characters | Replace fixed SPARK/SAGE with user-uploaded personalities. Extends multi-agent. |
-| Mobile-first chat view | Canvas as secondary "stage" - phone users |
-| Daily scene challenges + leaderboard | Brings people back daily. Needs game modes first. |
-| ~~AI image generation~~ | **Shipped.** |
-| ~~Multi-agent improv~~ | **Shipped.** SPARK (provocateur) + SAGE (peacemaker), autonomous "yes, and" exchanges, 3-exchange cooldown. |
-| ~~Audience/spectator mode~~ | **Shipped.** #watch/{id} route, read-only WS, emoji reactions, spectator count in presence. |
-
-## Known Bugs
-
-(none)
-
-## Product Strategy
-
-### The Broken Loop (why sessions evaporate)
-```
-Open board -> Pick scene -> AI sets stage -> Chat back and forth -> Board fills up -> ...now what?
-```
-No arc, no ending, no way to share the funny thing that happened, no reason to return. The board is a static graveyard of stickies.
-
-### Three Things That Broke the 1-to-100 Barrier
-1. **Scene Playback (viral loop)** - SHIPPED. Every replay is an ad for the product. Turns a transient experience into a shareable artifact. Without it, sessions evaporate. With it, sessions generate content that recruits new players.
-2. **Async Improv (kill the "both online" requirement)** - SHIPPED (notifications). Exquisite Corpse but spatial. Alice sets a scene before bed, Bob adds a complication in the morning. Architecture already supports it (DO SQLite chat + DO Storage board state persist across reconnects).
-3. **AI as Director (structure, not just performance)** - SHIPPED. Scenes meander without a director creating urgency. AI introduces ticking clocks, complications, scene transitions after inactivity. Dramatic structure: setup -> escalation -> complication -> climax -> callback.
-
-### Emergent Character Creation (coworker demo, Feb 18)
-Coworker's prompts: demon face -> unicorn -> GOOSE ATTACKING -> penguin fleeing goose -> horde of mongoose. The AI:
-- Named itself ("GLITTER the Improv Demon - I name myself")
-- Created characters with personality ("HONK the GOOSE OF CHAOS, hates love, pecking EVERYTHING")
-- Built inter-object relationships ("WADDLES - penguin refugee, fleeing the GOOSE OF CHAOS")
-- Maintained narrative coherence across prompts (each "yes, and"s the previous)
-
-**Key insight:** The visual medium is the bottleneck, not the AI's creativity. HONK is a circle with dots for eyes but the personality is vivid. Image generation closes that gap. Multi-agent improv (HONK vs WADDLES arguing autonomously) is the natural next step.
-
----
-
-## Planned Refactors
-
-- ~~**Board.tsx decomposition**~~ Done. Extracted Toolbar.tsx, useKeyboardShortcuts.ts, useDragSelection.ts, BoardObjectRenderer.tsx, ConnectionToast.tsx.
-- ~~**All 16 tech debt items**~~ Done (Feb 19 cleanup sprint). Quick wins #1-10 + post-merge #11-16.
-
----
+| Narrative/relationship state | Formalize who-hates-whom graph. Makes multi-agent structural, not emergent. |
+| Custom AI characters | Replace fixed SPARK/SAGE with user-uploaded personalities. |
+| Mobile-first chat view | Canvas as secondary "stage" for phone users. |
+| Daily scene challenges + leaderboard | Brings people back daily. Needs game modes first (now shipped). |
 
 ## Open Tech Debt
 
-*Cleanup sprint completed Feb 19. All 16 identified items resolved. Remaining items are architecture/security concerns, not refactors.*
-
-### Architecture Notes
-
-- **Clean dependency flow:** No circular imports. Unidirectional server -> shared <- client.
-- **ChatAgent error handling loose** - tool failures logged but swallowed, LLM unaware of partial success.
-- **Board DO (356L) is acceptable** - single source of truth must own mutations + broadcasts + storage. Refactoring would lose transactionality.
-
 ### Security
-
 - No rate limiting on auth + AI endpoints
 - AI route accepts arbitrary boardId - can create phantom DOs
 - No upper bound on AI chat history
 - Username enumeration via signup 409
 
-### React/Konva
-
-- `ToolIconBtn` not memoized (8 instances re-render on cursor updates)
-- No React error boundary
-- 150+ inline styles across 5 components (header bars 5x, buttons 8x, modals 3x, inputs 2x)
+### Architecture
+- ChatAgent error handling loose - tool failures logged but swallowed, LLM unaware of partial success
+- Board DO (356L) acceptable - single source of truth must own mutations + broadcasts + storage
 
 ### UX/Polish
-
-- ~~Vite build >500KB chunk~~ Fixed: manualChunks splits vendor-react/canvas/ai
+- ToolIconBtn not memoized (8 instances re-render on cursor updates)
+- No React error boundary
 - Circles have no resize handles
 - WS reconnect: no max retry, no non-retryable close code handling
-- Undo stack not cleared on WS reconnect
-- No guard against `sendMessage` when ChatAgent WS is disconnected
+- No guard against sendMessage when ChatAgent WS disconnected
 
 ### Won't Fix (Week 1)
+- send() silently drops messages during reconnect window
 
-- `send()` silently drops messages during reconnect window
-
----
-
-## Key Decisions
+## Key Decisions (non-obvious, not already in CLAUDE.md)
 
 | Date | Decision | Rationale |
 |------|----------|-----------|
-| Feb 16 | Custom auth over Better Auth | CF Workers bugs in Better Auth 1.4.x |
-| Feb 16 | PBKDF2 over argon2 | Web Crypto built-in, zero deps |
-| Feb 16 | No CRDTs | DOs serialize writes, LWW by construction |
 | Feb 16 | AI priority over more shapes | Gauntlet AI exercise - AI is differentiator |
-| Feb 16 | HTML overlay for text editing | Konva doesn't support multiline |
-| Feb 16 | Hash routing over React Router | Zero deps, shareable links |
-| Feb 17 | DO RPC over fetch routing | Type-safe, TS-checked stubs |
-| Feb 17 | Scroll-to-pan, ctrl+scroll-to-zoom | Matches Figma/Miro convention |
-| Feb 17 | AI tools: orthogonal over monolithic | One tool = one responsibility for LLM accuracy |
-| Feb 17 | GLM-4.7-Flash over Llama 3.3 | 131K context, native multi-turn tool calling, still free |
-| Feb 17 | Agents SDK over manual SSE | Server-side persistence, WS streaming, automatic tool loop |
 | Feb 17 | Template coord injection over LLM geometry | LLM as content generator, not geometry solver |
 | Feb 17 | Overlap score metric over visual QA | Single number for AI layout quality |
-| Feb 18 | Hash-based cursor colors over index-based | Deterministic per userId regardless of array order |
-| Feb 18 | TTL sweep for ephemeral WS state | Can't rely on explicit cleanup messages |
-| Feb 18 | Multiplayer improv canvas as north star | Existing shared chat + canvas needs ~3hrs new code. Nobody has multiplayer + AI + canvas + improv. |
-| Feb 18 | No Tailwind (yet) | 118 inline styles across 5 components. Revisit if >15 components. |
-| Feb 18 | Worktree DX: auto-load ports in dev.sh | Eliminates un-whitelistable `source worktree.ports` command |
-| Feb 18 | Msg age over fake WS latency | DO doesn't echo cursors; measure something honest instead |
-| Feb 18 | Prompt versioning in prompts.ts | Correlate behavior changes to prompt versions in logs |
-| Feb 19 | Mistral Small 3.1 24B over GLM-4.7-Flash | More creative for improv; $0.011/1K neurons with $5/day cap |
-| Feb 19 | ENABLE_ANTHROPIC_API default off | Ship with free-tier Workers AI; flip to Anthropic when needed |
-
----
+| Feb 18 | Multiplayer improv canvas as north star | Nobody has multiplayer + AI + canvas + improv |
+| Feb 18 | No Tailwind (yet) | Inline styles manageable with shared components. Revisit if >15 components |
+| Feb 18 | Msg age over fake WS latency | DO doesn't echo cursors; measure something honest |
+| Feb 19 | `[NEXT-HAT-PROMPT]` marker protocol | Avoids custom WS message types; ChatAgent detects in user text |
+| Feb 19 | Client re-sends gameMode on every message | DO hibernation resilience; D1 stores for gallery |
+| Feb 19 | String() casts for wrangler literal types | [vars] generate literal types ("false" not string) |
+| Feb 19 | Squash merge in merge.sh | GPG agent socket blocked by sandbox; squash commits locally |
 
 ## AI Model Pricing
 
-| Model | Input/1M | Output/1M | Tool-use | Notes |
-|-------|----------|-----------|----------|-------|
-| ~~GLM-4.7-Flash (Workers AI)~~ | Free | Free | Good | Replaced - too "dull" for improv |
-| Mistral Small 3.1 24B (Workers AI) | $0.011/1K neurons | same | Good | 131K context, creative, $5/day app cap |
-| Claude Haiku 4.5 (Anthropic) | $1.00 | $5.00 | Excellent | Behind ENABLE_ANTHROPIC_API toggle (default off) |
+| Model | Cost | Tool-use | Notes |
+|-------|------|----------|-------|
+| Mistral Small 3.1 24B (Workers AI) | $0.011/1K neurons | Good | Default. 131K context, creative. $5/day app cap. |
+| Claude Haiku 4.5 (Anthropic) | $1/$5 per 1M in/out | Excellent | Behind ENABLE_ANTHROPIC_API toggle (default off). |
 
 `streamText` with `stopWhen: stepCountIs(5)` limits to 5 LLM round-trips. Daily budget tracked per ChatAgent DO instance.

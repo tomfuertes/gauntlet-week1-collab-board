@@ -247,14 +247,16 @@ Hooks enforce the bookends: `SessionStart` reminds to read context, `PreCompact`
 
 ## Custom Agents (Delegation)
 
-Main context is the orchestrator. Delegate execution to custom agents (`.claude/agents/`). Models are set in agent frontmatter - no need to specify at invocation.
+Main context is the orchestrator. Delegate execution to custom agents (`.claude/agents/`). Models are set in agent frontmatter - no need to specify at invocation. **Use Sonnet for implementation agents** (worktrees, code changes) to conserve Opus usage. Reserve Haiku for mechanical tasks (UAT clicks, worktree setup, exploration).
 
-| Task | Agent | Model (in frontmatter) | Background? |
-|------|-------|------------------------|-------------|
+| Task | Agent | Model | Background? |
+|------|-------|-------|-------------|
+| Feature worktree (multi-file impl) | `general-purpose` | sonnet | yes (user launches in worktree) |
 | UAT / smoke test / feature verification | `uat` | haiku | yes |
 | Worktree creation + setup | `worktree-setup` | haiku | yes |
+| PR review (code-reviewer, silent-failure-hunter) | `pr-review-toolkit:*` | sonnet | yes |
 | E2E test suite (`npx playwright test`) | background Bash | - | yes |
-| Codebase exploration (3+ file reads) | `Explore` (built-in) | haiku | yes |
+| Codebase exploration (3+ file reads) | `Explore` (built-in) | sonnet | yes |
 
 **How to invoke:**
 ```

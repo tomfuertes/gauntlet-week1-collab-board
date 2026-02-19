@@ -26,16 +26,9 @@ Three participants, one chat, one canvas. Call and response. The board accumulat
 - **Board generation** - "Set the scene: a dentist's office" generates the starting board.
 - **10 AI tools** - create stickies (characters, props, dialogue), frames (locations), connectors (relationships), shapes (set pieces). Move, resize, recolor, delete.
 
-### Needs building (small delta)
+### ~~Needs building~~ All shipped
 
-| Change | What | Effort |
-|--------|------|--------|
-| **Username in chat messages** | Attach sender's username in useAgentChat body (like selectedIds pattern). AI sees "Alice said: ..." not just "user: ..." | ~30 min |
-| **ChatPanel attribution** | Color-coded names per sender. Alice in one color, Bob in another, AI in sky-400. | ~1 hr |
-| **Improv system prompt** | New mode in chat-agent.ts: "This is multiplayer improv. Messages come from different users. Always 'yes, and.' Never ask permission. Escalate, contribute, surprise." | ~30 min |
-| **Scene template** | Board gen overlay with improv-specific suggestions: "A dentist who's a vampire", "A job interview on the moon", "Two cats opening a restaurant" | ~30 min |
-
-Total new code: ~3 hours. Everything else is reframing what exists.
+All items from the original plan are shipped: username attribution, color-coded chat, improv system prompt, scene templates, plus multi-agent personas (SPARK/SAGE), game modes (Hat/Yes-And), token budgets, spectator mode, scene replay/gallery, and AI Director.
 
 ## What Makes This Different From Group Chat + AI
 
@@ -117,8 +110,8 @@ Alice's browser ──WebSocket──▶ ChatAgent DO (boardId) ◀──WebSock
 
 ## Open Questions
 
-- Turn-taking vs free-form? Improv is fast, so probably free-form. But if two people type simultaneously, AI gets two messages in quick succession. Does it respond to each? Or batch them?
-- Scene length? Does a scene end? Reset button? Or does the board just keep growing?
-- Audience mode? Can people join as viewers (no chat input, just watching the scene unfold)?
+- ~~Turn-taking vs free-form?~~ Free-form. Multi-agent personas (SPARK/SAGE) handle rhythm autonomously.
+- ~~Scene length?~~ 20-turn budget with dramatic arc phases (normal/act3/final-beat/scene-over). "New Scene" button resets.
+- ~~Audience mode?~~ Shipped. #watch/{id} spectator mode with emoji reactions.
 - Mobile? Improv on the couch with phones is the dream use case. Current canvas is desktop-optimized.
 - Moderation? If the AI always says "yes, and" it will escalate anything. Need guardrails for public boards.
