@@ -49,7 +49,7 @@ git diff "main..${FEAT_BRANCH}" --stat
 
 echo ""
 echo "=== Merging ${FEAT_BRANCH} ==="
-if ! git -c commit.gpgsign=false merge "${FEAT_BRANCH}" --no-edit --no-ff; then
+if ! git merge "${FEAT_BRANCH}" --no-edit --no-ff; then
   echo ""
   echo "CONFLICT: Merge has conflicts. Resolve them, then:"
   echo "  git add <resolved-files> && git commit --no-edit"
