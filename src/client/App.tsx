@@ -2,8 +2,8 @@ import { useState, useEffect, Component } from "react";
 import type { CSSProperties, ReactNode, ErrorInfo } from "react";
 import { Board } from "./components/Board";
 import { BoardList } from "./components/BoardList";
-import { AuthForm } from "./components/AuthForm";
 import { LandingPage } from "./components/LandingPage";
+import { SceneGallery } from "./components/SceneGallery";
 import { ReplayViewer } from "./components/ReplayViewer";
 import { SpectatorView } from "./components/SpectatorView";
 import { LeaderboardPanel } from "./components/LeaderboardPanel";
@@ -80,6 +80,10 @@ function parseWatchId(): string | null {
 
 function parseChallenge(): boolean {
   return location.hash === "#challenge";
+}
+
+function parseGallery(): boolean {
+  return location.hash === "#gallery";
 }
 
 function PrivacyPolicy() {
@@ -166,19 +170,20 @@ export function App() {
 function AppContent() {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [loading, setLoading] = useState(true);
-  const [showAuth, setShowAuth] = useState(false);
   const [boardId, setBoardId] = useState<string | null>(parseBoardId);
   const [replayId, setReplayId] = useState<string | null>(parseReplayId);
   const [watchId, setWatchId] = useState<string | null>(parseWatchId);
   const [showChallenge, setShowChallenge] = useState(parseChallenge);
+  const [showGallery, setShowGallery] = useState(parseGallery);
 
-  // Sync boardId/replayId with hash changes (back/forward navigation)
+  // Sync route state with hash changes (back/forward navigation)
   useEffect(() => {
     const onHashChange = () => {
       setBoardId(parseBoardId());
       setReplayId(parseReplayId());
       setWatchId(parseWatchId());
       setShowChallenge(parseChallenge());
+      setShowGallery(parseGallery());
     };
     window.addEventListener("hashchange", onHashChange);
     return () => window.removeEventListener("hashchange", onHashChange);
@@ -254,18 +259,20 @@ function AppContent() {
     );
   }
 
+  // Gallery is public - before auth gate
+  if (showGallery) {
+    return (
+      <SceneGallery
+        onBack={() => {
+          location.hash = "";
+          setShowGallery(false);
+        }}
+      />
+    );
+  }
+
   if (!user) {
-    if (showAuth) {
-      return (
-        <AuthForm
-          onAuth={(u) => {
-            setShowAuth(false);
-            setUser(u);
-          }}
-        />
-      );
-    }
-    return <LandingPage onStartImprov={() => setShowAuth(true)} />;
+    return <LandingPage onAuth={(u) => setUser(u)} />;
   }
 
   if (boardId) {

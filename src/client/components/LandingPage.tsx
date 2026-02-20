@@ -1,7 +1,9 @@
+import type { AuthUser } from "../App";
+import { AuthFormCard } from "./AuthForm";
 import { colors } from "../theme";
 
 interface LandingPageProps {
-  onStartImprov: () => void;
+  onAuth: (user: AuthUser) => void;
 }
 
 const FEATURES = [
@@ -27,7 +29,7 @@ const FEATURES = [
   },
 ];
 
-export function LandingPage({ onStartImprov }: LandingPageProps) {
+export function LandingPage({ onAuth }: LandingPageProps) {
   return (
     <div
       style={{
@@ -47,96 +49,71 @@ export function LandingPage({ onStartImprov }: LandingPageProps) {
         }}
       />
 
-      {/* Hero */}
+      {/* Hero: branding left, auth card right */}
       <main
         style={{
           flex: 1,
           display: "flex",
-          flexDirection: "column",
           alignItems: "center",
           justifyContent: "center",
-          padding: "5rem 2rem 2rem",
-          textAlign: "center",
+          padding: "3rem 2rem 2rem",
+          gap: "4rem",
+          flexWrap: "wrap",
         }}
       >
-        {/* Spotlight glow */}
-        <div style={{ position: "relative", marginBottom: "1.5rem" }}>
-          <div
+        {/* Left - Brand */}
+        <div style={{ flex: "1 1 300px", maxWidth: 460, textAlign: "center" }}>
+          {/* Spotlight glow */}
+          <div style={{ position: "relative", marginBottom: "1.5rem" }}>
+            <div
+              style={{
+                position: "absolute",
+                inset: "-80px -120px",
+                background: `radial-gradient(ellipse at center, ${colors.accentGlow} 0%, transparent 65%)`,
+                pointerEvents: "none",
+              }}
+            />
+            <h1
+              style={{
+                position: "relative",
+                fontSize: "clamp(3.5rem, 10vw, 6rem)",
+                fontWeight: 900,
+                letterSpacing: "-0.03em",
+                margin: 0,
+                lineHeight: 1,
+                background: `linear-gradient(135deg, ${colors.accentLight} 0%, ${colors.accent} 45%, #c084fc 100%)`,
+                WebkitBackgroundClip: "text",
+                WebkitTextFillColor: "transparent",
+                backgroundClip: "text",
+              }}
+            >
+              YesAInd
+            </h1>
+          </div>
+
+          <p
             style={{
-              position: "absolute",
-              inset: "-80px -120px",
-              background: `radial-gradient(ellipse at center, ${colors.accentGlow} 0%, transparent 65%)`,
-              pointerEvents: "none",
-            }}
-          />
-          <h1
-            style={{
-              position: "relative",
-              fontSize: "clamp(3.5rem, 12vw, 7rem)",
-              fontWeight: 900,
-              letterSpacing: "-0.03em",
-              margin: 0,
-              lineHeight: 1,
-              background: `linear-gradient(135deg, ${colors.accentLight} 0%, ${colors.accent} 45%, #c084fc 100%)`,
-              WebkitBackgroundClip: "text",
-              WebkitTextFillColor: "transparent",
-              backgroundClip: "text",
+              fontSize: "clamp(1rem, 2.5vw, 1.2rem)",
+              color: colors.textMuted,
+              maxWidth: 400,
+              lineHeight: 1.65,
+              margin: "0 auto 1.75rem",
             }}
           >
-            YesAInd
-          </h1>
-        </div>
+            Improv with AI. <span style={{ color: colors.text }}>You bring the ideas,</span> AI builds the stage.
+          </p>
 
-        <p
-          style={{
-            fontSize: "clamp(1.05rem, 3vw, 1.35rem)",
-            color: colors.textMuted,
-            maxWidth: 460,
-            lineHeight: 1.65,
-            margin: "0 0 2.75rem",
-          }}
-        >
-          Improv with AI. <span style={{ color: colors.text }}>You bring the ideas,</span> AI builds the stage.
-        </p>
-
-        <div
-          style={{
-            display: "flex",
-            gap: "1rem",
-            flexWrap: "wrap",
-            justifyContent: "center",
-            marginBottom: "0.75rem",
-          }}
-        >
-          <button
-            onClick={onStartImprov}
-            style={{
-              padding: "0.9rem 2.25rem",
-              fontSize: "1.05rem",
-              fontWeight: 700,
-              background: colors.accent,
-              color: "#fff",
-              border: "none",
-              borderRadius: 8,
-              cursor: "pointer",
-              letterSpacing: "0.015em",
-              boxShadow: `0 0 28px ${colors.accentGlow}, 0 4px 16px rgba(0,0,0,0.4)`,
-            }}
-          >
-            Start Improvising
-          </button>
           <a
             href="#gallery"
             style={{
-              padding: "0.9rem 2.25rem",
-              fontSize: "1.05rem",
+              padding: "0.7rem 1.75rem",
+              fontSize: "0.95rem",
               fontWeight: 600,
               color: colors.accentLight,
               background: colors.accentSubtle,
               border: `1px solid rgba(99,102,241,0.4)`,
               borderRadius: 8,
               textDecoration: "none",
-              letterSpacing: "0.015em",
               display: "inline-flex",
               alignItems: "center",
               gap: "0.4em",
@@ -144,11 +121,16 @@ export function LandingPage({ onStartImprov }: LandingPageProps) {
           >
             Watch the Gallery
           </a>
+
+          <p style={{ margin: "0.75rem 0 0", fontSize: "0.8rem", color: colors.textSubtle }}>
+            No signup required to watch
+          </p>
         </div>
 
-        <p style={{ margin: "0.5rem 0 0", fontSize: "0.8rem", color: colors.textSubtle }}>
-          No signup required to watch - just improvise
-        </p>
+        {/* Right - Auth card embedded directly (no extra click needed) */}
+        <div style={{ flex: "0 0 auto" }}>
+          <AuthFormCard onAuth={onAuth} />
+        </div>
       </main>
 
       {/* Feature cards */}
@@ -172,7 +154,7 @@ export function LandingPage({ onStartImprov }: LandingPageProps) {
             marginBottom: "1.25rem",
           }}
         >
-          What's on stage
+          {"What's on stage"}
         </p>
         <div
           style={{

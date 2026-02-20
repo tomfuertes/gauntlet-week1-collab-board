@@ -318,16 +318,18 @@ function PasskeyRegisterSection({
 }
 
 // ------------------------------------------------------------------
-// Root component
+// AuthFormCard - embeddable form card (no full-screen wrapper)
+// KEY-DECISION 2026-02-20: Extracted so LandingPage can embed auth inline
+// without duplicating the passkey/password view logic.
 // ------------------------------------------------------------------
-export function AuthForm({ onAuth }: { onAuth: (user: AuthUser) => void }) {
+export function AuthFormCard({ onAuth }: { onAuth: (user: AuthUser) => void }) {
   // KEY-DECISION 2026-02-20: Feature-detect WebAuthn via PublicKeyCredential global.
   // Older browsers and some Android WebViews don't support it - fall straight to password.
   const supportsPasskeys = typeof window !== "undefined" && typeof window.PublicKeyCredential !== "undefined";
 
   const [view, setView] = useState<"login" | "register" | "password">(supportsPasskeys ? "login" : "password");
 
-  function rightPanel() {
+  function panel() {
     if (view === "password") {
       return <PasswordSection onAuth={onAuth} onBack={supportsPasskeys ? () => setView("login") : null} />;
     }
@@ -349,6 +351,38 @@ export function AuthForm({ onAuth }: { onAuth: (user: AuthUser) => void }) {
     );
   }
 
+  return (
+    <div
+      style={{
+        width: 320,
+        padding: "2rem",
+        background: colors.surface,
+        borderRadius: 12,
+        border: `1px solid ${colors.border}`,
+      }}
+    >
+      {panel()}
+      <a
+        href="#privacy"
+        style={{
+          display: "block",
+          color: colors.textDim,
+          fontSize: "0.75rem",
+          textAlign: "center",
+          textDecoration: "none",
+          marginTop: "1rem",
+        }}
+      >
+        Privacy Policy
+      </a>
+    </div>
+  );
+}
+
+// ------------------------------------------------------------------
+// Root component - full-screen page layout (kept for back-compat)
+// ------------------------------------------------------------------
+export function AuthForm({ onAuth }: { onAuth: (user: AuthUser) => void }) {
   return (
     <div style={{ display: "flex", height: "100vh", background: colors.bg, color: colors.text }}>
       {/* Left - Brand panel */}
@@ -391,7 +425,6 @@ export function AuthForm({ onAuth }: { onAuth: (user: AuthUser) => void }) {
           <br />
           powered by AI
         </p>
-        {/* Decorative dot grid echoing the canvas */}
         <div
           style={{
             marginTop: "2rem",
@@ -411,30 +444,7 @@ export function AuthForm({ onAuth }: { onAuth: (user: AuthUser) => void }) {
 
       {/* Right - Form panel */}
       <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", padding: "2rem" }}>
-        <div
-          style={{
-            width: 320,
-            padding: "2rem",
-            background: colors.surface,
-            borderRadius: 12,
-            border: `1px solid ${colors.border}`,
-          }}
-        >
-          {rightPanel()}
-          <a
-            href="#privacy"
-            style={{
-              display: "block",
-              color: colors.textDim,
-              fontSize: "0.75rem",
-              textAlign: "center",
-              textDecoration: "none",
-              marginTop: "1rem",
-            }}
-          >
-            Privacy Policy
-          </a>
-        </div>
+        <AuthFormCard onAuth={onAuth} />
       </div>
     </div>
   );
