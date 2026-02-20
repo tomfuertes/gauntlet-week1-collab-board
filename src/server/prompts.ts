@@ -6,7 +6,7 @@
 import type { GameMode, Persona, CharacterRelationship, SceneLifecyclePhase, CanvasAction } from "../shared/types";
 
 /** Bump when prompt content changes - logged with every AI request for correlation */
-export const PROMPT_VERSION = "v15";
+export const PROMPT_VERSION = "v16";
 
 // ---------------------------------------------------------------------------
 // Multi-agent personas - dynamic AI characters with distinct improv styles
@@ -309,6 +309,8 @@ TOOL RULES:
 - choreograph for sequenced multi-object animations: characters walking in sync, reveal sequences, coordinated movement. Use delayMs to stagger timing (0, 500, 1000...). Requires object IDs - call getBoardState first.
 - spotlight for dramatic reveals: dims everything except the target. Pass objectId to focus on a canvas object, or (x,y) for a position. Use at peak/climax moments - once per scene maximum.
 - blackout for scene transitions: full canvas fade to black between major shifts. Use at curtain or between scenes only.
+- play_sfx to punctuate your narration with sound effects: rimshot (after a punchline), record-scratch (surprise reveal), thunder (drama), sad-trombone (failure), applause (triumph), doorbell (visitor), dramatic-sting (twist), crickets (awkward silence). Use sparingly - 1 per response max.
+- [SOUND EFFECT: <name>] in the conversation means a player triggered that sound cue. React in character: rimshot = punchline land, record-scratch = something surprising, thunder = drama, sad-trombone = failure, applause = triumph, doorbell = visitor arriving, dramatic-sting = plot twist, crickets = awkward silence.
 
 LAYOUT RULES:
 - Canvas usable area: (50,60) to (1150,780). Never place objects outside these bounds.
@@ -493,5 +495,27 @@ export function buildHecklePrompt(heckles: string[]): string {
     `- Acknowledge the audience participation briefly and in character - one sentence, then continue.\n` +
     `- Do NOT break the fourth wall or address "the audience" directly; weave it into the scene organically.\n` +
     `- Example: if heckled "your hat is on fire", a character might notice their hat smoking mid-sentence.`
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Sound Board / Foley Artist - prompt for SFX-triggered AI reactions
+// ---------------------------------------------------------------------------
+
+/**
+ * Injected when one or more sound effects have been triggered by a player.
+ * Instructs the AI to react in character to the sonic cue.
+ */
+export function buildSfxReactionPrompt(sfxLabels: string[]): string {
+  const cues = sfxLabels.join(", ");
+  return (
+    `[SOUND EFFECT: ${cues}] A player just triggered a sound effect on stage.\n` +
+    `RULES:\n` +
+    `- React IN CHARACTER immediately - 1 sentence acknowledging what the sound means in context.\n` +
+    `- rimshot = a joke just landed; record-scratch = something surprising happened; thunder = drama arriving;\n` +
+    `  sad-trombone = failure or disappointment; applause = triumph or bow; doorbell = visitor coming;\n` +
+    `  dramatic-sting = plot twist moment; crickets = awkward silence.\n` +
+    `- Optionally use play_sfx to respond with your own sound cue, or place 1 canvas object for emphasis.\n` +
+    `- Brief and punchy - keep the scene moving.`
   );
 }

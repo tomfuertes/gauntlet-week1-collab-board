@@ -55,6 +55,23 @@ export type BoardObjectUpdate = Partial<Omit<BoardObjectBase, "id">> & {
 
 export type EffectType = "pulse" | "shake" | "flash";
 
+export interface SfxEffect {
+  id: string;
+  label: string;
+  emoji: string;
+}
+
+export const SFX_EFFECTS: readonly SfxEffect[] = [
+  { id: "rimshot", label: "Ba-dum-tss!", emoji: "🥁" },
+  { id: "record-scratch", label: "Scratch!", emoji: "📻" },
+  { id: "thunder", label: "THUNDER!", emoji: "⚡" },
+  { id: "sad-trombone", label: "Womp womp", emoji: "🎺" },
+  { id: "applause", label: "Applause!", emoji: "👏" },
+  { id: "doorbell", label: "Ding-dong!", emoji: "🔔" },
+  { id: "dramatic-sting", label: "Dun-dun-DUN!", emoji: "🎼" },
+  { id: "crickets", label: "...*chirp*...", emoji: "🦗" },
+] as const;
+
 /** One step in a choreographed sequence. delayMs is cumulative from sequence start. */
 export interface ChoreographyStep {
   objectId: string;
@@ -73,7 +90,8 @@ export type BoardMutation =
   | { type: "obj:effect"; id: string; effect: EffectType }
   | { type: "obj:sequence"; steps: ChoreographyStep[] }
   | { type: "spotlight"; objectId?: string; x?: number; y?: number }
-  | { type: "blackout" };
+  | { type: "blackout" }
+  | { type: "sfx"; effect: string; x: number; y: number };
 
 export type WSClientMessage =
   | { type: "cursor"; x: number; y: number }
@@ -88,7 +106,8 @@ export type WSClientMessage =
   | { type: "obj:effect"; id: string; effect: EffectType }
   | { type: "obj:sequence"; steps: ChoreographyStep[] }
   | { type: "spotlight"; objectId?: string; x?: number; y?: number }
-  | { type: "blackout" };
+  | { type: "blackout" }
+  | { type: "sfx"; effect: string; x: number; y: number };
 
 export type WSServerMessage =
   | { type: "cursor"; userId: string; username: string; x: number; y: number }
@@ -105,7 +124,8 @@ export type WSServerMessage =
   | { type: "obj:effect"; id: string; effect: EffectType }
   | { type: "obj:sequence"; steps: ChoreographyStep[] }
   | { type: "spotlight"; objectId?: string; x?: number; y?: number }
-  | { type: "blackout" };
+  | { type: "blackout" }
+  | { type: "sfx"; userId: string; effect: string; x: number; y: number };
 
 export const AI_USER_ID = "ai-agent" as const;
 export const AI_USERNAME = "AI Assistant" as const;

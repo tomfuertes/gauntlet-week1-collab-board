@@ -1,5 +1,7 @@
 import { useEffect, useRef, useCallback, useState } from "react";
 import type { WSClientMessage, WSServerMessage, BoardObject, BoardObjectUpdate, ChoreographyStep } from "@shared/types";
+import { SFX_EFFECTS } from "@shared/types";
+import type { HeckleEvent } from "./useSpectatorSocket";
 
 export type ConnectionState = "connecting" | "connected" | "reconnecting" | "disconnected" | "failed";
 
@@ -37,6 +39,7 @@ interface UseWebSocketReturn {
   presence: { id: string; username: string }[];
   spectatorCount: number;
   reactions: Reaction[];
+  heckleEvents: HeckleEvent[];
   send: (msg: WSClientMessage) => void;
   createObject: (obj: BoardObject) => void;
   updateObject: (partial: BoardObjectUpdate) => void;
@@ -65,6 +68,7 @@ export function useWebSocket(
   onSequence?: (steps: ChoreographyStep[]) => void,
   onSpotlight?: (objectId?: string, x?: number, y?: number) => void,
   onBlackout?: () => void,
+  onSfx?: (effect: string, emoji: string, label: string, x: number, y: number) => void,
 ): UseWebSocketReturn {
   const wsRef = useRef<WebSocket | null>(null);
   // Refs so the WS closure always calls the latest callbacks without reconnecting
@@ -78,6 +82,8 @@ export function useWebSocket(
   onSpotlightRef.current = onSpotlight;
   const onBlackoutRef = useRef(onBlackout);
   onBlackoutRef.current = onBlackout;
+  const onSfxRef = useRef(onSfx);
+  onSfxRef.current = onSfx;
   const lastServerMessageAt = useRef(0);
   const [connectionState, setConnectionState] = useState<ConnectionState>("connecting");
   const [initialized, setInitialized] = useState(false);
@@ -87,6 +93,7 @@ export function useWebSocket(
   const [presence, setPresence] = useState<{ id: string; username: string }[]>([]);
   const [spectatorCount, setSpectatorCount] = useState(0);
   const [reactions, setReactions] = useState<Reaction[]>([]);
+  const [heckleEvents, setHeckleEvents] = useState<HeckleEvent[]>([]);
 
   useEffect(() => {
     let intentionalClose = false;
@@ -244,6 +251,19 @@ export function useWebSocket(
               { id: crypto.randomUUID(), emoji: msg.emoji, x: msg.x, y: msg.y, ts: Date.now() },
             ]);
             break;
+          case "heckle":
+            setHeckleEvents((prev) => [
+              ...prev,
+              { id: crypto.randomUUID(), userId: msg.userId, text: msg.text, ts: Date.now() },
+            ]);
+            break;
+          case "sfx": {
+            const sfxDef = SFX_EFFECTS.find((e) => e.id === msg.effect);
+            if (sfxDef) {
+              onSfxRef.current?.(msg.effect, sfxDef.emoji, sfxDef.label, msg.x, msg.y);
+            }
+            break;
+          }
           case "board:deleted":
             // Board was deleted by owner - navigate away
             intentionalClose = true;
@@ -376,6 +396,7 @@ export function useWebSocket(
     presence,
     spectatorCount,
     reactions,
+    heckleEvents,
     send,
     createObject,
     updateObject,

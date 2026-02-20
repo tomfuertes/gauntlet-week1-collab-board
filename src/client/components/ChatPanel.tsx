@@ -11,6 +11,7 @@ import type { BoardObject, GameMode, Persona, AIModel, SceneLifecyclePhase } fro
 import "../styles/animations.css";
 import { BOARD_TEMPLATES } from "../../shared/board-templates";
 import type { ToolName } from "../../server/ai-tools-sdk";
+import type { HeckleEvent } from "../hooks/useSpectatorSocket";
 
 interface ChatPanelProps {
   boardId: string;
@@ -34,6 +35,8 @@ interface ChatPanelProps {
   onMessagesChange?: (messages: UIMessage[]) => void;
   /** Person-type canvas objects - used by freeze tag character picker */
   personObjects?: BoardObject[];
+  /** Heckle events from audience spectators - displayed distinctly in the chat area */
+  heckleEvents?: HeckleEvent[];
 }
 
 // ---------------------------------------------------------------------------
@@ -329,6 +332,7 @@ export function ChatPanel({
   onClaimChange,
   onMessagesChange,
   personObjects = [],
+  heckleEvents = [],
 }: ChatPanelProps) {
   const selectedIdsArray = useMemo(() => (selectedIds?.size ? [...selectedIds] : undefined), [selectedIds]);
 
@@ -1071,6 +1075,26 @@ export function ChatPanel({
             }}
           >
             {event.text}
+          </div>
+        ))}
+        {/* Heckle events: audience one-liners broadcast from spectators */}
+        {heckleEvents.map((event) => (
+          <div
+            key={event.id}
+            style={{
+              alignSelf: "center",
+              padding: "4px 12px",
+              borderRadius: 20,
+              background: "rgba(251, 191, 36, 0.08)",
+              border: "1px solid rgba(251, 191, 36, 0.3)",
+              color: "#fbbf24",
+              fontSize: "0.6875rem",
+              fontStyle: "italic",
+              textAlign: "center",
+              maxWidth: "90%",
+            }}
+          >
+            📣 [Audience] &ldquo;{event.text}&rdquo;
           </div>
         ))}
         {loading && (

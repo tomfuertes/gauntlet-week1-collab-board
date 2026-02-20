@@ -2,6 +2,13 @@ import { useEffect, useRef, useCallback, useState } from "react";
 import type { WSClientMessage, WSServerMessage, BoardObject } from "@shared/types";
 import type { ConnectionState, CursorState, Reaction } from "./useWebSocket";
 
+export interface HeckleEvent {
+  id: string;
+  userId: string;
+  text: string;
+  ts: number;
+}
+
 interface UseSpectatorSocketReturn {
   connectionState: ConnectionState;
   initialized: boolean;
@@ -10,8 +17,10 @@ interface UseSpectatorSocketReturn {
   presence: { id: string; username: string }[];
   spectatorCount: number;
   reactions: Reaction[];
+  heckleEvents: HeckleEvent[];
   sendCursor: (x: number, y: number) => void;
   sendReaction: (emoji: string, x: number, y: number) => void;
+  sendHeckle: (text: string) => void;
 }
 
 const BACKOFF_BASE_MS = 1000;
@@ -28,6 +37,7 @@ export function useSpectatorSocket(boardId: string): UseSpectatorSocketReturn {
   const [presence, setPresence] = useState<{ id: string; username: string }[]>([]);
   const [spectatorCount, setSpectatorCount] = useState(0);
   const [reactions, setReactions] = useState<Reaction[]>([]);
+  const [heckleEvents, setHeckleEvents] = useState<HeckleEvent[]>([]);
 
   useEffect(() => {
     let intentionalClose = false;
@@ -132,6 +142,12 @@ export function useSpectatorSocket(boardId: string): UseSpectatorSocketReturn {
               { id: crypto.randomUUID(), emoji: msg.emoji, x: msg.x, y: msg.y, ts: Date.now() },
             ]);
             break;
+          case "heckle":
+            setHeckleEvents((prev) => [
+              ...prev,
+              { id: crypto.randomUUID(), userId: msg.userId, text: msg.text, ts: Date.now() },
+            ]);
+            break;
           case "board:deleted":
             intentionalClose = true;
             wsRef.current?.close();
@@ -179,6 +195,12 @@ export function useSpectatorSocket(boardId: string): UseSpectatorSocketReturn {
     }
   }, []);
 
+  const sendHeckle = useCallback((text: string) => {
+    if (wsRef.current?.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify({ type: "heckle", text } satisfies WSClientMessage));
+    }
+  }, []);
+
   return {
     connectionState,
     initialized,
@@ -187,7 +209,9 @@ export function useSpectatorSocket(boardId: string): UseSpectatorSocketReturn {
     presence,
     spectatorCount,
     reactions,
+    heckleEvents,
     sendCursor,
     sendReaction,
+    sendHeckle,
   };
 }

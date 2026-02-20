@@ -1,5 +1,5 @@
 import { DurableObject } from "cloudflare:workers";
-import { AI_USER_ID, AI_USERNAME } from "../shared/types";
+import { AI_USER_ID, AI_USERNAME, SFX_EFFECTS } from "../shared/types";
 import type {
   BoardObject,
   CanvasAction,
@@ -37,6 +37,8 @@ export class Board extends DurableObject<Bindings> {
   private _boardId: string | null = null;
   // Rate limit: last reaction timestamp per userId (resets on hibernation, which is fine)
   private lastReactionAt = new Map<string, number>();
+  // Rate limit: last SFX timestamp per userId - 1 SFX per user per 3s
+  private lastSfxAt = new Map<string, number>();
 
   private async getBoardId(): Promise<string | null> {
     if (!this._boardId) {
@@ -274,7 +276,14 @@ export class Board extends DurableObject<Bindings> {
       // Validate: must have content, enough reactions, and not be on cooldown
       if (!text) return;
       if (meta.reactionCount < 5) {
-        console.warn(JSON.stringify({ event: "heckle:rejected", reason: "insufficient-reactions", userId: meta.userId, reactionCount: meta.reactionCount }));
+        console.warn(
+          JSON.stringify({
+            event: "heckle:rejected",
+            reason: "insufficient-reactions",
+            userId: meta.userId,
+            reactionCount: meta.reactionCount,
+          }),
+        );
         return;
       }
       if (now - meta.lastHeckleAt < 120_000) {
@@ -292,6 +301,22 @@ export class Board extends DurableObject<Bindings> {
       this.broadcast({ type: "heckle", userId: meta.userId, text });
       // Forward to ChatAgent so AI can react in next response
       this.notifyHeckle(meta.userId, text);
+      return;
+    }
+
+    if (msg.type === "sfx" && meta.role === "player") {
+      // Validate effect against whitelist
+      const sfxDef = SFX_EFFECTS.find((e) => e.id === msg.effect);
+      if (!sfxDef) return;
+      // Rate limit: 1 SFX per user per 3s
+      const sfxNow = Date.now();
+      const lastSfx = this.lastSfxAt.get(meta.userId) ?? 0;
+      if (sfxNow - lastSfx < 3000) return;
+      this.lastSfxAt.set(meta.userId, sfxNow);
+      // Broadcast to ALL clients including sender (no excludeWs) - visual effect for everyone
+      this.broadcast({ type: "sfx", userId: meta.userId, effect: msg.effect, x: msg.x, y: msg.y });
+      // Notify ChatAgent so AI can react to the sound cue
+      this.notifySfxAction(msg.effect, sfxDef.label);
       return;
     }
 
@@ -550,6 +575,13 @@ export class Board extends DurableObject<Bindings> {
         this.broadcast({ type: "blackout" });
         return { ok: true };
       }
+      case "sfx": {
+        // KEY-DECISION 2026-02-20: Broadcast to ALL clients (no excludeWs).
+        // SFX is an ephemeral theatrical effect - all clients should see the burst.
+        // When called via mutate() RPC (AI tool), userId is AI_USER_ID.
+        this.broadcast({ type: "sfx", userId: userId, effect: msg.effect, x: msg.x, y: msg.y });
+        return { ok: true };
+      }
     }
     return { ok: false, error: `Unknown message type` };
   }
@@ -580,6 +612,15 @@ export class Board extends DurableObject<Bindings> {
       const id = this.env.CHAT_AGENT.idFromName(boardId);
       const chatAgent = this.env.CHAT_AGENT.get(id);
       await chatAgent.onCanvasAction(action);
+    });
+  }
+
+  /** Fire-and-forget SFX notification to ChatAgent - AI can react to the sound cue. */
+  private notifySfxAction(effectId: string, label: string): void {
+    this.withBoardId("sfx:notify", async (boardId) => {
+      const id = this.env.CHAT_AGENT.idFromName(boardId);
+      const chatAgent = this.env.CHAT_AGENT.get(id);
+      await chatAgent.onSfxAction(effectId, label);
     });
   }
 

@@ -9,6 +9,9 @@ import { Cursors } from "./Cursors";
 import { BoardGrid } from "./BoardGrid";
 import "../styles/animations.css";
 
+const HECKLE_COST = 5;
+const HECKLE_COOLDOWN_MS = 120_000; // 2 minutes
+
 // clap, laugh, fire, heart, wow, theater masks
 const REACTION_EMOJIS = [
   "\uD83D\uDC4F",
@@ -37,6 +40,7 @@ export function SpectatorView({ boardId, onBack }: SpectatorViewProps) {
     reactions,
     sendCursor,
     sendReaction,
+    sendHeckle,
   } = useSpectatorSocket(boardId);
   const [size, setSize] = useState({ width: window.innerWidth, height: window.innerHeight });
   const [scale, setScale] = useState(1);
@@ -44,6 +48,23 @@ export function SpectatorView({ boardId, onBack }: SpectatorViewProps) {
   const [copied, setCopied] = useState(false);
   const lastCursorSend = useRef(0);
   const stageRef = useRef<HTMLDivElement>(null);
+
+  // Heckler mode: local reaction count + cooldown (mirrors server attachment)
+  const [reactionCount, setReactionCount] = useState(0);
+  const [lastHeckleAt, setLastHeckleAt] = useState(0);
+  const [showHeckleInput, setShowHeckleInput] = useState(false);
+  const [heckleText, setHeckleText] = useState("");
+  const [cooldownRemaining, setCooldownRemaining] = useState(0);
+  const heckleInputRef = useRef<HTMLInputElement>(null);
+
+  // Tick down cooldown display every second
+  useEffect(() => {
+    const id = setInterval(() => {
+      const remaining = Math.max(0, HECKLE_COOLDOWN_MS - (Date.now() - lastHeckleAt));
+      setCooldownRemaining(remaining);
+    }, 1000);
+    return () => clearInterval(id);
+  }, [lastHeckleAt]);
 
   useEffect(() => {
     const onResize = () => setSize({ width: window.innerWidth, height: window.innerHeight });
@@ -94,9 +115,22 @@ export function SpectatorView({ boardId, onBack }: SpectatorViewProps) {
       const canvasX = (size.width / 2 - stagePos.x) / scale;
       const canvasY = (stageH / 2 - stagePos.y) / scale;
       sendReaction(emoji, canvasX, canvasY);
+      // Optimistic: track local reaction count for heckle budget display
+      setReactionCount((c) => c + 1);
     },
     [size.width, stageH, scale, stagePos, sendReaction],
   );
+
+  const handleHeckleSubmit = useCallback(() => {
+    const text = heckleText.trim();
+    if (!text || reactionCount < HECKLE_COST || cooldownRemaining > 0) return;
+    sendHeckle(text);
+    // Optimistic: deduct cost and start cooldown
+    setReactionCount((c) => c - HECKLE_COST);
+    setLastHeckleAt(Date.now());
+    setHeckleText("");
+    setShowHeckleInput(false);
+  }, [heckleText, reactionCount, cooldownRemaining, sendHeckle]);
 
   const objectList = [...objects.values()];
 
@@ -290,6 +324,62 @@ export function SpectatorView({ boardId, onBack }: SpectatorViewProps) {
         })}
       </div>
 
+      {/* Heckle input (shown when active) */}
+      {showHeckleInput && (
+        <div
+          style={{
+            background: colors.overlayHeader,
+            borderTop: `1px solid ${colors.border}`,
+            padding: "0.5rem 1rem",
+            display: "flex",
+            gap: "0.5rem",
+            alignItems: "center",
+          }}
+        >
+          <input
+            ref={heckleInputRef}
+            value={heckleText}
+            onChange={(e) => setHeckleText(e.target.value.slice(0, 100))}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") handleHeckleSubmit();
+              if (e.key === "Escape") {
+                setShowHeckleInput(false);
+                setHeckleText("");
+              }
+            }}
+            placeholder="Shout something at the stage..."
+            maxLength={100}
+            autoFocus
+            style={{
+              flex: 1,
+              background: "#1e293b",
+              border: `1px solid ${colors.border}`,
+              borderRadius: 8,
+              color: "#e2e8f0",
+              padding: "0.375rem 0.625rem",
+              fontSize: "0.8125rem",
+              outline: "none",
+            }}
+          />
+          <span style={{ color: colors.textDim, fontSize: "0.6875rem", whiteSpace: "nowrap" }}>
+            {heckleText.length}/100
+          </span>
+          <Button onClick={handleHeckleSubmit} disabled={!heckleText.trim()}>
+            Send
+          </Button>
+          <Button
+            variant="link"
+            onClick={() => {
+              setShowHeckleInput(false);
+              setHeckleText("");
+            }}
+            style={{ color: colors.textMuted, fontSize: "0.8125rem" }}
+          >
+            Cancel
+          </Button>
+        </div>
+      )}
+
       {/* Reaction bar */}
       <div
         style={{
@@ -327,6 +417,53 @@ export function SpectatorView({ boardId, onBack }: SpectatorViewProps) {
             {emoji}
           </button>
         ))}
+        {/* Heckle button: costs 5 reactions, 2-min cooldown */}
+        {(() => {
+          const canHeckle = reactionCount >= HECKLE_COST && cooldownRemaining === 0;
+          const cooldownSec = Math.ceil(cooldownRemaining / 1000);
+          return (
+            <button
+              onClick={() => {
+                if (canHeckle) {
+                  setShowHeckleInput((prev) => !prev);
+                  if (!showHeckleInput) setTimeout(() => heckleInputRef.current?.focus(), 50);
+                }
+              }}
+              disabled={!canHeckle}
+              title={
+                cooldownRemaining > 0
+                  ? `Cooldown: ${cooldownSec}s`
+                  : reactionCount < HECKLE_COST
+                    ? `React ${HECKLE_COST - reactionCount} more times to unlock heckle`
+                    : "Spend 5 reactions to heckle the scene!"
+              }
+              style={{
+                background: canHeckle ? "rgba(251, 191, 36, 0.12)" : "none",
+                border: `1px solid ${canHeckle ? "rgba(251, 191, 36, 0.5)" : colors.border}`,
+                borderRadius: 8,
+                fontSize: "1rem",
+                padding: "0.25rem 0.625rem",
+                cursor: canHeckle ? "pointer" : "default",
+                opacity: canHeckle ? 1 : 0.4,
+                color: canHeckle ? "#fbbf24" : colors.textDim,
+                transition: "opacity 0.2s, border-color 0.2s",
+                display: "flex",
+                alignItems: "center",
+                gap: "0.25rem",
+                whiteSpace: "nowrap",
+              }}
+            >
+              📣
+              {cooldownRemaining > 0 ? (
+                <span style={{ fontSize: "0.625rem" }}>{cooldownSec}s</span>
+              ) : (
+                <span style={{ fontSize: "0.6875rem" }}>
+                  {reactionCount}/{HECKLE_COST}
+                </span>
+              )}
+            </button>
+          );
+        })()}
       </div>
     </div>
   );
