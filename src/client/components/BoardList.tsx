@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import type { AuthUser } from "../App";
 import type { DailyChallenge } from "../../shared/types";
+import { BOARD_TEMPLATES } from "../../shared/board-templates";
 import { colors } from "../theme";
 import { Button } from "./Button";
 
@@ -402,23 +403,69 @@ export function BoardList({
               borderRadius: 8,
               padding: "1.25rem 1.5rem",
               marginBottom: "1.5rem",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              gap: "1rem",
-              flexWrap: "wrap",
             }}
           >
-            <div>
-              <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: 4 }}>
-                <span style={{ fontSize: "1rem" }}>🎩</span>
-                <span style={{ fontWeight: 700, color: colors.warning, fontSize: "0.875rem", letterSpacing: "0.05em" }}>
-                  TODAY'S DAILY CHALLENGE
+            {/* Top row: label + engagement badges */}
+            <div style={{ display: "flex", alignItems: "center", flexWrap: "wrap", gap: "0.5rem", marginBottom: 6 }}>
+              <span style={{ fontSize: "1rem" }}>🎩</span>
+              <span style={{ fontWeight: 700, color: colors.warning, fontSize: "0.875rem", letterSpacing: "0.05em" }}>
+                TODAY'S DAILY CHALLENGE
+              </span>
+
+              {/* Streak badge - only shown when user has an active streak */}
+              {(challenge.streak ?? 0) > 0 && (
+                <span
+                  style={{
+                    // KEY-DECISION 2026-02-20: warm gradient (not solid) keeps badge from looking like a button
+                    background: "linear-gradient(135deg, rgba(251, 146, 60, 0.3), rgba(239, 68, 68, 0.25))",
+                    border: "1px solid rgba(251, 146, 60, 0.5)",
+                    borderRadius: 12,
+                    padding: "1px 8px",
+                    fontSize: "0.75rem",
+                    fontWeight: 600,
+                    color: "#fb923c",
+                  }}
+                >
+                  🔥 {challenge.streak} day streak!
                 </span>
-              </div>
-              <div style={{ fontSize: "1rem", fontWeight: 600, color: colors.text }}>{challenge.prompt}</div>
+              )}
+
+              {/* Personal best badge - gold star, only when user has a scored attempt */}
+              {challenge.bestScore != null && (
+                <span
+                  style={{
+                    background: "rgba(251, 191, 36, 0.15)",
+                    border: "1px solid rgba(251, 191, 36, 0.4)",
+                    borderRadius: 12,
+                    padding: "1px 8px",
+                    fontSize: "0.75rem",
+                    fontWeight: 600,
+                    color: "#fbbf24",
+                  }}
+                >
+                  ★ Best: {challenge.bestScore}/5
+                </span>
+              )}
             </div>
-            <div style={{ display: "flex", gap: "0.5rem", alignItems: "center", flexShrink: 0 }}>
+
+            {/* Prompt text */}
+            <div style={{ fontSize: "1rem", fontWeight: 600, color: colors.text, marginBottom: 8 }}>
+              {challenge.prompt}
+            </div>
+
+            {/* Template preview hint */}
+            {challenge.templateId &&
+              (() => {
+                const tpl = BOARD_TEMPLATES.find((t) => t.id === challenge.templateId);
+                return tpl ? (
+                  <div style={{ fontSize: "0.75rem", color: colors.textMuted, marginBottom: 10 }}>
+                    {tpl.icon} Starter template: <em>{tpl.label}</em>
+                  </div>
+                ) : null;
+              })()}
+
+            {/* Action buttons */}
+            <div style={{ display: "flex", gap: "0.5rem", alignItems: "center", flexWrap: "wrap" }}>
               <Button
                 variant="link"
                 onClick={() => {

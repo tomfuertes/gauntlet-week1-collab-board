@@ -6,6 +6,18 @@ import { Button } from "./Button";
 
 const MEDAL = ["🥇", "🥈", "🥉"];
 
+// KEY-DECISION 2026-02-20: StarRating duplicated from BoardList (not extracted) - used in two
+// unrelated views with different layout contexts; a shared component adds coupling for 5 lines.
+function StarRating({ score }: { score: number }) {
+  return (
+    <div style={{ display: "flex", gap: 1, color: "#fbbf24", fontSize: "0.8rem", letterSpacing: "-1px" }}>
+      {[1, 2, 3, 4, 5].map((i) => (
+        <span key={i}>{i <= score ? "★" : "☆"}</span>
+      ))}
+    </div>
+  );
+}
+
 export function LeaderboardPanel({ user, onBack }: { user: AuthUser | null; onBack: () => void }) {
   const [challenge, setChallenge] = useState<DailyChallenge | null>(null);
   const [entries, setEntries] = useState<LeaderboardEntry[]>([]);
@@ -187,7 +199,7 @@ export function LeaderboardPanel({ user, onBack }: { user: AuthUser | null; onBa
                   borderRadius: 8,
                 }}
               >
-                No entries yet - be the first to accept today's challenge!
+                No reviews yet - scenes get reviewed at their dramatic conclusion!
               </div>
             ) : (
               <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
@@ -199,7 +211,7 @@ export function LeaderboardPanel({ user, onBack }: { user: AuthUser | null; onBa
                       key={entry.boardId}
                       style={{
                         display: "flex",
-                        alignItems: "center",
+                        alignItems: "flex-start",
                         gap: "1rem",
                         background: isCurrentUser ? `rgba(99, 102, 241, 0.12)` : colors.surface,
                         border: `1px solid ${isCurrentUser ? colors.accentLight : colors.border}`,
@@ -207,60 +219,123 @@ export function LeaderboardPanel({ user, onBack }: { user: AuthUser | null; onBa
                         padding: "0.75rem 1rem",
                       }}
                     >
-                      {/* Rank - array is ordered by reactionCount DESC server-side */}
-                      <div style={{ width: 32, textAlign: "center", fontSize: "1.125rem", flexShrink: 0 }}>
+                      {/* Rank - array is ordered by criticScore DESC server-side (reactionCount as fallback) */}
+                      <div
+                        style={{ width: 32, textAlign: "center", fontSize: "1.125rem", flexShrink: 0, paddingTop: 2 }}
+                      >
                         {i < 3 ? (
                           MEDAL[i]
                         ) : (
                           <span style={{ color: colors.textDim, fontSize: "0.875rem" }}>#{i + 1}</span>
                         )}
                       </div>
-                      {/* Username */}
-                      <div style={{ flex: 1, fontWeight: isCurrentUser ? 700 : 400 }}>
-                        {entry.username}
-                        {isCurrentUser && (
-                          <span
-                            style={{ marginLeft: 6, fontSize: "0.7rem", color: colors.accentLight, fontWeight: 400 }}
+
+                      {/* Main content */}
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        {/* Username + "you" tag */}
+                        <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 2 }}>
+                          <span style={{ fontWeight: isCurrentUser ? 700 : 400 }}>{entry.username}</span>
+                          {isCurrentUser && (
+                            <span style={{ fontSize: "0.7rem", color: colors.accentLight, fontWeight: 400 }}>you</span>
+                          )}
+                        </div>
+
+                        {/* Scene name - links to replay */}
+                        {entry.sceneName && (
+                          <button
+                            onClick={() => {
+                              location.hash = `replay/${entry.boardId}`;
+                            }}
+                            style={{
+                              background: "none",
+                              border: "none",
+                              padding: 0,
+                              cursor: "pointer",
+                              color: colors.accentLight,
+                              fontSize: "0.75rem",
+                              marginBottom: 4,
+                              textAlign: "left",
+                              display: "block",
+                              maxWidth: "100%",
+                              overflow: "hidden",
+                              textOverflow: "ellipsis",
+                              whiteSpace: "nowrap",
+                            }}
                           >
-                            you
-                          </span>
+                            {entry.sceneName}
+                          </button>
+                        )}
+
+                        {/* Critic review snippet */}
+                        {entry.criticReview && (
+                          <div
+                            title={entry.criticReview}
+                            style={{
+                              fontSize: "0.75rem",
+                              color: colors.textDim,
+                              fontStyle: "italic",
+                              overflow: "hidden",
+                              display: "-webkit-box",
+                              WebkitLineClamp: 2,
+                              WebkitBoxOrient: "vertical",
+                            }}
+                          >
+                            &ldquo;{entry.criticReview}&rdquo;
+                          </div>
                         )}
                       </div>
-                      {/* Reaction count */}
+
+                      {/* Score + links column */}
                       <div
                         style={{
-                          color: colors.textMuted,
-                          fontSize: "0.875rem",
                           display: "flex",
-                          alignItems: "center",
-                          gap: 4,
+                          flexDirection: "column",
+                          alignItems: "flex-end",
+                          gap: 6,
+                          flexShrink: 0,
                         }}
                       >
-                        <span>👏</span>
-                        <span>{entry.reactionCount}</span>
-                      </div>
-                      {/* Links */}
-                      <div style={{ display: "flex", gap: "0.5rem" }}>
-                        <Button
-                          variant="link"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            location.hash = `watch/${entry.boardId}`;
-                          }}
-                          style={{ fontSize: "0.75rem", color: colors.accentLight }}
-                        >
-                          Watch
-                        </Button>
-                        <Button
-                          variant="link"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            location.hash = `replay/${entry.boardId}`;
-                          }}
-                          style={{ fontSize: "0.75rem", color: colors.textMuted }}
-                        >
-                          Replay
-                        </Button>
+                        {/* Critic score (preferred) or reaction count fallback */}
+                        {entry.criticScore != null ? (
+                          <StarRating score={entry.criticScore} />
+                        ) : (
+                          <div
+                            style={{
+                              color: colors.textMuted,
+                              fontSize: "0.875rem",
+                              display: "flex",
+                              alignItems: "center",
+                              gap: 4,
+                            }}
+                          >
+                            <span>👏</span>
+                            <span>{entry.reactionCount}</span>
+                          </div>
+                        )}
+
+                        {/* Watch / Replay links */}
+                        <div style={{ display: "flex", gap: "0.5rem" }}>
+                          <Button
+                            variant="link"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              location.hash = `watch/${entry.boardId}`;
+                            }}
+                            style={{ fontSize: "0.75rem", color: colors.accentLight }}
+                          >
+                            Watch
+                          </Button>
+                          <Button
+                            variant="link"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              location.hash = `replay/${entry.boardId}`;
+                            }}
+                            style={{ fontSize: "0.75rem", color: colors.textMuted }}
+                          >
+                            Replay
+                          </Button>
+                        </div>
                       </div>
                     </div>
                   );
