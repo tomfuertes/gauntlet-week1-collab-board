@@ -119,7 +119,8 @@ async function createAndSetSession(c: Context<{ Bindings: Bindings }>, userId: s
 
 auth.post("/auth/signup", async (c) => {
   const ip = getClientIp(c.req.raw);
-  const rl = checkRateLimit(`signup:${ip}`, 5);
+  // 30/min: high enough for E2E suites (all tests share one IP), low enough to block abuse
+  const rl = checkRateLimit(`signup:${ip}`, 30);
   if (rl.limited) {
     c.header("Retry-After", String(rl.retryAfter));
     return c.json({ error: "Too many signup attempts. Try again later." }, 429);
