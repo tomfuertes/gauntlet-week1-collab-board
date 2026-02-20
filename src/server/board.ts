@@ -1,6 +1,13 @@
 import { DurableObject } from "cloudflare:workers";
 import { AI_USER_ID, AI_USERNAME } from "../shared/types";
-import type { BoardObject, MutateResult, ReplayEvent, WSClientMessage, WSServerMessage } from "../shared/types";
+import type {
+  BoardObject,
+  CanvasAction,
+  MutateResult,
+  ReplayEvent,
+  WSClientMessage,
+  WSServerMessage,
+} from "../shared/types";
 import type { Bindings } from "./env";
 import { recordBoardActivity, markBoardSeen } from "./env";
 
@@ -281,7 +288,7 @@ export class Board extends DurableObject<Bindings> {
       return;
     }
 
-    await this.handleMutation(msg, meta.userId, ws);
+    await this.handleMutation(msg, meta.userId, ws, meta.username);
   }
 
   async webSocketClose(ws: WebSocket) {
@@ -379,7 +386,12 @@ export class Board extends DurableObject<Bindings> {
     this.eventCount++;
   }
 
-  private async handleMutation(msg: WSClientMessage, userId: string, excludeWs?: WebSocket): Promise<MutateResult> {
+  private async handleMutation(
+    msg: WSClientMessage,
+    userId: string,
+    excludeWs?: WebSocket,
+    username?: string,
+  ): Promise<MutateResult> {
     switch (msg.type) {
       case "obj:create": {
         if (msg.obj.type === "image" && !msg.obj.props?.src) {
@@ -390,6 +402,18 @@ export class Board extends DurableObject<Bindings> {
         this.broadcast({ type: "obj:create", obj }, excludeWs);
         await this.recordEvent({ type: "obj:create", ts: obj.updatedAt, obj });
         this.trackActivity();
+        if (userId !== AI_USER_ID && username) {
+          this.notifyCanvasAction({
+            type: "obj:create",
+            userId,
+            username,
+            objectType: obj.type,
+            objectId: obj.id,
+            text: (obj.props as { text?: string }).text,
+            significant: true,
+            ts: obj.updatedAt,
+          });
+        }
         return { ok: true };
       }
       case "obj:update": {
@@ -418,6 +442,21 @@ export class Board extends DurableObject<Bindings> {
           { type: "obj:update", ts: updated.updatedAt, obj: updated, ...animField },
           isSpatial ? 100 : 500,
         );
+        if (userId !== AI_USER_ID && username) {
+          const existingText = (existing.props as { text?: string }).text;
+          const newText = msg.obj.props?.text;
+          const textChanged = newText !== undefined && newText !== existingText;
+          this.notifyCanvasAction({
+            type: "obj:update",
+            userId,
+            username,
+            objectType: updated.type,
+            objectId: updated.id,
+            text: (updated.props as { text?: string }).text,
+            significant: textChanged,
+            ts: updated.updatedAt,
+          });
+        }
         return { ok: true };
       }
       case "obj:delete": {
@@ -427,6 +466,16 @@ export class Board extends DurableObject<Bindings> {
         this.trackActivity();
         // Cascade: disconnect lines that referenced the deleted object (soft - keeps line, clears binding)
         this.ctx.waitUntil(this.disconnectLines(msg.id));
+        if (userId !== AI_USER_ID && username) {
+          this.notifyCanvasAction({
+            type: "obj:delete",
+            userId,
+            username,
+            objectId: msg.id,
+            significant: true,
+            ts: Date.now(),
+          });
+        }
         return { ok: true };
       }
       case "obj:effect": {
@@ -469,6 +518,18 @@ export class Board extends DurableObject<Bindings> {
       await this.ctx.storage.put(key, updated);
       this.broadcast({ type: "obj:update", obj: updated });
     }
+  }
+
+  /** Fire-and-forget canvas action notification to ChatAgent (non-blocking).
+   *  KEY-DECISION 2026-02-20: Board DO notifies ChatAgent so the director has real-time
+   *  visibility into player canvas activity without polling. Uses withBoardId() for the same
+   *  fire-and-forget + error-logging pattern as trackActivity(). */
+  private notifyCanvasAction(action: CanvasAction): void {
+    this.withBoardId("canvas-action:notify", async (boardId) => {
+      const id = this.env.CHAT_AGENT.idFromName(boardId);
+      const chatAgent = this.env.CHAT_AGENT.get(id);
+      await chatAgent.onCanvasAction(action);
+    });
   }
 
   /** Fire-and-forget D1 activity increment (non-blocking) */

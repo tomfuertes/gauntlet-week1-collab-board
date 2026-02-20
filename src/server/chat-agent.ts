@@ -34,6 +34,7 @@ import type {
   BoardObject,
   BoardObjectProps,
   BoardStub,
+  CanvasAction,
   CharacterRelationship,
   GameMode,
   Persona,
@@ -1769,6 +1770,28 @@ export class ChatAgent extends AIChatAgent<Bindings> {
           );
         }
       })(),
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // Auto-director - canvas action RPC stub (T2 implements reaction engine)
+  // ---------------------------------------------------------------------------
+
+  /** Receives canvas mutation notifications from Board DO after each player action.
+   *  Stub for T1 - verifies RPC plumbing compiles and works end-to-end.
+   *  T2 (task #59) will implement the debounce + canvas reaction engine here. */
+  onCanvasAction(action: CanvasAction): void {
+    console.debug(
+      JSON.stringify({
+        event: "canvas-action:received",
+        boardId: this.name,
+        type: action.type,
+        userId: action.userId,
+        username: action.username,
+        objectId: action.objectId,
+        significant: action.significant,
+        ts: action.ts,
+      }),
     );
   }
 
