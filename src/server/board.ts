@@ -381,10 +381,29 @@ export class Board extends DurableObject<Bindings> {
         this.broadcast({ type: "obj:delete", id: msg.id }, excludeWs);
         await this.recordEvent({ type: "obj:delete", ts: Date.now(), id: msg.id });
         this.trackActivity();
+        // Cascade: disconnect lines that referenced the deleted object (soft - keeps line, clears binding)
+        this.ctx.waitUntil(this.disconnectLines(msg.id));
         return { ok: true };
       }
     }
     return { ok: false, error: `Unknown message type` };
+  }
+
+  /** Soft-disconnect lines referencing a deleted object (clears binding, keeps line as static) */
+  private async disconnectLines(deletedId: string): Promise<void> {
+    const entries = await this.ctx.storage.list<BoardObject>({ prefix: "obj:" });
+    for (const [key, obj] of entries) {
+      if (obj.type !== "line") continue;
+      if (obj.startObjectId !== deletedId && obj.endObjectId !== deletedId) continue;
+      const updated = {
+        ...obj,
+        startObjectId: obj.startObjectId === deletedId ? undefined : obj.startObjectId,
+        endObjectId: obj.endObjectId === deletedId ? undefined : obj.endObjectId,
+        updatedAt: Date.now(),
+      };
+      await this.ctx.storage.put(key, updated);
+      this.broadcast({ type: "obj:update", obj: updated });
+    }
   }
 
   /** Fire-and-forget D1 activity increment (non-blocking) */

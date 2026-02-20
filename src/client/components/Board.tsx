@@ -1,10 +1,11 @@
 import React, { useState, useRef, useCallback, useEffect } from "react";
-import { Stage, Layer, Rect, Text, Transformer } from "react-konva";
+import { Stage, Layer, Rect, Text, Transformer, Arrow as KonvaArrow, Circle as KonvaCircle } from "react-konva";
 import type { KonvaEventObject } from "konva/lib/Node";
 import Konva from "konva";
 import type { AuthUser } from "../App";
 import { AI_USER_ID } from "@shared/types";
 import type { BoardObject, BoardObjectProps, GameMode, AIModel } from "@shared/types";
+import { findSnapTarget, computeConnectedLineGeometry, getEdgePoint } from "@shared/connection-geometry";
 import { AI_MODELS } from "@shared/types";
 import { TRANSFORMER_CONFIG } from "../constants";
 import { useWebSocket } from "../hooks/useWebSocket";
@@ -15,6 +16,7 @@ import { useAiObjectEffects } from "../hooks/useAiObjectEffects";
 import { useKeyboardShortcuts } from "../hooks/useKeyboardShortcuts";
 import { useDragSelection } from "../hooks/useDragSelection";
 import { useThrottledCallback } from "../hooks/useThrottledCallback";
+import { useConnectionIndex } from "../hooks/useConnectionIndex";
 import { colors, toolCursors, getUserColor } from "../theme";
 import { Toolbar, type ToolMode } from "./Toolbar";
 import { Cursors } from "./Cursors";
@@ -209,6 +211,26 @@ export function Board({
   );
   const pendingFrameCancelled = useRef(false);
 
+  // Click-or-drag creation state
+  const drawStartRef = useRef<{
+    x: number;
+    y: number;
+    toolMode: ToolMode;
+    time: number;
+    startObjectId?: string; // connector: snapped source object
+    startSnapPoint?: { x: number; y: number }; // connector: snapped edge point
+  } | null>(null);
+  const [shapeDraft, setShapeDraft] = useState<{
+    toolMode: ToolMode;
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+    snapTarget?: { objectId: string; snapPoint: { x: number; y: number } };
+  } | null>(null);
+  const shapeDraftRef = useRef(shapeDraft);
+  shapeDraftRef.current = shapeDraft;
+
   // Bulk drag state
   const dragStartPositionsRef = useRef<Map<string, { x: number; y: number }>>(new Map());
 
@@ -225,9 +247,14 @@ export function Board({
     createObject: wsCreate,
     updateObject: wsUpdate,
     deleteObject: wsDelete,
+    patchObjectLocal,
     batchUndo,
     lastServerMessageAt,
   } = useWebSocket(boardId);
+
+  const connectionIndex = useConnectionIndex(objects);
+  const connectionIndexRef = useRef(connectionIndex);
+  connectionIndexRef.current = connectionIndex;
 
   const sendCursorThrottled = useThrottledCallback(
     (x: number, y: number) => send({ type: "cursor", x, y }),
@@ -425,6 +452,24 @@ export function Board({
     [selectedIds, objects, updateObject, startBatch, commitBatch],
   );
 
+  // Apply arrow style to all selected line objects
+  const handleArrowStyleChange = useCallback(
+    (style: "none" | "end" | "both") => {
+      const isBatch = selectedIds.size > 1;
+      if (isBatch) startBatch();
+      try {
+        for (const id of selectedIds) {
+          const obj = objects.get(id);
+          if (!obj || obj.type !== "line") continue;
+          updateObject({ id, props: { arrow: style } as BoardObjectProps });
+        }
+      } finally {
+        if (isBatch) commitBatch();
+      }
+    },
+    [selectedIds, objects, updateObject, startBatch, commitBatch],
+  );
+
   // Clear selection if objects were deleted (by another user or AI)
   useEffect(() => {
     setSelectedIds((prev) => {
@@ -506,6 +551,64 @@ export function Board({
     }
   }, []);
 
+  // Helper: recalculate all connected lines for a set of moved object IDs.
+  // Returns array of { lineId, geo } patches. Reads from Konva nodes (for in-drag) or objects map.
+  const getConnectedLineUpdates = useCallback(
+    (movedIds: Set<string>): { lineId: string; geo: { x: number; y: number; width: number; height: number } }[] => {
+      const updates: { lineId: string; geo: { x: number; y: number; width: number; height: number } }[] = [];
+      const seenLines = new Set<string>();
+
+      // Get current position from Konva node (if being dragged) or state
+      const getObjBounds = (obj: BoardObject) => {
+        const node = shapeRefs.current.get(obj.id);
+        if (node) {
+          return {
+            x: node.x(),
+            y: node.y(),
+            width: obj.width,
+            height: obj.height,
+            rotation: obj.rotation,
+            type: obj.type,
+          };
+        }
+        return { x: obj.x, y: obj.y, width: obj.width, height: obj.height, rotation: obj.rotation, type: obj.type };
+      };
+
+      for (const movedId of movedIds) {
+        const lineIds = connectionIndexRef.current.get(movedId);
+        if (!lineIds) continue;
+        for (const lineId of lineIds) {
+          if (seenLines.has(lineId)) continue;
+          seenLines.add(lineId);
+          const line = objectsRef.current.get(lineId);
+          if (!line) continue;
+          const startObj = line.startObjectId ? objectsRef.current.get(line.startObjectId) : null;
+          const endObj = line.endObjectId ? objectsRef.current.get(line.endObjectId) : null;
+          if (!startObj && !endObj) continue;
+
+          if (startObj && endObj) {
+            const geo = computeConnectedLineGeometry(getObjBounds(startObj), getObjBounds(endObj));
+            updates.push({ lineId, geo });
+          } else if (startObj) {
+            // Only start connected - recalc start edge, keep end fixed
+            const bounds = getObjBounds(startObj);
+            const endX = line.x + line.width;
+            const endY = line.y + line.height;
+            const start = getEdgePoint(bounds, endX, endY);
+            updates.push({ lineId, geo: { x: start.x, y: start.y, width: endX - start.x, height: endY - start.y } });
+          } else if (endObj) {
+            // Only end connected - recalc end edge, keep start fixed
+            const bounds = getObjBounds(endObj);
+            const end = getEdgePoint(bounds, line.x, line.y);
+            updates.push({ lineId, geo: { x: line.x, y: line.y, width: end.x - line.x, height: end.y - line.y } });
+          }
+        }
+      }
+      return updates;
+    },
+    [],
+  );
+
   // Bulk drag handlers (reads selectedIds from ref for stability)
   const handleShapeDragStart = useCallback((_e: KonvaEventObject<DragEvent>, id: string) => {
     const sel = selectedIdsRef.current;
@@ -542,6 +645,13 @@ export function Board({
         }
       }
 
+      // Update connected lines visually (local only, no WS yet)
+      const movedIds = positions.size > 0 ? new Set(positions.keys()) : new Set([id]);
+      const lineUpdates = getConnectedLineUpdates(movedIds);
+      for (const { lineId, geo } of lineUpdates) {
+        patchObjectLocal(lineId, geo);
+      }
+
       // Throttled WS send for real-time multiplayer + replay recording
       const now = Date.now();
       if (now - lastDragSendRef.current < 100) return;
@@ -560,16 +670,25 @@ export function Board({
           }
         }
       }
+
+      // Send connected line updates to remote
+      for (const { lineId, geo } of lineUpdates) {
+        send({ type: "obj:update", obj: { id: lineId, ...geo, updatedAt: now } });
+      }
     },
-    [send],
+    [send, getConnectedLineUpdates, patchObjectLocal],
   );
 
   const handleShapeDragEnd = useCallback(
     (e: KonvaEventObject<DragEvent>, id: string) => {
       const positions = dragStartPositionsRef.current;
-      if (positions.size > 0) {
-        startBatch();
-        try {
+      const movedIds = positions.size > 0 ? new Set(positions.keys()) : new Set([id]);
+      const lineUpdates = getConnectedLineUpdates(movedIds);
+      const needsBatch = positions.size > 0 || lineUpdates.length > 0;
+
+      if (needsBatch) startBatch();
+      try {
+        if (positions.size > 0) {
           for (const sid of positions.keys()) {
             const node = shapeRefs.current.get(sid);
             if (node) {
@@ -577,14 +696,18 @@ export function Board({
             }
           }
           dragStartPositionsRef.current = new Map();
-        } finally {
-          commitBatch();
+        } else {
+          updateObject({ id, x: e.target.x(), y: e.target.y() });
         }
-      } else {
-        updateObject({ id, x: e.target.x(), y: e.target.y() });
+        // Commit connected line positions
+        for (const { lineId, geo } of lineUpdates) {
+          updateObject({ id: lineId, ...geo });
+        }
+      } finally {
+        if (needsBatch) commitBatch();
       }
     },
-    [updateObject, startBatch, commitBatch],
+    [updateObject, startBatch, commitBatch, getConnectedLineUpdates],
   );
 
   // Track mouse for cursor sync + marquee (reads stagePos/scale from refs for stability)
@@ -607,7 +730,7 @@ export function Board({
     [sendCursorThrottled, updateMarquee],
   );
 
-  // Stage mousedown: marquee (select mode) or frame draft (frame mode)
+  // Stage mousedown: marquee (select), frame draft, or shape/connector draw start
   const handleStageMouseDown = useCallback(
     (e: KonvaEventObject<MouseEvent>) => {
       // Dismiss "Undo AI" button on any canvas interaction
@@ -625,15 +748,33 @@ export function Board({
         startMarquee(worldX, worldY);
       } else if (toolMode === "frame") {
         setFrameDraft({ startX: worldX, startY: worldY, x: worldX, y: worldY, width: 0, height: 0 });
+      } else {
+        // Shape/connector draw start
+        const ds: NonNullable<typeof drawStartRef.current> = {
+          x: worldX,
+          y: worldY,
+          toolMode,
+          time: Date.now(),
+        };
+        // Connector: check for snap at start point
+        if (toolMode === "connector") {
+          const snap = findSnapTarget(worldX, worldY, objectsRef.current.values());
+          if (snap) {
+            ds.startObjectId = snap.objectId;
+            ds.startSnapPoint = snap.snapPoint;
+          }
+        }
+        drawStartRef.current = ds;
       }
     },
     [toolMode, startMarquee],
   );
 
-  // Stage mouseup: finish marquee or frame draft
+  // Stage mouseup: finish marquee, frame draft, or shape/connector creation
   const handleStageMouseUp = useCallback(() => {
     // Marquee selection finish
     if (finishMarquee()) return;
+
     // Frame creation finish
     if (frameDraftRef.current) {
       const fd = frameDraftRef.current;
@@ -641,8 +782,173 @@ export function Board({
         setPendingFrame({ x: fd.x, y: fd.y, width: fd.width, height: fd.height });
       }
       setFrameDraft(null);
+      return;
     }
-  }, [finishMarquee]);
+
+    // Shape/connector creation finish
+    const ds = drawStartRef.current;
+    if (!ds) return;
+    drawStartRef.current = null;
+
+    const draft = shapeDraftRef.current;
+    setShapeDraft(null);
+    setSelectedIds(new Set());
+
+    // KEY-DECISION 2026-02-19: Use Math.abs() because connectors store signed deltas
+    // (negative width/height when dragging left/up). Without abs, left/up drags fall
+    // through to the click branch and create unconnected default-size lines.
+    if (draft && (Math.abs(draft.width) > 5 || Math.abs(draft.height) > 5)) {
+      // User dragged - commit with draft dimensions
+      if (draft.toolMode === "connector") {
+        const lineObj: BoardObject = {
+          id: crypto.randomUUID(),
+          type: "line",
+          x: draft.x,
+          y: draft.y,
+          width: draft.width,
+          height: draft.height,
+          rotation: 0,
+          props: { stroke: "#94a3b8", arrow: "end" },
+          createdBy: user.id,
+          updatedAt: Date.now(),
+          startObjectId: ds.startObjectId,
+          // Guard: prevent self-referential connections (same object at both ends)
+          endObjectId:
+            draft.snapTarget?.objectId && draft.snapTarget.objectId !== ds.startObjectId
+              ? draft.snapTarget.objectId
+              : undefined,
+        };
+        createObject(lineObj);
+      } else if (draft.toolMode === "sticky") {
+        createObject({
+          id: crypto.randomUUID(),
+          type: "sticky",
+          x: draft.x,
+          y: draft.y,
+          width: Math.max(20, draft.width),
+          height: Math.max(20, draft.height),
+          rotation: 0,
+          props: { text: "", color: "#fbbf24" },
+          createdBy: user.id,
+          updatedAt: Date.now(),
+        });
+      } else if (draft.toolMode === "rect") {
+        createObject({
+          id: crypto.randomUUID(),
+          type: "rect",
+          x: draft.x,
+          y: draft.y,
+          width: Math.max(20, draft.width),
+          height: Math.max(20, draft.height),
+          rotation: 0,
+          props: { fill: "#3b82f6", stroke: "#2563eb" },
+          createdBy: user.id,
+          updatedAt: Date.now(),
+        });
+      } else if (draft.toolMode === "circle") {
+        createObject({
+          id: crypto.randomUUID(),
+          type: "circle",
+          x: draft.x,
+          y: draft.y,
+          width: Math.max(20, draft.width),
+          height: Math.max(20, draft.height),
+          rotation: 0,
+          props: { fill: "#8b5cf6", stroke: "#7c3aed" },
+          createdBy: user.id,
+          updatedAt: Date.now(),
+        });
+      } else if (draft.toolMode === "text") {
+        const id = crypto.randomUUID();
+        createObject({
+          id,
+          type: "text",
+          x: draft.x,
+          y: draft.y,
+          width: Math.max(20, draft.width),
+          height: Math.max(20, draft.height),
+          rotation: 0,
+          props: { text: "", color: "#ffffff" },
+          createdBy: user.id,
+          updatedAt: Date.now(),
+        });
+        setEditingId(id);
+      }
+    } else {
+      // User clicked (no significant drag) - create default size
+      const cx = ds.x;
+      const cy = ds.y;
+
+      if (ds.toolMode === "sticky") {
+        createObject({
+          id: crypto.randomUUID(),
+          type: "sticky",
+          x: cx - 100,
+          y: cy - 100,
+          width: 200,
+          height: 200,
+          rotation: 0,
+          props: { text: "", color: "#fbbf24" },
+          createdBy: user.id,
+          updatedAt: Date.now(),
+        });
+      } else if (ds.toolMode === "rect") {
+        createObject({
+          id: crypto.randomUUID(),
+          type: "rect",
+          x: cx - 75,
+          y: cy - 50,
+          width: 150,
+          height: 100,
+          rotation: 0,
+          props: { fill: "#3b82f6", stroke: "#2563eb" },
+          createdBy: user.id,
+          updatedAt: Date.now(),
+        });
+      } else if (ds.toolMode === "circle") {
+        createObject({
+          id: crypto.randomUUID(),
+          type: "circle",
+          x: cx - 50,
+          y: cy - 50,
+          width: 100,
+          height: 100,
+          rotation: 0,
+          props: { fill: "#8b5cf6", stroke: "#7c3aed" },
+          createdBy: user.id,
+          updatedAt: Date.now(),
+        });
+      } else if (ds.toolMode === "connector") {
+        createObject({
+          id: crypto.randomUUID(),
+          type: "line",
+          x: cx - 100,
+          y: cy,
+          width: 200,
+          height: 0,
+          rotation: 0,
+          props: { stroke: "#94a3b8", arrow: "end" },
+          createdBy: user.id,
+          updatedAt: Date.now(),
+        });
+      } else if (ds.toolMode === "text") {
+        const id = crypto.randomUUID();
+        createObject({
+          id,
+          type: "text",
+          x: cx,
+          y: cy,
+          width: 200,
+          height: 40,
+          rotation: 0,
+          props: { text: "", color: "#ffffff" },
+          createdBy: user.id,
+          updatedAt: Date.now(),
+        });
+        setEditingId(id);
+      }
+    }
+  }, [finishMarquee, createObject, user.id]);
 
   // Wheel: ctrl/meta+scroll (or pinch) = zoom toward cursor, plain scroll = pan
   const handleWheel = useCallback((e: KonvaEventObject<WheelEvent>) => {
@@ -679,11 +985,8 @@ export function Board({
     }
   }, []);
 
-  const handleDragEnd = useCallback((e: KonvaEventObject<DragEvent>) => {
-    // Only update stage position when the Stage itself is dragged, not objects
-    if (e.target !== stageRef.current) return;
-    setStagePos({ x: e.target.x(), y: e.target.y() });
-  }, []);
+  // Stage drag-end handler removed: Stage is no longer draggable (draggable={false}).
+  // Canvas panning uses scroll-wheel only (handleWheel). Shape creation owns mousedown/mouseup.
 
   // Handle object transform (resize + rotate) - shared by all object types
   const handleObjectTransform = useCallback(
@@ -695,21 +998,37 @@ export function Board({
       node.scaleY(1);
       // Lines store endpoint delta in width/height - don't clamp to min 20
       const isLine = obj.type === "line";
-      updateObject({
-        id: obj.id,
-        x: node.x(),
-        y: node.y(),
-        width: isLine ? Math.round(obj.width * sx) : Math.max(20, Math.round(obj.width * sx)),
-        height: isLine ? Math.round(obj.height * sy) : Math.max(20, Math.round(obj.height * sy)),
-        rotation: node.rotation(),
-      });
+      const newWidth = isLine ? Math.round(obj.width * sx) : Math.max(20, Math.round(obj.width * sx));
+      const newHeight = isLine ? Math.round(obj.height * sy) : Math.max(20, Math.round(obj.height * sy));
+
+      // Check if connected lines need updating
+      const lineUpdates = getConnectedLineUpdates(new Set([obj.id]));
+      const needsBatch = lineUpdates.length > 0;
+
+      if (needsBatch) startBatch();
+      try {
+        updateObject({
+          id: obj.id,
+          x: node.x(),
+          y: node.y(),
+          width: newWidth,
+          height: newHeight,
+          rotation: node.rotation(),
+        });
+        for (const { lineId, geo } of lineUpdates) {
+          updateObject({ id: lineId, ...geo });
+        }
+      } finally {
+        if (needsBatch) commitBatch();
+      }
+
       // Re-sync Transformer bounding box after scale reset
       requestAnimationFrame(() => {
         trRef.current?.forceUpdate();
         trRef.current?.getLayer()?.batchDraw();
       });
     },
-    [updateObject],
+    [updateObject, getConnectedLineUpdates, startBatch, commitBatch],
   );
 
   // Ref callback to track shape nodes for Transformer + fade-in animation
@@ -746,27 +1065,66 @@ export function Board({
     setEditingId(id);
   }, []);
 
-  // Combined stage mouse move: cursor sync + marquee tracking + frame draft
+  // Combined stage mouse move: cursor sync + marquee tracking + frame/shape draft
   const handleStageMouseMove = useCallback(
     (e: KonvaEventObject<MouseEvent>) => {
       handleMouseMove(e); // cursor sync (throttled) + marquee tracking
-      if (!frameDraftRef.current) return;
+
       const stage = stageRef.current;
       if (!stage) return;
       const pointer = stage.getPointerPosition();
       if (!pointer) return;
       const worldX = (pointer.x - stagePosRef.current.x) / scaleRef.current;
       const worldY = (pointer.y - stagePosRef.current.y) / scaleRef.current;
-      setFrameDraft((prev) => {
-        if (!prev) return null;
-        return {
-          ...prev,
-          x: Math.min(prev.startX, worldX),
-          y: Math.min(prev.startY, worldY),
-          width: Math.abs(worldX - prev.startX),
-          height: Math.abs(worldY - prev.startY),
-        };
-      });
+
+      // Frame draft
+      if (frameDraftRef.current) {
+        setFrameDraft((prev) => {
+          if (!prev) return null;
+          return {
+            ...prev,
+            x: Math.min(prev.startX, worldX),
+            y: Math.min(prev.startY, worldY),
+            width: Math.abs(worldX - prev.startX),
+            height: Math.abs(worldY - prev.startY),
+          };
+        });
+        return;
+      }
+
+      // Shape/connector draft
+      const ds = drawStartRef.current;
+      if (!ds) return;
+      const dx = worldX - ds.x;
+      const dy = worldY - ds.y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+
+      // Threshold: 5px to distinguish click from drag
+      if (dist < 5 && !shapeDraftRef.current) return;
+
+      if (ds.toolMode === "connector") {
+        // Connector: line from start to cursor, check end snap
+        const startX = ds.startSnapPoint?.x ?? ds.x;
+        const startY = ds.startSnapPoint?.y ?? ds.y;
+        let snap = findSnapTarget(worldX, worldY, objectsRef.current.values());
+        // Don't snap to the object we started the connector from
+        if (snap && snap.objectId === ds.startObjectId) snap = null;
+        setShapeDraft({
+          toolMode: "connector",
+          x: startX,
+          y: startY,
+          width: (snap?.snapPoint.x ?? worldX) - startX,
+          height: (snap?.snapPoint.y ?? worldY) - startY,
+          snapTarget: snap ?? undefined,
+        });
+      } else {
+        // Shape: drag from start to cursor (min/max for proper rect)
+        const x = Math.min(ds.x, worldX);
+        const y = Math.min(ds.y, worldY);
+        const w = Math.abs(dx);
+        const h = Math.abs(dy);
+        setShapeDraft({ toolMode: ds.toolMode, x, y, width: w, height: h });
+      }
     },
     [handleMouseMove],
   );
@@ -792,106 +1150,10 @@ export function Board({
     [pendingFrame, createObject, user.id],
   );
 
-  // Double-click on empty canvas -> create object based on active tool
-  const handleStageDblClick = useCallback(
-    (e: KonvaEventObject<MouseEvent>) => {
-      if (e.target !== stageRef.current) return;
-      if (toolMode === "select" || toolMode === "frame") return;
-
-      const stage = stageRef.current;
-      if (!stage) return;
-      const pointer = stage.getPointerPosition();
-      if (!pointer) return;
-
-      const worldX = (pointer.x - stagePosRef.current.x) / scaleRef.current;
-      const worldY = (pointer.y - stagePosRef.current.y) / scaleRef.current;
-
-      setSelectedIds(new Set());
-
-      if (toolMode === "sticky") {
-        createObject({
-          id: crypto.randomUUID(),
-          type: "sticky",
-          x: worldX - 100,
-          y: worldY - 100,
-          width: 200,
-          height: 200,
-          rotation: 0,
-          props: { text: "", color: "#fbbf24" },
-          createdBy: user.id,
-          updatedAt: Date.now(),
-        });
-      } else if (toolMode === "rect") {
-        createObject({
-          id: crypto.randomUUID(),
-          type: "rect",
-          x: worldX - 75,
-          y: worldY - 50,
-          width: 150,
-          height: 100,
-          rotation: 0,
-          props: { fill: "#3b82f6", stroke: "#2563eb" },
-          createdBy: user.id,
-          updatedAt: Date.now(),
-        });
-      } else if (toolMode === "circle") {
-        createObject({
-          id: crypto.randomUUID(),
-          type: "circle",
-          x: worldX - 50,
-          y: worldY - 50,
-          width: 100,
-          height: 100,
-          rotation: 0,
-          props: { fill: "#8b5cf6", stroke: "#7c3aed" },
-          createdBy: user.id,
-          updatedAt: Date.now(),
-        });
-      } else if (toolMode === "line") {
-        createObject({
-          id: crypto.randomUUID(),
-          type: "line",
-          x: worldX - 100,
-          y: worldY,
-          width: 200,
-          height: 0,
-          rotation: 0,
-          props: { stroke: "#f43f5e" },
-          createdBy: user.id,
-          updatedAt: Date.now(),
-        });
-      } else if (toolMode === "arrow") {
-        createObject({
-          id: crypto.randomUUID(),
-          type: "line",
-          x: worldX - 90,
-          y: worldY + 40,
-          width: 180,
-          height: -80,
-          rotation: 0,
-          props: { stroke: "#f43f5e", arrow: "end" },
-          createdBy: user.id,
-          updatedAt: Date.now(),
-        });
-      } else if (toolMode === "text") {
-        const id = crypto.randomUUID();
-        createObject({
-          id,
-          type: "text",
-          x: worldX,
-          y: worldY,
-          width: 200,
-          height: 40,
-          rotation: 0,
-          props: { text: "", color: "#ffffff" },
-          createdBy: user.id,
-          updatedAt: Date.now(),
-        });
-        setEditingId(id);
-      }
-    },
-    [createObject, user.id, toolMode],
-  );
+  // Double-click on empty canvas - no-op (creation handled by click/drag)
+  const handleStageDblClick = useCallback((_e: KonvaEventObject<MouseEvent>) => {
+    // Shape creation is now handled by mousedown/mouseup
+  }, []);
 
   const handleLogout = async () => {
     await fetch("/auth/logout", { method: "POST" });
@@ -1261,9 +1523,8 @@ export function Board({
         y={stagePos.y}
         scaleX={scale}
         scaleY={scale}
-        draggable={toolMode !== "select" && toolMode !== "frame"}
+        draggable={false}
         onWheel={handleWheel}
-        onDragEnd={handleDragEnd}
         onMouseMove={handleStageMouseMove}
         onMouseDown={handleStageMouseDown}
         onMouseUp={handleStageMouseUp}
@@ -1315,6 +1576,88 @@ export function Board({
               listening={false}
             />
           )}
+          {/* Shape/connector drag preview */}
+          {shapeDraft &&
+            (shapeDraft.width !== 0 || shapeDraft.height !== 0) &&
+            (shapeDraft.toolMode === "connector" ? (
+              <>
+                <KonvaArrow
+                  points={[
+                    shapeDraft.x,
+                    shapeDraft.y,
+                    shapeDraft.x + shapeDraft.width,
+                    shapeDraft.y + shapeDraft.height,
+                  ]}
+                  stroke="#94a3b8"
+                  strokeWidth={3 / scale}
+                  opacity={0.6}
+                  pointerLength={12 / scale}
+                  pointerWidth={10 / scale}
+                  listening={false}
+                />
+                {/* Snap indicator at end */}
+                {shapeDraft.snapTarget && (
+                  <KonvaCircle
+                    x={shapeDraft.snapTarget.snapPoint.x}
+                    y={shapeDraft.snapTarget.snapPoint.y}
+                    radius={6 / scale}
+                    fill="rgba(99,102,241,0.4)"
+                    stroke="#6366f1"
+                    strokeWidth={2 / scale}
+                    listening={false}
+                  />
+                )}
+              </>
+            ) : shapeDraft.toolMode === "sticky" ? (
+              <Rect
+                x={shapeDraft.x}
+                y={shapeDraft.y}
+                width={shapeDraft.width}
+                height={shapeDraft.height}
+                fill="rgba(251,191,36,0.3)"
+                stroke="#fbbf24"
+                strokeWidth={2 / scale}
+                cornerRadius={8}
+                listening={false}
+              />
+            ) : shapeDraft.toolMode === "rect" ? (
+              <Rect
+                x={shapeDraft.x}
+                y={shapeDraft.y}
+                width={shapeDraft.width}
+                height={shapeDraft.height}
+                fill="rgba(59,130,246,0.2)"
+                stroke="#3b82f6"
+                strokeWidth={2 / scale}
+                cornerRadius={4}
+                listening={false}
+              />
+            ) : shapeDraft.toolMode === "circle" ? (
+              <Rect
+                x={shapeDraft.x}
+                y={shapeDraft.y}
+                width={shapeDraft.width}
+                height={shapeDraft.height}
+                fill="rgba(139,92,246,0.2)"
+                stroke="#8b5cf6"
+                strokeWidth={2 / scale}
+                cornerRadius={Math.min(shapeDraft.width, shapeDraft.height) / 2}
+                listening={false}
+              />
+            ) : shapeDraft.toolMode === "text" ? (
+              <Rect
+                x={shapeDraft.x}
+                y={shapeDraft.y}
+                width={shapeDraft.width}
+                height={shapeDraft.height}
+                fill="transparent"
+                stroke="#60a5fa"
+                strokeWidth={1 / scale}
+                dash={[4 / scale, 4 / scale]}
+                listening={false}
+              />
+            ) : null)}
+
           {/* Pass 2: non-frame objects */}
           {[...objects.values()]
             .filter((o) => o.type !== "frame")
@@ -1608,6 +1951,7 @@ export function Board({
           setShowShortcuts={setShowShortcuts}
           deleteSelected={deleteSelected}
           onColorChange={handleColorChange}
+          onArrowStyleChange={handleArrowStyleChange}
           onZoomIn={() => setScale((s) => Math.min(MAX_ZOOM, s * 1.2))}
           onZoomOut={() => setScale((s) => Math.max(MIN_ZOOM, s / 1.2))}
           onZoomReset={() => {

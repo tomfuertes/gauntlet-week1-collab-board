@@ -2,6 +2,7 @@ import { tool } from "ai";
 import { z } from "zod";
 import { AI_USER_ID } from "../shared/types";
 import type { BoardObject, BoardObjectProps, BoardObjectUpdate, MutateResult, BoardStub } from "../shared/types";
+import { computeConnectedLineGeometry, getEdgePoint, type ObjectBounds } from "../shared/connection-geometry";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -109,6 +110,41 @@ async function updateAndMutate(
   }
   if (!result.ok) return { error: result.error ?? "Unknown mutation error" };
   return { [resultKey]: id, ...extra };
+}
+
+/** Cascade: recalculate geometry for all lines connected to a changed object */
+async function cascadeConnectedLines(stub: BoardStub, changedId: string, changedObj: ObjectBounds) {
+  const allObjects = await stub.readObjects();
+  for (const obj of allObjects) {
+    if (obj.type !== "line") continue;
+    if (obj.startObjectId !== changedId && obj.endObjectId !== changedId) continue;
+    const startObj =
+      obj.startObjectId === changedId
+        ? changedObj
+        : obj.startObjectId
+          ? allObjects.find((o) => o.id === obj.startObjectId)
+          : null;
+    const endObj =
+      obj.endObjectId === changedId
+        ? changedObj
+        : obj.endObjectId
+          ? allObjects.find((o) => o.id === obj.endObjectId)
+          : null;
+    if (!startObj && !endObj) continue;
+    let geo: { x: number; y: number; width: number; height: number };
+    if (startObj && endObj) {
+      geo = computeConnectedLineGeometry(startObj, endObj);
+    } else if (startObj) {
+      const endX = obj.x + obj.width;
+      const endY = obj.y + obj.height;
+      const edge = getEdgePoint(startObj, endX, endY);
+      geo = { x: edge.x, y: edge.y, width: endX - edge.x, height: endY - edge.y };
+    } else {
+      const edge = getEdgePoint(endObj!, obj.x, obj.y);
+      geo = { x: obj.x, y: obj.y, width: edge.x - obj.x, height: edge.y - obj.y };
+    }
+    await updateAndMutate(stub, obj.id, geo, "lineUpdated");
+  }
 }
 
 /** Fire-and-forget: move AI cursor to object center. Never blocks tool execution. */
@@ -360,31 +396,27 @@ export function createSDKTools(stub: BoardStub, batchId?: string, ai?: Ai) {
         if (!fromObj) return { error: `Source object ${fromId} not found` };
         if (!toObj) return { error: `Target object ${toId} not found` };
 
-        const x1 = fromObj.x + fromObj.width / 2;
-        const y1 = fromObj.y + fromObj.height / 2;
-        const x2 = toObj.x + toObj.width / 2;
-        const y2 = toObj.y + toObj.height / 2;
-
-        const w = x2 - x1;
-        const h = y2 - y1;
-        if (w === 0 && h === 0) {
-          return {
-            error: "Cannot create zero-length connector (objects overlap)",
-          };
+        // Edge-snapped geometry instead of center-to-center
+        const geo = computeConnectedLineGeometry(fromObj, toObj);
+        if (geo.width === 0 && geo.height === 0) {
+          return { error: "Cannot create zero-length connector (objects overlap)" };
         }
 
         const arrowStyle = arrow === "both" ? "both" : arrow === "none" ? "none" : "end";
         const obj = makeObject(
           "line",
-          { x: x1, y: y1 },
-          w,
-          h,
+          { x: geo.x, y: geo.y },
+          geo.width,
+          geo.height,
           {
             stroke: stroke || TOOL_DEFAULTS.connector.stroke,
             arrow: arrowStyle as "end" | "both" | "none",
           },
           batchId,
         );
+        // Store connection bindings so lines follow when objects move
+        obj.startObjectId = fromId;
+        obj.endObjectId = toId;
         const result = await createAndMutate(stub, obj);
         if ("error" in result) return result;
         return { ...result, from: fromId, to: toId };
@@ -402,7 +434,12 @@ export function createSDKTools(stub: BoardStub, batchId?: string, ai?: Ai) {
       execute: instrumentExecute("moveObject", async ({ id, x, y }) => {
         const existing = await readAndCenter(stub, id);
         if (existing) cursorToCenter(stub, { x, y, width: existing.width, height: existing.height });
-        return updateAndMutate(stub, id, { x, y }, "moved", { x, y });
+        const result = await updateAndMutate(stub, id, { x, y }, "moved", { x, y });
+        if ("error" in result) return result;
+
+        // Cascade: update connected lines
+        if (existing) await cascadeConnectedLines(stub, id, { ...existing, x, y });
+        return result;
       }),
     }),
 
@@ -417,7 +454,12 @@ export function createSDKTools(stub: BoardStub, batchId?: string, ai?: Ai) {
       execute: instrumentExecute("resizeObject", async ({ id, width, height }) => {
         const existing = await readAndCenter(stub, id);
         if (existing) cursorToCenter(stub, { x: existing.x, y: existing.y, width, height });
-        return updateAndMutate(stub, id, { width, height }, "resized", { width, height });
+        const result = await updateAndMutate(stub, id, { width, height }, "resized", { width, height });
+        if ("error" in result) return result;
+
+        // Cascade: update connected lines
+        if (existing) await cascadeConnectedLines(stub, id, { ...existing, width, height });
+        return result;
       }),
     }),
 

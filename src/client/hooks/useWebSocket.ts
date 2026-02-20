@@ -41,6 +41,8 @@ interface UseWebSocketReturn {
   createObject: (obj: BoardObject) => void;
   updateObject: (partial: BoardObjectUpdate) => void;
   deleteObject: (id: string) => void;
+  /** Update local state only (no WS send). Used for real-time visual feedback during drag. */
+  patchObjectLocal: (id: string, patch: Partial<BoardObject>) => void;
   batchUndo: (batchId: string) => void;
   lastServerMessageAt: React.RefObject<number>;
 }
@@ -293,6 +295,17 @@ export function useWebSocket(boardId: string): UseWebSocketReturn {
     [send],
   );
 
+  /** Update local objects Map without sending a WS message. For real-time drag-follow. */
+  const patchObjectLocal = useCallback((id: string, patch: Partial<BoardObject>) => {
+    setObjects((prev) => {
+      const existing = prev.get(id);
+      if (!existing) return prev;
+      const next = new Map(prev);
+      next.set(id, { ...existing, ...patch } as BoardObject);
+      return next;
+    });
+  }, []);
+
   /** Send batch:undo to Board DO via WS - deletes all objects with matching batchId server-side */
   const batchUndo = useCallback(
     (batchId: string) => {
@@ -314,6 +327,7 @@ export function useWebSocket(boardId: string): UseWebSocketReturn {
     createObject,
     updateObject,
     deleteObject,
+    patchObjectLocal,
     batchUndo,
     lastServerMessageAt,
   };

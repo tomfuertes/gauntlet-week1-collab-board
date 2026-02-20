@@ -2,7 +2,7 @@ import React from "react";
 import type { BoardObject, BoardObjectProps } from "@shared/types";
 import { colors } from "../theme";
 
-export type ToolMode = "select" | "sticky" | "rect" | "circle" | "line" | "arrow" | "text" | "frame";
+export type ToolMode = "select" | "sticky" | "rect" | "circle" | "connector" | "text" | "frame";
 
 export const COLOR_PRESETS = [
   "#fbbf24", // amber (sticky default)
@@ -28,6 +28,7 @@ export interface ToolbarProps {
   setShowShortcuts: React.Dispatch<React.SetStateAction<boolean>>;
   deleteSelected: () => void;
   onColorChange: (color: string) => void;
+  onArrowStyleChange: (style: "none" | "end" | "both") => void;
   onZoomIn: () => void;
   onZoomOut: () => void;
   onZoomReset: () => void;
@@ -44,6 +45,7 @@ export function Toolbar({
   setShowShortcuts,
   deleteSelected,
   onColorChange,
+  onArrowStyleChange,
   onZoomIn,
   onZoomOut,
   onZoomReset,
@@ -57,6 +59,14 @@ export function Toolbar({
         firstObj.type === "sticky" || firstObj.type === "text" ? "color" : firstObj.type === "line" ? "stroke" : "fill"
       ]
     : undefined;
+
+  // Arrow style picker: show when all selected objects are lines
+  const selectedLines = [...selectedIds]
+    .map((id) => objects.get(id))
+    .filter((o): o is BoardObject => !!o && o.type === "line");
+  const showArrowPicker = selectedLines.length > 0 && selectedLines.length === selectedIds.size;
+  const currentArrowStyle =
+    selectedLines.length === 1 ? (selectedLines[0].props as BoardObjectProps).arrow || "none" : undefined;
 
   return (
     <>
@@ -107,16 +117,10 @@ export function Toolbar({
           onClick={() => setToolMode("circle")}
         />
         <ToolIconBtn
-          icon={<IconLine />}
-          title="Line (L)"
-          active={toolMode === "line"}
-          onClick={() => setToolMode("line")}
-        />
-        <ToolIconBtn
-          icon={<IconArrow />}
-          title="Arrow (A)"
-          active={toolMode === "arrow"}
-          onClick={() => setToolMode("arrow")}
+          icon={<IconConnector />}
+          title="Connector (L)"
+          active={toolMode === "connector"}
+          onClick={() => setToolMode("connector")}
         />
         <ToolIconBtn
           icon={<IconText />}
@@ -146,6 +150,52 @@ export function Toolbar({
           onClick={() => setChatOpen((o) => !o)}
         />
       </div>
+
+      {/* Arrow style picker - shown above toolbar when connectors are selected */}
+      {showArrowPicker && (
+        <div
+          style={{
+            position: "absolute",
+            bottom: TOOLBAR_H + (showColorPicker ? 60 : 24),
+            left: "50%",
+            transform: "translateX(-50%)",
+            display: "flex",
+            gap: 4,
+            zIndex: 20,
+            padding: "4px 8px",
+            background: colors.overlayHeader,
+            border: `1px solid ${colors.border}`,
+            borderRadius: 999,
+            backdropFilter: "blur(12px)",
+            WebkitBackdropFilter: "blur(12px)",
+            boxShadow: "0 4px 16px rgba(0,0,0,0.3)",
+          }}
+        >
+          {(["none", "end", "both"] as const).map((style) => {
+            const labels = { none: "\u2500\u2500\u2500", end: "\u2500\u2192", both: "\u2190\u2192" };
+            const active = currentArrowStyle === style;
+            return (
+              <button
+                key={style}
+                title={`Arrow: ${style}`}
+                onClick={() => onArrowStyleChange(style)}
+                style={{
+                  padding: "4px 10px",
+                  background: active ? colors.accent : "transparent",
+                  border: active ? `1px solid ${colors.accentLight}` : "1px solid transparent",
+                  borderRadius: 4,
+                  color: active ? "#fff" : colors.textMuted,
+                  cursor: "pointer",
+                  fontSize: "0.8125rem",
+                  fontFamily: "monospace",
+                }}
+              >
+                {labels[style]}
+              </button>
+            );
+          })}
+        </div>
+      )}
 
       {/* Color picker - shown above floating toolbar when objects are selected */}
       {showColorPicker && (
@@ -277,8 +327,7 @@ const SHORTCUTS = [
   ["S", "Sticky note"],
   ["R", "Rectangle"],
   ["C", "Circle"],
-  ["L", "Line"],
-  ["A", "Arrow"],
+  ["L", "Connector"],
   ["T", "Text"],
   ["F", "Frame"],
   ["/", "AI Assistant"],
@@ -291,7 +340,8 @@ const SHORTCUTS = [
   ["\u2318V", "Paste"],
   ["\u2318D", "Duplicate"],
   ["Shift+Click", "Multi-select"],
-  ["Dbl-click", "Create object"],
+  ["Click", "Place shape"],
+  ["Drag", "Size shape"],
   ["\u21E7P", "Perf overlay"],
 ] as const;
 
@@ -409,23 +459,7 @@ function IconCircle() {
   );
 }
 
-function IconLine() {
-  return (
-    <svg
-      width="20"
-      height="20"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-    >
-      <line x1="5" y1="19" x2="19" y2="5" />
-    </svg>
-  );
-}
-
-function IconArrow() {
+function IconConnector() {
   return (
     <svg
       width="20"
@@ -437,8 +471,10 @@ function IconArrow() {
       strokeLinecap="round"
       strokeLinejoin="round"
     >
-      <line x1="5" y1="19" x2="17" y2="7" />
-      <polyline points="10 7 17 7 17 14" />
+      <circle cx="5" cy="19" r="2" fill="currentColor" />
+      <line x1="7" y1="17" x2="15" y2="9" />
+      <polyline points="11 7 17 7 17 13" />
+      <circle cx="19" cy="5" r="2" fill="currentColor" />
     </svg>
   );
 }

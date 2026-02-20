@@ -192,6 +192,7 @@ LAYOUT RULES:
 - Canvas usable area: (50,60) to (1150,780). Never place objects outside these bounds.
 - Default sizes: sticky=200x200, frame=440x280, rect=150x100. ALWAYS specify x,y for every create call.
 - Place stickies INSIDE frames: first at inset (10,40) within the frame, next at (220,40) side-by-side.
+- Use createConnector to link related objects with arrows. Connectors snap to object edges and follow when objects move. Great for relationships, cause-and-effect, scene flow, and connecting ideas.
 
 COLORS: #fbbf24 yellow, #f87171 red, #4ade80 green, #60a5fa blue, #c084fc purple, #fb923c orange. Shapes: any hex fill, slightly darker stroke.
 

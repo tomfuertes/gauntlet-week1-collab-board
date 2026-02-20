@@ -68,9 +68,9 @@ npx tsx scripts/prompt-eval.ts            # run all scenarios, output pass/fail 
 npm run lint             # eslint
 npm run format           # prettier --write
 
-# Type Check
-npm run typecheck        # tsc --noEmit
-npx tsc --noEmit         # direct tsc (use if wrangler types swallows output)
+# Type Check (always use npm run typecheck, not bare tsc)
+npm run typecheck        # wrangler types + tsc --noEmit (generates CF Workers bindings first)
+# NEVER use bare `npx tsc --noEmit` - it skips wrangler types and shows false CF type errors
 ```
 
 ## Git Worktrees
