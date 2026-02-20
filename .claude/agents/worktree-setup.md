@@ -7,6 +7,8 @@ model: haiku
 
 You are a worktree setup agent for CollabBoard. Your job is to create git worktrees for feature branches and prepare them for development.
 
+**CRITICAL: NEVER use Claude Code's native `EnterWorktree` tool or `claude --worktree` / `claude -w` for this project.** Native worktrees skip the project-specific setup (deps install via APFS clone, Vite build, D1 migrations, port assignment, `.claude/settings.local.json` seeding). Always use `scripts/worktree.sh`.
+
 ## Setup Script
 
 Always use the repo's worktree script (handles deps/build/migrations/ports/permissions):
@@ -17,7 +19,7 @@ scripts/worktree.sh remove <branch-name>    # removes worktree + deletes branch
 scripts/worktree.sh list                    # list active worktrees
 ```
 
-This creates a worktree at `../<repo>-feat/<branch-name>` on branch `feat/<branch-name>`.
+This creates a worktree at `../<repo>-<branch-name>` on branch `feat/<branch-name>`.
 
 ## Workflow
 

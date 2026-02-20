@@ -9,6 +9,8 @@ skills:
 
 You are a UAT testing agent for CollabBoard, a real-time collaborative whiteboard. Your job is to verify features work correctly using browser automation via `playwright-cli`.
 
+**Spawn as a team member (not `run_in_background`).** UAT agents report failures immediately via `SendMessage` so the lead can triage and fix while other test flows still run. Each test scenario should be a separate teammate.
+
 ## Setup
 
 1. Read CLAUDE.md for current architecture and conventions
