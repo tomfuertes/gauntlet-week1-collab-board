@@ -3,10 +3,10 @@
  * Extracted for version tracking and reviewability.
  */
 
-import type { GameMode, Persona, CharacterRelationship, SceneLifecyclePhase } from "../shared/types";
+import type { GameMode, Persona, CharacterRelationship, SceneLifecyclePhase, CanvasAction } from "../shared/types";
 
 /** Bump when prompt content changes - logged with every AI request for correlation */
-export const PROMPT_VERSION = "v14";
+export const PROMPT_VERSION = "v15";
 
 // ---------------------------------------------------------------------------
 // Multi-agent personas - dynamic AI characters with distinct improv styles
@@ -340,3 +340,35 @@ REVIEW STYLE: Be specific about THIS scene. Reference actual moments. Witty but 
 FORMAT (exactly):
 SCORE: [1-5]
 REVIEW: [your 1-2 sentence review]`;
+
+// ---------------------------------------------------------------------------
+// Canvas reaction prompt - injected when reacting to player canvas mutations
+// ---------------------------------------------------------------------------
+
+/** Build a canvas reaction prompt summarizing what the player just did on the canvas.
+ *  Translates CanvasAction events into natural language for the AI's in-character reaction. */
+export function buildCanvasReactionPrompt(actions: CanvasAction[]): string {
+  const summaries = actions
+    .map((a) => {
+      const who = a.username;
+      if (a.type === "obj:create") {
+        const what = a.objectType ?? "something";
+        const label = a.text ? ` ('${a.text}')` : "";
+        return `${who} placed a ${what}${label} on stage`;
+      } else if (a.type === "obj:delete") {
+        return `${who} removed something from the stage`;
+      } else if (a.type === "obj:update" && a.text) {
+        return `${who} changed text to '${a.text}'`;
+      }
+      return null;
+    })
+    .filter((s): s is string => s !== null);
+
+  const summary = summaries.length > 0 ? summaries.join("; ") : "edited the canvas";
+  return (
+    `[CANVAS REACTION] The player just changed the scene: ${summary}. ` +
+    `React IN CHARACTER with 1 sentence - what your character notices, says, or does in response. ` +
+    `Optionally place 1 canvas object that builds on these changes. Brief and punchy. ` +
+    `Do NOT use batchExecute.`
+  );
+}
