@@ -348,6 +348,49 @@ SCORE: [1-5]
 REVIEW: [your 1-2 sentence review]`;
 
 // ---------------------------------------------------------------------------
+// Plot twist pool - curated dramatic complications for the [PLOT TWIST] mechanic
+// One random entry is selected per trigger, then injected as a concrete scene event.
+// Genre-agnostic so they work in any improv scenario.
+// ---------------------------------------------------------------------------
+
+export const PLOT_TWISTS: readonly string[] = [
+  "A health inspector walks in with a clipboard and a look of horror",
+  "The lights suddenly go out - complete darkness",
+  "Someone's phone rings - it's their mom calling at the worst possible moment",
+  "A long-lost twin appears in the doorway",
+  "A time skip - it's now 10 years later",
+  "The floor starts flooding with a mysterious liquid",
+  "A celebrity nobody expected walks through the door",
+  "Everyone suddenly can only speak in rhyme",
+  "A mysterious package arrives addressed to the last person who should receive it",
+  "The building starts shaking - something enormous is approaching outside",
+  "A newspaper headline reveals a shocking secret about someone in the room",
+  "The fire alarm goes off - but the sprinklers dispense something other than water",
+  "A lawyer bursts in with an urgent envelope marked 'OPEN IMMEDIATELY'",
+  "The door locks from the outside - someone doesn't want them to leave",
+  "A live TV news crew storms in with cameras rolling",
+  "A time traveler bursts in warning everyone to stop what they're doing",
+  "The room begins to slowly tilt to one side",
+  "Every mirror in the room shatters simultaneously",
+  "A trained bear in a tuxedo enters and takes a seat",
+  "The ceiling opens and it starts raining glitter and fish",
+];
+
+/** Build a per-message system prompt injection for a specific plot twist event.
+ *  Injected only when a [PLOT TWIST] trigger fires - not in the global system prompt. */
+export function buildPlotTwistPrompt(twist: string): string {
+  return (
+    `[PLOT TWIST EVENT] A dramatic complication has just occurred: "${twist}"\n` +
+    `RULES:\n` +
+    `- This is REAL - treat it as an objective fact that just happened in the scene right now.\n` +
+    `- React IN CHARACTER immediately. Your first line acknowledges the twist.\n` +
+    `- Create a red sticky note (#f87171) on canvas with a short dramatic label (5 words max).\n` +
+    `- Apply 'shake' effect to that sticky for impact.\n` +
+    `- Then "yes, and" it - build on the complication, don't resolve it instantly.`
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Canvas reaction prompt - injected when reacting to player canvas mutations
 // ---------------------------------------------------------------------------
 

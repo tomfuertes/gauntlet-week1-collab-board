@@ -337,6 +337,9 @@ export function ChatPanel({
   // One-shot template ID - sent in body.templateId for template seeding, then cleared.
   const [pendingTemplateId, setPendingTemplateId] = useState<string | undefined>();
 
+  // Plot Twist button: one use per scene. Reset when messages clear (new scene).
+  const [plotTwistUsed, setPlotTwistUsed] = useState(false);
+
   // Persona management state
   const [personas, setPersonas] = useState<Persona[]>([...DEFAULT_PERSONAS]);
   const [showPersonaModal, setShowPersonaModal] = useState(false);
@@ -508,6 +511,13 @@ export function ChatPanel({
       setPendingIntent(undefined); // clear on error too - avoids retry loops
     }
   }, [pendingIntent, sendMessage]);
+
+  // Reset plot twist gate when scene resets (messages cleared via clearHistory)
+  useEffect(() => {
+    if (uiMessages.length === 0) {
+      setPlotTwistUsed(false);
+    }
+  }, [uiMessages.length]);
 
   // Same pattern for template chips: set templateId state -> re-render updates body ref -> send displayText
   useEffect(() => {
@@ -1092,19 +1102,21 @@ export function ChatPanel({
             alignItems: "center",
           }}
         >
-          {uiMessages.length === 0
-            ? BOARD_TEMPLATES.map((t) => (
-                <ChipButton
-                  key={t.id}
-                  label={t.label}
-                  color={colors.textMuted}
-                  borderRadius={6}
-                  disabled={loading}
-                  mobile={mobileMode}
-                  onClick={() => setPendingTemplateId(t.id)}
-                />
-              ))
-            : getIntentChips(userMessageCount, gameMode).map((chip) => (
+          {uiMessages.length === 0 ? (
+            BOARD_TEMPLATES.map((t) => (
+              <ChipButton
+                key={t.id}
+                label={t.label}
+                color={colors.textMuted}
+                borderRadius={6}
+                disabled={loading}
+                mobile={mobileMode}
+                onClick={() => setPendingTemplateId(t.id)}
+              />
+            ))
+          ) : (
+            <>
+              {getIntentChips(userMessageCount, gameMode).map((chip) => (
                 <ChipButton
                   key={chip.prompt}
                   label={chip.prompt === "[NEXT-HAT-PROMPT]" ? "Next prompt" : chip.prompt}
@@ -1123,6 +1135,21 @@ export function ChatPanel({
                   }}
                 />
               ))}
+              {/* Plot Twist: fixed red button, one use per scene. Sends [PLOT TWIST] marker
+                      which the server detects, picks a random twist, and injects into AI context. */}
+              <ChipButton
+                label="⚡ Plot Twist!"
+                color="#f87171"
+                borderRadius={16}
+                disabled={loading || isSceneOver || plotTwistUsed}
+                mobile={mobileMode}
+                onClick={() => {
+                  setPlotTwistUsed(true);
+                  sendMessage("[PLOT TWIST]");
+                }}
+              />
+            </>
+          )}
         </div>
       )}
 

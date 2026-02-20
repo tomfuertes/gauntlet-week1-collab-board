@@ -27,6 +27,8 @@ import {
   CRITIC_PROMPT,
   buildCanvasReactionPrompt,
   buildTagOutPrompt,
+  PLOT_TWISTS,
+  buildPlotTwistPrompt,
 } from "./prompts";
 import type { GameModeState } from "./prompts";
 import { HAT_PROMPTS, getRandomHatPrompt } from "./hat-prompts";
@@ -232,6 +234,10 @@ export class ChatAgent extends AIChatAgent<Bindings> {
   // Langfuse client - lazily initialized on first request, null if env vars absent.
   // undefined = not yet checked; null = env vars missing, skip; Langfuse = active.
   private _langfuseClient: Langfuse | null | undefined = undefined;
+
+  // Plot twist state - tracks whether the one-shot twist has fired this scene.
+  // Resets at scene start (messages.length <= 1) and on DO hibernation (acceptable: short-lived).
+  private _plotTwistUsed = false;
 
   // Canvas reaction engine state (resets on DO hibernation - correct, short-lived debounce state)
   // Persistent schedule (onCanvasReaction) wakes the DO; empty buffer guard handles the stale-schedule case.
@@ -872,10 +878,38 @@ export class ChatAgent extends AIChatAgent<Bindings> {
     };
     const gameModeBlock = buildGameModePromptBlock(this._gameMode, gameModeState);
 
-    // Clear relationships and lifecycle phase at scene start (first message = fresh scene)
+    // Clear relationships, lifecycle phase, and plot twist gate at scene start (first message = fresh scene)
     if (this.messages.length <= 1) {
       await this.ctx.storage.delete("narrative:relationships");
       await this.ctx.storage.delete("scene:lifecyclePhase");
+      this._plotTwistUsed = false;
+    }
+
+    // Detect [PLOT TWIST] trigger in the last user message.
+    // KEY-DECISION 2026-02-20: Message-text detection (not body.intent) matches the [NEXT-HAT-PROMPT]
+    // pattern and keeps the server as the authority on twist selection - client just sends the signal.
+    const lastUserMsgRaw = this.messages[this.messages.length - 1];
+    const lastUserTextRaw =
+      lastUserMsgRaw?.parts
+        ?.filter((p) => p.type === "text")
+        .map((p) => (p as { type: "text"; text: string }).text)
+        .join("") ?? "";
+    let injectedTwist: string | undefined;
+    if (lastUserTextRaw.includes("[PLOT TWIST]") && !this._plotTwistUsed) {
+      this._plotTwistUsed = true;
+      injectedTwist = PLOT_TWISTS[Math.floor(Math.random() * PLOT_TWISTS.length)];
+      // Rewrite user message so history shows the actual twist, not the raw marker
+      if (lastUserMsgRaw) {
+        const userPrefix = body?.username ? `[${body.username}] ` : "";
+        this.messages[this.messages.length - 1] = {
+          ...lastUserMsgRaw,
+          parts: [{ type: "text" as const, text: `${userPrefix}Plot twist: ${injectedTwist}` }],
+        };
+      }
+      console.debug(JSON.stringify({ event: "plot-twist:fired", boardId: this.name, twist: injectedTwist }));
+    } else if (lastUserTextRaw.includes("[PLOT TWIST]") && this._plotTwistUsed) {
+      // Already used this scene - quietly no-op (client should have disabled the button)
+      console.debug(JSON.stringify({ event: "plot-twist:already-used", boardId: this.name }));
     }
 
     // Load scene relationships for system prompt injection
@@ -942,6 +976,11 @@ export class ChatAgent extends AIChatAgent<Bindings> {
           to: tagOutEvent.newPersonaName,
         }),
       );
+    }
+
+    // Plot twist: inject concrete twist context when the [PLOT TWIST] trigger fired this turn
+    if (injectedTwist) {
+      systemPrompt += `\n\n${buildPlotTwistPrompt(injectedTwist)}`;
     }
 
     // Intent-specific guidance: injected only when player clicked a dramatic chip.
