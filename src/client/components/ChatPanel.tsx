@@ -475,10 +475,12 @@ export function ChatPanel({
       }
     : {
         position: "absolute",
-        top: 16,
-        bottom: 72,
+        // KEY-DECISION 2026-02-19: top:64 = 48px header + 16px gap; maxHeight caps at min(600px,50vh)
+        // so the panel never overlaps the header and stays within a readable height range
+        top: 64,
         right: 16,
         width: 360,
+        maxHeight: "min(600px, 50vh)",
         zIndex: 30,
         background: "rgba(15, 23, 42, 0.97)",
         border: "1px solid #334155",
