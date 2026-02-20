@@ -4,7 +4,15 @@ import type { KonvaEventObject } from "konva/lib/Node";
 import Konva from "konva";
 import type { AuthUser } from "../App";
 import { AI_USER_ID } from "@shared/types";
-import type { BoardObject, BoardObjectProps, ChoreographyStep, GameMode, AIModel } from "@shared/types";
+import type {
+  BoardObject,
+  BoardObjectProps,
+  ChoreographyStep,
+  GameMode,
+  AIModel,
+  TransientEffect,
+  TransientEffectType,
+} from "@shared/types";
 import { findSnapTarget, computeConnectedLineGeometry, getEdgePoint } from "@shared/connection-geometry";
 import { AI_MODELS } from "@shared/types";
 import { TRANSFORMER_CONFIG } from "../constants";
@@ -571,6 +579,19 @@ export function Board({
     setTimeout(() => setSfxBursts((prev) => prev.filter((b) => b.id !== burstId)), 1800);
   }, []);
 
+  // --- Transient visual effects from AI (sparkle, poof, explosion, highlight) ---
+  const [transientEffects, setTransientEffects] = useState<
+    Array<{ id: string; effectType: TransientEffectType; x: number; y: number; duration: number }>
+  >([]);
+  const onTransientEffect = useCallback((effect: TransientEffect) => {
+    const id = `transient-${Date.now()}-${Math.random()}`;
+    setTransientEffects((prev) => [
+      ...prev,
+      { id, effectType: effect.type, x: effect.x, y: effect.y, duration: effect.duration },
+    ]);
+    setTimeout(() => setTransientEffects((prev) => prev.filter((e) => e.id !== id)), effect.duration);
+  }, []);
+
   const {
     connectionState,
     initialized,
@@ -588,7 +609,16 @@ export function Board({
     patchObjectLocal,
     batchUndo,
     lastServerMessageAt,
-  } = useWebSocket(boardId, onAnimatedUpdate, onEffect, onSequence, onSpotlight, onBlackout, onSfxReceived);
+  } = useWebSocket(
+    boardId,
+    onAnimatedUpdate,
+    onEffect,
+    onSequence,
+    onSpotlight,
+    onBlackout,
+    onSfxReceived,
+    onTransientEffect,
+  );
 
   const handleSfxSend = useCallback(
     (effectId: string) => {
@@ -2816,6 +2846,25 @@ export function Board({
           <div style={{ fontSize: "1rem", fontWeight: 700, color: "#fff", textShadow: "0 2px 8px rgba(0,0,0,0.8)" }}>
             {burst.label}
           </div>
+        </div>
+      ))}
+
+      {/* Transient AI visual effects (sparkle/poof/explosion/highlight) - DOM overlay positioned via canvas coords */}
+      {transientEffects.map((effect) => (
+        <div
+          key={effect.id}
+          className={`cb-transient-effect cb-transient-${effect.effectType}`}
+          style={
+            {
+              left: effect.x * scaleRef.current + stagePosRef.current.x,
+              top: effect.y * scaleRef.current + stagePosRef.current.y,
+              "--duration": `${effect.duration}ms`,
+            } as React.CSSProperties
+          }
+        >
+          {effect.effectType === "sparkle" && "✨"}
+          {effect.effectType === "poof" && "💨"}
+          {effect.effectType === "explosion" && "💥"}
         </div>
       ))}
 

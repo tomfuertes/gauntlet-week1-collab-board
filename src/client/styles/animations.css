@@ -170,6 +170,70 @@
   z-index: 48;
 }
 
+/* Transient visual effects from AI (sparkle, poof, explosion, highlight) */
+.cb-transient-effect {
+  position: absolute;
+  pointer-events: none;
+  text-align: center;
+  z-index: 49;
+}
+
+@keyframes cb-transient-sparkle {
+  0% { opacity: 0; transform: translate(-50%, -50%) scale(0) rotate(0deg); }
+  20% { opacity: 1; transform: translate(-50%, -50%) scale(1.4) rotate(25deg); }
+  60% { opacity: 1; transform: translate(-50%, -50%) scale(1.1) rotate(-10deg); }
+  100% { opacity: 0; transform: translate(-50%, -50%) scale(0.4) rotate(60deg); }
+}
+
+.cb-transient-sparkle {
+  font-size: 3rem;
+  animation: cb-transient-sparkle var(--duration, 1s) ease-out forwards;
+}
+
+@keyframes cb-transient-poof {
+  0% { opacity: 0; transform: translate(-50%, -50%) scale(0); }
+  15% { opacity: 1; transform: translate(-50%, -50%) scale(1.6); }
+  50% { opacity: 0.7; transform: translate(-50%, -50%) scale(2.2); }
+  100% { opacity: 0; transform: translate(-50%, -50%) scale(3); }
+}
+
+.cb-transient-poof {
+  font-size: 3rem;
+  animation: cb-transient-poof var(--duration, 1s) ease-out forwards;
+}
+
+@keyframes cb-transient-explosion {
+  0% { opacity: 0; transform: translate(-50%, -50%) scale(0); }
+  10% { opacity: 1; transform: translate(-50%, -50%) scale(1.6) rotate(-6deg); }
+  20% { transform: translate(-50%, -50%) scale(1.3) rotate(6deg); }
+  30% { transform: translate(-50%, -50%) scale(1.5) rotate(-4deg); }
+  60% { opacity: 1; transform: translate(-50%, -50%) scale(1.4) rotate(0deg); }
+  100% { opacity: 0; transform: translate(-50%, -50%) scale(0.9); }
+}
+
+.cb-transient-explosion {
+  font-size: 3.5rem;
+  animation: cb-transient-explosion var(--duration, 1s) ease-out forwards;
+}
+
+@keyframes cb-transient-highlight {
+  0% { opacity: 0; transform: translate(-50%, -50%) scale(0.4); }
+  20% { opacity: 0.9; transform: translate(-50%, -50%) scale(1); }
+  40% { opacity: 0.5; transform: translate(-50%, -50%) scale(1.4); }
+  60% { opacity: 0.9; transform: translate(-50%, -50%) scale(1); }
+  80% { opacity: 0.5; transform: translate(-50%, -50%) scale(1.4); }
+  100% { opacity: 0; transform: translate(-50%, -50%) scale(1.8); }
+}
+
+.cb-transient-highlight {
+  width: 80px;
+  height: 80px;
+  border-radius: 50%;
+  border: 4px solid gold;
+  box-shadow: 0 0 16px 4px rgba(255, 215, 0, 0.6);
+  animation: cb-transient-highlight var(--duration, 1s) ease-in-out forwards;
+}
+
 /* Toolbar button hover - CSS replaces useState for perf (avoids re-render on hover) */
 .cb-tool-btn:hover:not([data-disabled]):not([data-active]) {
   background: rgba(99, 102, 241, 0.15) !important;

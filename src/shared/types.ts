@@ -55,9 +55,11 @@ export type BoardObjectUpdate = Partial<Omit<BoardObjectBase, "id">> & {
 
 export type EffectType = "pulse" | "shake" | "flash";
 
+export type TransientEffectType = "sparkle" | "poof" | "explosion" | "highlight";
+
 /** Canvas-position visual effect that auto-removes after `duration` ms. Not persisted. */
 export interface TransientEffect {
-  type: "sparkle" | "poof" | "explosion" | "highlight";
+  type: TransientEffectType;
   x: number;
   y: number;
   duration: number;

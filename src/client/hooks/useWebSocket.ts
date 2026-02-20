@@ -1,5 +1,12 @@
 import { useEffect, useRef, useCallback, useState } from "react";
-import type { WSClientMessage, WSServerMessage, BoardObject, BoardObjectUpdate, ChoreographyStep } from "@shared/types";
+import type {
+  WSClientMessage,
+  WSServerMessage,
+  BoardObject,
+  BoardObjectUpdate,
+  ChoreographyStep,
+  TransientEffect,
+} from "@shared/types";
 import { SFX_EFFECTS } from "@shared/types";
 import type { HeckleEvent } from "./useSpectatorSocket";
 
@@ -76,6 +83,7 @@ export function useWebSocket(
   onSpotlight?: (objectId?: string, x?: number, y?: number) => void,
   onBlackout?: () => void,
   onSfx?: (effect: string, emoji: string, label: string, x: number, y: number) => void,
+  onTransient?: (effect: TransientEffect) => void,
 ): UseWebSocketReturn {
   const wsRef = useRef<WebSocket | null>(null);
   // Refs so the WS closure always calls the latest callbacks without reconnecting
@@ -91,6 +99,8 @@ export function useWebSocket(
   onBlackoutRef.current = onBlackout;
   const onSfxRef = useRef(onSfx);
   onSfxRef.current = onSfx;
+  const onTransientRef = useRef(onTransient);
+  onTransientRef.current = onTransient;
   const lastServerMessageAt = useRef(0);
   const [connectionState, setConnectionState] = useState<ConnectionState>("connecting");
   const [initialized, setInitialized] = useState(false);
@@ -278,6 +288,9 @@ export function useWebSocket(
             }
             break;
           }
+          case "obj:transient":
+            onTransientRef.current?.(msg.effect);
+            break;
           case "board:deleted":
             // Board was deleted by owner - navigate away
             intentionalClose = true;
