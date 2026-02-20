@@ -49,6 +49,164 @@ function StarRating({ score }: { score: number }) {
   );
 }
 
+function BoardCard({
+  board,
+  onSelect,
+  onDelete,
+}: {
+  board: BoardMeta;
+  onSelect: () => void;
+  onDelete: (e: React.MouseEvent) => void;
+}) {
+  const [hovered, setHovered] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+
+  return (
+    <div
+      onClick={onSelect}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => {
+        setHovered(false);
+        setMenuOpen(false);
+      }}
+      style={{
+        background: colors.surface,
+        border: `1px solid ${hovered ? colors.accentLight : colors.border}`,
+        borderRadius: 8,
+        cursor: "pointer",
+        overflow: "hidden",
+        transition: "border-color 0.15s, transform 0.15s",
+        transform: hovered ? "translateY(-2px)" : "none",
+      }}
+    >
+      {/* Gradient thumbnail */}
+      <div
+        style={{
+          height: 80,
+          background: thumbnailGradient(board.name),
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          position: "relative",
+        }}
+      >
+        <div
+          style={{
+            fontSize: "0.9rem",
+            fontWeight: 700,
+            color: colors.text,
+            opacity: 0.85,
+            userSelect: "none",
+            padding: "0 2rem",
+            textAlign: "center",
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            whiteSpace: "nowrap",
+            maxWidth: "100%",
+          }}
+        >
+          {board.name}
+        </div>
+
+        {/* Unseen activity badge */}
+        {board.unseen_count > 0 && (
+          <div
+            style={{
+              position: "absolute",
+              top: 8,
+              left: 8,
+              background: colors.accent,
+              color: "#fff",
+              borderRadius: 10,
+              minWidth: 20,
+              height: 20,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              fontSize: "0.7rem",
+              fontWeight: 700,
+              padding: "0 5px",
+              boxShadow: `0 0 8px ${colors.accentGlow}`,
+            }}
+          >
+            {board.unseen_count > 99 ? "99+" : board.unseen_count}
+          </div>
+        )}
+
+        {/* ... menu button - shown on hover only */}
+        {hovered && (
+          <div style={{ position: "absolute", top: 6, right: 6 }}>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                setMenuOpen((prev) => !prev);
+              }}
+              style={{
+                background: "rgba(0,0,0,0.5)",
+                border: "none",
+                borderRadius: 4,
+                color: colors.text,
+                cursor: "pointer",
+                padding: "2px 8px",
+                fontSize: "1rem",
+                lineHeight: 1,
+              }}
+            >
+              ···
+            </button>
+            {menuOpen && (
+              <div
+                style={{
+                  position: "absolute",
+                  top: "calc(100% + 4px)",
+                  right: 0,
+                  background: colors.surfaceAlt,
+                  border: `1px solid ${colors.border}`,
+                  borderRadius: 6,
+                  overflow: "hidden",
+                  minWidth: 100,
+                  boxShadow: "0 4px 12px rgba(0,0,0,0.4)",
+                  zIndex: 10,
+                }}
+              >
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setMenuOpen(false);
+                    onDelete(e);
+                  }}
+                  onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(248, 113, 113, 0.1)")}
+                  onMouseLeave={(e) => (e.currentTarget.style.background = "none")}
+                  style={{
+                    display: "block",
+                    width: "100%",
+                    padding: "0.5rem 0.75rem",
+                    background: "none",
+                    border: "none",
+                    color: colors.error,
+                    cursor: "pointer",
+                    fontSize: "0.8125rem",
+                    textAlign: "left",
+                  }}
+                >
+                  Delete
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Card body */}
+      <div style={{ padding: "0.5rem 1rem" }}>
+        <div style={{ fontSize: "0.75rem", color: colors.textDim }}>
+          {new Date(board.updated_at + "Z").toLocaleDateString()}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function SceneCard({ scene }: { scene: SceneMeta }) {
   const [hovered, setHovered] = useState(false);
 
@@ -556,63 +714,12 @@ export function BoardList({
             }}
           >
             {boards.map((board) => (
-              <div
+              <BoardCard
                 key={board.id}
-                onClick={() => onSelectBoard(board.id)}
-                style={{
-                  background: colors.surface,
-                  border: `1px solid ${colors.border}`,
-                  borderRadius: 8,
-                  padding: "1.5rem",
-                  cursor: "pointer",
-                  minHeight: 120,
-                  display: "flex",
-                  flexDirection: "column",
-                  justifyContent: "space-between",
-                  transition: "border-color 0.15s",
-                  position: "relative",
-                }}
-                onMouseEnter={(e) => (e.currentTarget.style.borderColor = colors.accentLight)}
-                onMouseLeave={(e) => (e.currentTarget.style.borderColor = colors.border)}
-              >
-                {/* Unseen activity badge */}
-                {board.unseen_count > 0 && (
-                  <div
-                    style={{
-                      position: "absolute",
-                      top: -6,
-                      right: -6,
-                      background: colors.accent,
-                      color: "#fff",
-                      borderRadius: 10,
-                      minWidth: 20,
-                      height: 20,
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      fontSize: "0.7rem",
-                      fontWeight: 700,
-                      padding: "0 5px",
-                      boxShadow: `0 0 8px ${colors.accentGlow}`,
-                    }}
-                  >
-                    {board.unseen_count > 99 ? "99+" : board.unseen_count}
-                  </div>
-                )}
-                <div>
-                  <div style={{ fontWeight: 600, marginBottom: 4 }}>{board.name}</div>
-                  <div style={{ fontSize: "0.75rem", color: colors.textDim }}>
-                    {new Date(board.updated_at + "Z").toLocaleDateString()}
-                  </div>
-                </div>
-                <Button
-                  variant="danger"
-                  onClick={(e) => handleDelete(e, board.id)}
-                  style={{ alignSelf: "flex-end", fontSize: "0.7rem", padding: "0.2rem 0.5rem", marginTop: 8 }}
-                >
-                  Delete
-                </Button>
-              </div>
+                board={board}
+                onSelect={() => onSelectBoard(board.id)}
+                onDelete={(e) => handleDelete(e, board.id)}
+              />
             ))}
           </div>
         )}
