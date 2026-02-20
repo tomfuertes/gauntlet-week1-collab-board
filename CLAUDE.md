@@ -8,22 +8,36 @@ CollabBoard - multiplayer improv canvas with AI agent integration. Real-time col
 
 ## Stack
 
-- **Frontend:** React + Vite + react-konva + TypeScript (SPA deployed as CF Workers static assets)
-- **Backend:** Cloudflare Workers + Hono router
-- **Real-time:** Durable Objects + WebSockets (one DO per board, LWW conflict resolution)
-- **Auth:** Custom (username/password, PBKDF2 hash, D1 sessions, cookie-based)
-- **Database:** DO Storage (board objects as KV) + D1 (users/sessions/board metadata)
-- **AI:** Cloudflare Agents SDK (`AIChatAgent` DO) + Vercel AI SDK v6 (`streamText`, `generateText`, `tool()`).
-  - **ChatAgent DO:** One per board (instance name = boardId). WebSocket streaming, server-side chat persistence (DO SQLite). Models: selectable via header dropdown (8 models across 3 providers, GPT-4o Mini default via `DEFAULT_AI_MODEL` env var). `AIModel` type + `AIModelProvider` type + `AI_MODELS` config array in `shared/types.ts` (shared client/server). Selected model sent per-message in `body.model` (like `gameMode`) so it survives DO hibernation; validated against `AI_MODELS` before use. `_getModel()` does provider-based routing: `workers-ai` (4 models, `workers-ai-provider` shim injects `tool_choice: "auto"`), `openai` (2 models via `@ai-sdk/openai`, requires `OPENAI_API_KEY` secret), `anthropic` (2 models via `@ai-sdk/anthropic`, requires `ANTHROPIC_API_KEY` secret). Missing API key falls back to Workers AI default. Daily budget cap (`DAILY_AI_BUDGET_USD`, default $5) tracked per DO instance (Workers AI only - OpenAI/Anthropic have their own billing). All AI config in wrangler.toml `[vars]`. See `docs/notes.md` AI Model Pricing table for cost comparison.
-  - **Tools:** 12 tools in `src/server/ai-tools-sdk.ts` (Zod schemas, `instrumentExecute` wrapper). Tool #12 is `batchExecute` - accepts an ordered array of up to 10 operations and executes them sequentially in one LLM round-trip, eliminating N-round-trip tax for scene setup. `rectsOverlap` + `computeOverlapScore` exported for reuse by objects API and quality telemetry. Display metadata in `ChatPanel.tsx` (was `ai-tool-meta.ts`). Prompts in `src/server/prompts.ts` (versioned via `PROMPT_VERSION`).
-  - **Quality telemetry:** After every `streamText` with tool calls, `wrappedOnFinish` in `chat-agent.ts` calls `boardStub.readObjects()`, filters to the current `batchId`, and logs `{ event: "ai:quality", promptVersion, batchOverlap, crossOverlap, objectsCreated, inBounds, model }`. Canvas bounds (50,60)-(1150,780) mirror LAYOUT RULES in `prompts.ts` - keep in sync. Used by prompt-eval harness to tune LAYOUT RULES.
-  - **D1 Tracing + Langfuse:** `src/server/tracing-middleware.ts` - `LanguageModelMiddleware` (AI SDK v6) that intercepts every `streamText`/`generateText` call. Writes to `ai_traces` D1 table AND Langfuse cloud UI if `LANGFUSE_PUBLIC_KEY`/`LANGFUSE_SECRET_KEY` secrets are set. Captures: assembled system prompt (persona+gamemode+phase), message count, tool calls (name+args), token usage, duration, finish reason. `_getTracedModel(trigger, persona)` in `chat-agent.ts` wraps `_getModel()` at 3 call sites (chat/reactive/director). `_getLangfuse()` lazily initializes `langfuse@3` client (fetch-based, CF Workers safe - NOT `@langfuse/otel` which requires NodeTracerProvider). Writes are fire-and-forget: errors log but never block AI responses. Query traces: `npm run traces` (local) / `npm run traces:remote` (prod). See `docs/sessions/langsmith-observability.md` for decision rationale.
-  - **Multi-agent Personas:** Dynamic per-board AI characters. Default SPARK (energetic) + SAGE (grounded); custom personas stored in D1 `board_personas` table. `Persona { id, name, trait, color }` in `shared/types.ts`. `DEFAULT_PERSONAS` fallback when no custom personas. `ChatAgent._getPersonas()` loads from D1 on each request (never throws - D1 errors log + degrade to defaults). `buildPersonaSystemPrompt(active, other, basePrompt, gameModeBlock)` in `prompts.ts` takes Persona objects. **Per-player persona claims:** `_personaClaims = Map<username, personaId>` in ChatAgent (ephemeral, resets on hibernation). `body.personaId` sent per-message (same pattern as `body.model`/`body.gameMode`). `_resolveActivePersona(personas, username)` checks claim first, falls back to round-robin `_activePersonaIndex`. OnboardModal character picker (scene start) + ChatPanel inline pill row (mid-scene join). Reactive persona untouched - `(activeIndex + 1) % N` works correctly with claims. Director untouched - uses round-robin (no player context). Human message -> claimed persona (or round-robin) -> other reacts autonomously via `_triggerReactivePersona` (`ctx.waitUntil`). `MAX_AUTONOMOUS_EXCHANGES` caps auto-exchanges; resets on human message. Turn-taking state is class-level (resets on DO hibernation, defaults work). TOCTOU: claim `_isGenerating` mutex BEFORE 2s UX delay, re-check after. `_ensurePersonaPrefix(personaName)` patches LLM responses missing `[NAME]` prefix. Skips reactive if only 1 persona. CRUD API: `GET/POST/DELETE /api/boards/:boardId/personas` (auth required; POST/DELETE require ownership; max 10 per board). `ChatPanel` "AI Characters" modal lets board owner add/delete custom characters.
-  - **AI Director:** After 60s inactivity, `onDirectorNudge` fires via DO schedule alarm. Uses `generateText` (non-streaming) with scene-phase-specific prompts.
-  - **AI Image Generation:** `generateImage` tool calls CF Workers AI SDXL (512x512), base64 data URL in `props.src`, Konva `Image` rendering.
-  - **Game Modes:** `GameMode` type (`freeform | hat | yesand`) in `shared/types.ts`. Hat prompts in `src/server/hat-prompts.ts` (30+ curated). `buildGameModePromptBlock()` injects mode rules between base prompt and persona identity. ChatAgent tracks `_gameMode`, `_hatPromptIndex`, `_hatExchangeCount`, `_yesAndCount` (class-level; client re-sends mode each message for hibernation resilience). `[NEXT-HAT-PROMPT]` marker protocol advances hat scene. `PATCH /api/boards/:boardId` persists to D1 (`game_mode` column, migration 0004).
-  - **Scene Budgets:** `SCENE_TURN_BUDGET = 20` (shared/types.ts). 4 phases: normal (0-60%), act3 (60-80%), final-beat (80-95%), scene-over (95%+). `computeBudgetPhase()` in prompts.ts. Server rejects messages past budget, injects phase-specific prompts into system prompt. Client shows Act 3/Finale badge, replaces input with "New Scene" button at scene-over. `clearHistory()` resets everything.
-- **Deploy:** CF git integration auto-deploys on push to main
+React + Vite + react-konva + TypeScript | Cloudflare Workers + Hono + Durable Objects | D1 + DO Storage
+
+**Key server files:**
+
+| File | What it does |
+|------|-------------|
+| `src/server/index.ts` | Hono routes, board CRUD, DO exports, WS upgrade, persona/replay/gallery APIs |
+| `src/server/chat-agent.ts` | ChatAgent DO - AI chat, per-player persona claims, game modes, scene budgets, director nudges |
+| `src/server/ai-tools-sdk.ts` | 12 AI tools (Zod schemas, batchExecute meta-tool) |
+| `src/server/prompts.ts` | System prompt assembly, persona identity, scene phases, PROMPT_VERSION |
+| `src/server/tracing-middleware.ts` | AI SDK middleware -> D1 traces + optional Langfuse |
+| `src/server/auth.ts` | Custom auth (PBKDF2, D1 sessions, rate limiting) |
+| `src/shared/types.ts` | Persona, BoardObject, GameMode, AIModel, AI_MODELS, DEFAULT_PERSONAS |
+
+**Key client files:**
+
+| File | What it does |
+|------|-------------|
+| `src/client/components/Board.tsx` | Canvas + chat integration, mobile layout, model/persona state |
+| `src/client/components/ChatPanel.tsx` | AI chat sidebar, persona claim pills, intent chips, useAgentChat |
+| `src/client/components/OnboardModal.tsx` | Scene-start dialog: game mode + character picker + model selector |
+
+**AI architecture (gotchas that will bite you):**
+- 8 models across 3 providers. `body.model` sent per-message for DO hibernation resilience.
+- Per-player persona claims via `body.personaId` (same per-message pattern). Fallback: round-robin.
+- Reactive persona fires via `ctx.waitUntil` after each response. First exchange unreliable (timing gap).
+- Class-level state resets on DO hibernation. Client re-sends model/gameMode/personaId each message.
+- `tool_choice: "auto"` shim in workers-ai-provider (CF issue #404). Belt-and-suspenders.
+- Canvas bounds (50,60)-(1150,780) in prompts.ts LAYOUT RULES - keep in sync with quality telemetry.
+- Deploy via `git push` to main (CF git integration). Never `wrangler deploy` manually.
 
 ## Commands
 
