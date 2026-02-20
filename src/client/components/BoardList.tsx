@@ -377,7 +377,7 @@ export function BoardList({
           fontSize: "0.875rem",
         }}
       >
-        <span style={{ fontWeight: 600 }}>CollabBoard</span>
+        <span style={{ fontWeight: 600 }}>YesAInd</span>
         <div style={{ display: "flex", alignItems: "center", gap: "1rem" }}>
           <Button
             onClick={() => {

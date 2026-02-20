@@ -69,7 +69,7 @@ interface ChallengeEntry {
 }
 const _passkeyChallenge = new Map<string, ChallengeEntry>();
 const PASSKEY_TTL_MS = 5 * 60 * 1000;
-const PASSKEY_RP_NAME = "CollabBoard";
+const PASSKEY_RP_NAME = "YesAInd";
 
 function sweepPasskeyChallenges() {
   const now = Date.now();

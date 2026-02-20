@@ -1,11 +1,11 @@
-# @cloudflare/codemode Exploration (CollabBoard)
+# @cloudflare/codemode Exploration (YesAInd)
 
 Date: 2026-02-20
 
 ## Executive Summary
 
 - **It's "CodeMode", not "codemod."** `@cloudflare/codemode` is an Agents SDK feature that lets LLMs write executable TypeScript to orchestrate tool calls, instead of using standard JSON tool-calling. It is not a migration/refactoring tool.
-- **CollabBoard is the wrong use case, even accounting for the pipeline.** CodeMode shines with 100s-1000s of tools (e.g. Cloudflare's 2500-endpoint API). We have 16 tools today, reaching ~19 after #20/#22/#23 land. Even speculatively we top out at ~30. The codebase is growing in DO Storage complexity and WS protocol richness, not in LLM tool surface area. `batchExecute` already solves multi-step coordination, and `choreograph` (#20) is correctly designed as declarative input (step array), not imperative orchestration.
+- **YesAInd is the wrong use case, even accounting for the pipeline.** CodeMode shines with 100s-1000s of tools (e.g. Cloudflare's 2500-endpoint API). We have 16 tools today, reaching ~19 after #20/#22/#23 land. Even speculatively we top out at ~30. The codebase is growing in DO Storage complexity and WS protocol richness, not in LLM tool surface area. `batchExecute` already solves multi-step coordination, and `choreograph` (#20) is correctly designed as declarative input (step array), not imperative orchestration.
 - **Our models can't handle it.** GPT-4o Mini and GLM-4.7-Flash already struggle with basic tool calling (see `sanitizeMessages`, `cleanModelOutput`, the `tool_choice` shim). Asking them to write TypeScript would make things worse, not better.
 
 **Recommendation: Anti-recommend adoption. Watch from a distance.**
@@ -149,26 +149,26 @@ Before the area-by-area analysis, it's important to map the pipeline. Several ch
 ## Devil's Advocate: Where the Hype Doesn't Match Reality
 
 ### "81% fewer tokens"
-This stat is from a 31-event complex task with the Cloudflare API (2500 endpoints). For CollabBoard's typical 3-5 object creation per turn, the token savings would be negligible - possibly even negative after including the TypeScript type definitions and sandbox overhead in each request.
+This stat is from a 31-event complex task with the Cloudflare API (2500 endpoints). For YesAInd's typical 3-5 object creation per turn, the token savings would be negligible - possibly even negative after including the TypeScript type definitions and sandbox overhead in each request.
 
 ### "LLMs are better at writing code than making tool calls"
 This is true for GPT-4, Claude Opus, etc. It is NOT true for GLM-4.7-Flash, which struggles to produce valid JSON tool calls. The training data argument cuts both ways - these smaller models have seen less high-quality TypeScript than frontier models.
 
 ### "Code Mode reduces round-trips"
-CollabBoard already caps at 5 steps (`stepCountIs(5)`) for chat, 2 for reactive, 3 for director. The round-trip overhead is bounded. And the `batchExecute` tool already eliminates round-trips for multi-object creation.
+YesAInd already caps at 5 steps (`stepCountIs(5)`) for chat, 2 for reactive, 3 for director. The round-trip overhead is bounded. And the `batchExecute` tool already eliminates round-trips for multi-object creation.
 
 ### "Secure sandbox execution"
 Our tools are pure data mutations on a scoped DO stub. There's nothing to sandbox beyond what the DO boundary already provides. Adding a V8 isolate layer is security theater for this use case.
 
 ### "Works with MCP tools"
-CollabBoard doesn't use MCP. Our tools are local AI SDK tools bound to Board DO stubs. MCP would add unnecessary network hops for same-process tool execution.
+YesAInd doesn't use MCP. Our tools are local AI SDK tools bound to Board DO stubs. MCP would add unnecessary network hops for same-process tool execution.
 
 ### The naming confusion itself is a red flag
 The fact that the team confused "codemod" (AST-based code transformation) with "CodeMode" (LLM code execution) suggests the marketing positioning is unclear. If experienced developers can't distinguish what the tool does from its name, adoption friction will be high.
 
 ---
 
-## When CodeMode WOULD Make Sense for CollabBoard
+## When CodeMode WOULD Make Sense for YesAInd
 
 Given the current pipeline (#20, #22, #23, #48), tool count reaches ~19. Even aggressively speculating (audio, physics, NPC behavior, audience interaction), we'd hit ~30 in 6 months. Revisit if ANY of these conditions become true simultaneously:
 

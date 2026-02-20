@@ -1,7 +1,7 @@
 # Company Research Skill Evaluation
 
 Skill: `company-research` from deanpeters/Product-Manager-Skills
-Applied to: CollabBoard competitive landscape (Miro, FigJam/Figma, tldraw)
+Applied to: YesAInd competitive landscape (Miro, FigJam/Figma, tldraw)
 Date: 2026-02-18
 Steps executed: 1 (Scope), 2 (Overview), 3 (Exec Quotes), 4 (Product Insights), 7 (Future Roadmap), 8 (PLG Insights), 9 (Synthesis)
 Steps skipped: 5 (Transformation Strategies), 6 (Org Impact of PM) - irrelevant for competitive analysis
@@ -129,7 +129,7 @@ No direct executive quotes found via web search for 2025-2026. Steve Ruiz commun
 - Positioning as the "infinite canvas SDK" layer - the React component other products embed
 - Agent starter kit signals awareness that AI-canvas integration is table stakes
 - "Computer" project is the most conceptually ambitious (workflows as visual programs with AI execution) but also most experimental
-- $6K/yr licensing creates a clear "build vs. buy" decision for projects like CollabBoard
+- $6K/yr licensing creates a clear "build vs. buy" decision for projects like YesAInd
 
 ---
 
@@ -139,7 +139,7 @@ These are specific facts with dates and sources that required live web data and 
 
 ### Genuinely Novel Intelligence
 
-1. **Miro MCP Server (Feb 2, 2026):** Launched 16 days ago. Connects to 11 AI coding platforms including Claude Code. Built with Anthropic, AWS, GitHub, Google. This is extremely recent and directly relevant to CollabBoard's competitive positioning.
+1. **Miro MCP Server (Feb 2, 2026):** Launched 16 days ago. Connects to 11 AI coding platforms including Claude Code. Built with Anthropic, AWS, GitHub, Google. This is extremely recent and directly relevant to YesAInd's competitive positioning.
 
 2. **Figma x Anthropic "Code to Canvas" (Feb 17, 2026):** Announced YESTERDAY. Claude Code users can send rendered UI to Figma as editable layers. Runs on Figma MCP Server. Uses Claude Sonnet 4.6. This is breaking news.
 
@@ -185,13 +185,13 @@ These are specific facts with dates and sources that required live web data and 
 
 **The biggest strategic signal is MCP/tool integration, not on-canvas AI.**
 
-Both Miro (Feb 2) and Figma (Feb 17) just launched MCP servers - making their canvases accessible to external AI agents (Claude Code, Cursor, Copilot, etc.). This is a fundamentally different approach than CollabBoard's embedded AI chat. The industry is moving toward "canvas as context layer for the AI coding ecosystem" rather than "AI as a feature inside the canvas."
+Both Miro (Feb 2) and Figma (Feb 17) just launched MCP servers - making their canvases accessible to external AI agents (Claude Code, Cursor, Copilot, etc.). This is a fundamentally different approach than YesAInd's embedded AI chat. The industry is moving toward "canvas as context layer for the AI coding ecosystem" rather than "AI as a feature inside the canvas."
 
 **Specific impacts on sprint priorities:**
 
-1. **AI Board Generation (was #5) should move UP.** Figma Make (prompt-to-prototype) is now GA. Miro Flows do multi-step generation. Both competitors have full-board generation as a shipped, polished feature. CollabBoard's template chips (SWOT, Kanban) are primitive by comparison. This is now table stakes, not a differentiator.
+1. **AI Board Generation (was #5) should move UP.** Figma Make (prompt-to-prototype) is now GA. Miro Flows do multi-step generation. Both competitors have full-board generation as a shipped, polished feature. YesAInd's template chips (SWOT, Kanban) are primitive by comparison. This is now table stakes, not a differentiator.
 
-2. **Contextual AI Actions (was #2) - VALIDATED but reframe.** Miro Sidekicks "see anything you select on the canvas and use that context." CollabBoard's selection-aware AI is on the right track but the bar has risen - Sidekicks offer persistent, customizable agents, not just one-shot actions.
+2. **Contextual AI Actions (was #2) - VALIDATED but reframe.** Miro Sidekicks "see anything you select on the canvas and use that context." YesAInd's selection-aware AI is on the right track but the bar has risen - Sidekicks offer persistent, customizable agents, not just one-shot actions.
 
 3. **Intent Preview (was #4) - DIFFERENTIATION OPPORTUNITY.** Neither Miro nor Figma offer explicit intent preview for AI actions. Miro Flows show intermediate steps but that's workflow transparency, not pre-commit preview. This is a genuine gap in the market.
 
@@ -211,7 +211,7 @@ Both Miro (Feb 2) and Figma (Feb 17) just launched MCP servers - making their ca
 
 ### One Decision This Changed
 
-**AI Board Generation should be sprint 1, not sprint 5.** The competitive intel shows that full-board generation from prompts is now a shipped feature at both Miro and Figma, not a future aspiration. CollabBoard's current template chips (SWOT, Kanban via chat) are 2 generations behind. Without this, CollabBoard looks like a toy at first interaction.
+**AI Board Generation should be sprint 1, not sprint 5.** The competitive intel shows that full-board generation from prompts is now a shipped feature at both Miro and Figma, not a future aspiration. YesAInd's current template chips (SWOT, Kanban via chat) are 2 generations behind. Without this, YesAInd looks like a toy at first interaction.
 
 ### One Decision This Didn't Change
 
@@ -219,13 +219,13 @@ Both Miro (Feb 2) and Figma (Feb 17) just launched MCP servers - making their ca
 
 ### New Strategic Concern: MCP
 
-The Miro and Figma MCP server launches (both in the last 3 weeks) signal a new competitive dimension CollabBoard hasn't considered: being a "context source" for external AI agents. This is a future concern, not an immediate sprint priority, but worth tracking. If Claude Code and Cursor users expect to pull/push to their whiteboard via MCP, CollabBoard will need an MCP server eventually.
+The Miro and Figma MCP server launches (both in the last 3 weeks) signal a new competitive dimension YesAInd hasn't considered: being a "context source" for external AI agents. This is a future concern, not an immediate sprint priority, but worth tracking. If Claude Code and Cursor users expect to pull/push to their whiteboard via MCP, YesAInd will need an MCP server eventually.
 
 ---
 
 ## Scores
 
-- **Actionability: 4/5** - The competitive intel directly changed the recommended sprint order. AI Board Generation moved from last to first priority based on concrete evidence that Figma Make and Miro Flows have shipped full-board generation as GA features. The Figma x Anthropic "Code to Canvas" announcement (literally yesterday) and Miro's MCP server (16 days ago) surface a new competitive dimension (MCP integration) that wasn't on CollabBoard's radar. The only reason this isn't a 5 is that CollabBoard is a Gauntlet exercise, not a real product competing for market share - so "competitive urgency" is somewhat artificial.
+- **Actionability: 4/5** - The competitive intel directly changed the recommended sprint order. AI Board Generation moved from last to first priority based on concrete evidence that Figma Make and Miro Flows have shipped full-board generation as GA features. The Figma x Anthropic "Code to Canvas" announcement (literally yesterday) and Miro's MCP server (16 days ago) surface a new competitive dimension (MCP integration) that wasn't on YesAInd's radar. The only reason this isn't a 5 is that YesAInd is a Gauntlet exercise, not a real product competing for market share - so "competitive urgency" is somewhat artificial.
 
 - **Novelty vs vanilla Claude: 4/5** - Approximately 70% of the substantive findings required WebSearch. The Miro MCP server (Feb 2), Figma x Anthropic Code to Canvas (Feb 17), Figma Make GA, Miro AI Workflows GA (Jan 2026), tldraw SDK 4.0 licensing ($6K/yr), Figma's IPO and 85% stock crash, Dylan Field's "software reckoning" CNBC interview, and specific growth metrics (Miro 100M users, 40% AI adoption) were all post-training-cutoff. Claude's training data knew about Miro Sidekicks as a concept, FigJam AI basics, and tldraw Make Real - but the shipped reality (Sidekicks are free in beta, Flows are multi-step workflow engines, Figma partnered with Anthropic specifically) required live data. The reason this isn't a 5 is that the strategic conclusions (AI board generation is table stakes, selection-aware AI is the right direction) could have been reached from training data alone - the web search provided the concrete evidence and urgency, not the directional insight.
 

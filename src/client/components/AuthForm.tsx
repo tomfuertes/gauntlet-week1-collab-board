@@ -375,7 +375,7 @@ export function AuthForm({ onAuth }: { onAuth: (user: AuthUser) => void }) {
             zIndex: 1,
           }}
         >
-          CollabBoard
+          YesAInd
         </h1>
         <p
           style={{

@@ -90,7 +90,7 @@ function PrivacyPolicy() {
         </a>
         <h1 style={{ fontSize: "1.5rem", marginTop: "1rem" }}>Privacy Policy</h1>
         <p style={{ color: colors.textMuted, lineHeight: 1.8 }}>
-          CollabBoard stores only the data you provide: username, display name, and a hashed password. Board content
+          YesAInd stores only the data you provide: username, display name, and a hashed password. Board content
           (objects, positions, text) is stored in Cloudflare Durable Objects tied to each board. Session cookies are
           used for authentication and expire after 7 days.
         </p>

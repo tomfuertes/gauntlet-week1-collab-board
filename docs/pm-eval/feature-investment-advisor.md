@@ -46,7 +46,7 @@ Red flag check: COGS > 20% of projected revenue? COGS is $0, revenue is $0. The 
 
 #### Step 3: Evaluate Constraints and Timing
 
-- **Competitive threat:** Yes, moderate. Miro Sidekicks already ships AI cursor presence as a headline feature. However, CollabBoard is not competing for customers - it's competing for evaluator attention. The "threat" is that without cursor presence, the demo looks like a toy next to Miro.
+- **Competitive threat:** Yes, moderate. Miro Sidekicks already ships AI cursor presence as a headline feature. However, YesAInd is not competing for customers - it's competing for evaluator attention. The "threat" is that without cursor presence, the demo looks like a toy next to Miro.
 - **Capacity:** Solo dev, one feature at a time. Classic "can only build one major feature this quarter" constraint.
 - **Dependencies:** Requires existing WS infrastructure (already built), AI tool execution hooks (already built). No blocking dependencies.
 - **Timing:** Gauntlet Week 1 submission deadline is fixed. Every hour matters.
@@ -123,7 +123,7 @@ Skip to strategic value assessment.
 
 #### Step 3: Evaluate Constraints and Timing
 
-- **Competitive threat:** Yes. FigJam uses board generation as their primary AI entry point. Without it, CollabBoard's AI feels like a chat sidebar rather than a canvas-native AI experience.
+- **Competitive threat:** Yes. FigJam uses board generation as their primary AI entry point. Without it, YesAInd's AI feels like a chat sidebar rather than a canvas-native AI experience.
 - **Capacity:** Same solo dev constraint.
 - **Dependencies:** Requires existing AI tool infrastructure (already built), template coordinate system (already built). Minimal new work - mostly a UI trigger + prompt engineering.
 - **Timing:** Same fixed deadline.

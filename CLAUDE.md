@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project
 
-CollabBoard - multiplayer improv canvas with AI agent integration. Real-time collaborative whiteboard where players and AI improvise scenes together. Solo dev with AI-first methodology (Claude Code + Cursor). See `docs/new-north-star.md` for creative direction.
+YesAInd - multiplayer improv canvas with AI agent integration. Real-time collaborative whiteboard where players and AI improvise scenes together. Solo dev with AI-first methodology (Claude Code + Cursor). See `docs/new-north-star.md` for creative direction.
 
 ## Stack
 
@@ -95,7 +95,7 @@ When working in a worktree, use absolute paths for file tools. Run git commands 
 
 The `playwright-cli` skill is available for automated browser testing. **Use it proactively** for UAT, smoke tests, and verifying features - don't stop to ask, just run it.
 
-**UAT and quality exploration swarms should target production** (`https://collabboard.thomas-fuertes.workers.dev`), not localhost. Prod is what real users see and avoids wrangler dev quirks (DO cold starts, WS flakiness, single-IP rate limit buckets). Only use localhost for testing uncommitted code changes.
+**UAT and quality exploration swarms should target production** (`https://collabboard.thomas-fuertes.workers.dev`, future: `https://yesaind.com`), not localhost. Prod is what real users see and avoids wrangler dev quirks (DO cold starts, WS flakiness, single-IP rate limit buckets). Only use localhost for testing uncommitted code changes.
 
 ```bash
 # Basic flow
@@ -150,6 +150,8 @@ Agent prompts must explicitly mention:
 - "Read CLAUDE.md and relevant source files before implementing"
 - "Commit all changes to the feature branch. Do not open a PR."
 - **KEY-DECISION comments**: `// KEY-DECISION <YYYY-MM-DD>: <rationale>` at the code location.
+- `"Write your implementation plan to $TMPDIR/plan-{task-id}.md before coding"` - if the agent runs out of context, the orchestrator can read the plan to assess progress and hand off cleanly.
+- Agents should prefer atomic tool calls over exploratory browsing to conserve context window.
 
 ## Architecture
 

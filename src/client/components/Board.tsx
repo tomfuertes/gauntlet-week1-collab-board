@@ -1836,7 +1836,7 @@ export function Board({
             >
               &larr; Boards
             </Button>
-            <span style={{ fontWeight: 600, fontSize: "0.875rem", color: colors.text }}>CollabBoard</span>
+            <span style={{ fontWeight: 600, fontSize: "0.875rem", color: colors.text }}>YesAInd</span>
             <span
               data-testid="connection-state"
               data-state={connectionState}
@@ -1999,7 +1999,7 @@ export function Board({
               &larr; Boards
             </Button>
           )}
-          <span style={{ fontWeight: 600 }}>CollabBoard</span>
+          <span style={{ fontWeight: 600 }}>YesAInd</span>
           <span
             data-testid="connection-state"
             data-state={connectionState}

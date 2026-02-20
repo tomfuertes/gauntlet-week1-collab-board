@@ -1,6 +1,6 @@
 # PM Skills Evaluation Summary
 
-Evaluated 3 of 8 proposed skills from deanpeters/Product-Manager-Skills against CollabBoard.
+Evaluated 3 of 8 proposed skills from deanpeters/Product-Manager-Skills against YesAInd.
 Date: 2026-02-18
 
 ## Scorecard
@@ -27,7 +27,7 @@ The only skill that **requires external data** to function. WebSearch surfaced 1
 - tldraw SDK 4.0 (Sept 2025) with Agent starter kit + $6K/yr licensing
 - Miro AI Workflows GA (Jan 2026) with multi-vendor integration
 
-**Decision changed:** Moved AI Board Generation from Sprint 5 to Sprint 1. Both Miro and Figma have shipped full-board generation as GA features - CollabBoard's template chips are two generations behind. Also surfaced an entirely new strategic dimension (MCP servers as "context layer for AI coding") that wasn't on the radar.
+**Decision changed:** Moved AI Board Generation from Sprint 5 to Sprint 1. Both Miro and Figma have shipped full-board generation as GA features - YesAInd's template chips are two generations behind. Also surfaced an entirely new strategic dimension (MCP servers as "context layer for AI coding") that wasn't on the radar.
 
 **Why it works:** The skill's structure (exec quotes, product insights, roadmap signals, PLG) forced breadth that a casual "search for Miro AI features" would miss. WebSearch provided the novel data; the framework ensured coverage.
 
@@ -69,7 +69,7 @@ All three skills agreed on one thing: **AI Board Generation should be Sprint 1.*
 
 | Skill | Reason Board Gen Wins |
 |-------|----------------------|
-| company-research | Competitors shipped GA board gen; CollabBoard is 2 generations behind |
+| company-research | Competitors shipped GA board gen; YesAInd is 2 generations behind |
 | discovery-process | First-impression gateway feature; low risk, leverages existing infra |
 | feature-investment-advisor (adapted) | Best effort-to-wow ratio (2.25:1 vs 1.33:1) |
 

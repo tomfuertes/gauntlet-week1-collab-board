@@ -1,7 +1,7 @@
 # Discovery Process Skill Evaluation
 
 Skill: `deanpeters/Product-Manager-Skills/skills/discovery-process`
-Evaluated against: CollabBoard's 5 sprint proposals
+Evaluated against: YesAInd's 5 sprint proposals
 Framework: GO/PIVOT/KILL decision gate (Phase 6 of the discovery process)
 
 ## Context Calibration
@@ -12,7 +12,7 @@ The discovery-process skill is designed for teams with customers, revenue, and m
 - Opportunity-solution trees grounded in observed behavior
 - Strategic fit against business goals
 
-CollabBoard has **none of this**. Zero customers. Zero interviews. Zero revenue. The "users" are Gauntlet AI evaluators who will spend 5-10 minutes poking at a deployed app. The "strategic fit" question is "does this impress technically sophisticated reviewers." The "market" is a cohort demo, not a TAM.
+YesAInd has **none of this**. Zero customers. Zero interviews. Zero revenue. The "users" are Gauntlet AI evaluators who will spend 5-10 minutes poking at a deployed app. The "strategic fit" question is "does this impress technically sophisticated reviewers." The "market" is a cohort demo, not a TAM.
 
 This means every sprint starts with the same evidence deficit: problem validation is impossible through the prescribed method. The question becomes whether the framework can still differentiate between sprints despite this shared weakness, or whether it collapses into uniform assessments.
 
@@ -87,7 +87,7 @@ Excellent. The solution is surgically precise: batchId on objects, undoBatch RPC
 ### Sprint 4: Intent Preview / Ghost Objects (~6hrs)
 
 **Problem validation:**
-The "problem" is that AI actions are irreversible and surprising - the user doesn't know what's coming until it's already materialized. This is philosophically valid (the "preview before commit" pattern is well-established in UX) but practically questionable: does the CollabBoard user actually need a preview? With batch undo (Sprint 3), reverting is trivial. Preview adds value only when: (a) the cost of undo is high, or (b) the user wants to adjust positions before committing. In CollabBoard, undo cost is low (one click with Sprint 3) and the user can move objects after creation.
+The "problem" is that AI actions are irreversible and surprising - the user doesn't know what's coming until it's already materialized. This is philosophically valid (the "preview before commit" pattern is well-established in UX) but practically questionable: does the YesAInd user actually need a preview? With batch undo (Sprint 3), reverting is trivial. Preview adds value only when: (a) the cost of undo is high, or (b) the user wants to adjust positions before committing. In YesAInd, undo cost is low (one click with Sprint 3) and the user can move objects after creation.
 
 **Evidence assessment:**
 - "Smashing Magazine Intent Preview pattern" - this is a design pattern reference, not user research. No evidence that whiteboard users want previews.

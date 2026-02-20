@@ -93,7 +93,7 @@ export function RecapOverlay({ narration, onDismiss }: RecapOverlayProps) {
       </button>
 
       <div style={{ maxWidth: 600, padding: "0 24px", textAlign: "center" }}>
-        {/* "Previously on CollabBoard..." title */}
+        {/* "Previously on YesAInd..." title */}
         <div
           style={{
             fontFamily: "Georgia, 'Times New Roman', serif",
@@ -107,7 +107,7 @@ export function RecapOverlay({ narration, onDismiss }: RecapOverlayProps) {
             transition: "opacity 0.8s ease",
           }}
         >
-          Previously on CollabBoard...
+          Previously on YesAInd...
         </div>
 
         {/* Narration text with typewriter cursor */}

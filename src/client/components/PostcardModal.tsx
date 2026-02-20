@@ -83,11 +83,11 @@ export function PostcardModal({ open, onClose, snapshotDataUrl, messages, boardI
       ctx.drawImage(img, drawX, drawY, drawW, drawH);
       ctx.restore();
 
-      // Header: "CollabBoard" title
+      // Header: "YesAInd" title
       ctx.fillStyle = "#eee";
       ctx.font = "bold 28px system-ui, -apple-system, sans-serif";
       ctx.textAlign = "left";
-      ctx.fillText("CollabBoard", 40, 52);
+      ctx.fillText("YesAInd", 40, 52);
 
       // Header: board ID (dimmed)
       ctx.fillStyle = "#64748b";
@@ -126,11 +126,11 @@ export function PostcardModal({ open, onClose, snapshotDataUrl, messages, boardI
       ctx.fillStyle = "#334155";
       ctx.font = "12px system-ui, -apple-system, sans-serif";
       ctx.textAlign = "right";
-      ctx.fillText("made with CollabBoard", POSTCARD_W - 20, POSTCARD_H - 12);
+      ctx.fillText("made with YesAInd", POSTCARD_W - 20, POSTCARD_H - 12);
 
       // Trigger download
       const link = document.createElement("a");
-      link.download = `collabboard-postcard-${boardId}.png`;
+      link.download = `yesaind-postcard-${boardId}.png`;
       link.href = offscreen.toDataURL("image/png");
       link.click();
     };
