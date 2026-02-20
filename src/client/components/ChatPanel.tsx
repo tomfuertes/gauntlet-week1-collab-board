@@ -7,7 +7,7 @@ import { colors, getUserColor } from "../theme";
 import { Button } from "./Button";
 import { Modal } from "./Modal";
 import { SCENE_TURN_BUDGET, DEFAULT_PERSONAS } from "../../shared/types";
-import type { GameMode, Persona, AIModel } from "../../shared/types";
+import type { GameMode, Persona, AIModel, SceneLifecyclePhase } from "../../shared/types";
 import "../styles/animations.css";
 import { BOARD_TEMPLATES } from "../../shared/board-templates";
 import type { ToolName } from "../../server/ai-tools-sdk";
@@ -52,6 +52,7 @@ const TOOL_ICONS: Record<ToolName, string> = {
   createText: "\u{1F524}",
   highlightObject: "\u{2728}",
   setRelationship: "\u{1F517}",
+  advanceScenePhase: "\u{1F3AC}",
   drawScene: "\u{1F3AD}",
   batchExecute: "\u{26A1}",
 };
@@ -72,6 +73,7 @@ const TOOL_LABELS: Record<ToolName, string> = {
   createText: "Creating text",
   highlightObject: "Highlighting object",
   setRelationship: "Tracking relationship",
+  advanceScenePhase: "Advancing scene phase",
   drawScene: "Drawing scene",
   batchExecute: "Executing batch",
 };
@@ -161,6 +163,23 @@ const YESAND_INTENTS: IntentChip[] = [
   { prompt: "Escalate!", category: "chaos" },
   { prompt: "Meanwhile, elsewhere...", category: "scene" },
 ];
+
+const LIFECYCLE_PHASE_COLORS: Record<SceneLifecyclePhase, string> = {
+  establish: "#60a5fa", // blue
+  build: "#fbbf24", // yellow
+  peak: "#fb923c", // orange
+  resolve: "#f87171", // red
+  curtain: "#c084fc", // purple
+};
+
+/** Derive scene lifecycle phase client-side from user message count (mirrors server auto-advance) */
+function computeClientLifecyclePhase(userMessageCount: number): SceneLifecyclePhase {
+  if (userMessageCount >= 17) return "curtain";
+  if (userMessageCount >= 13) return "resolve";
+  if (userMessageCount >= 9) return "peak";
+  if (userMessageCount >= 4) return "build";
+  return "establish";
+}
 
 /** Pick intent chips based on user message count and game mode */
 function getIntentChips(userMessageCount: number, gameMode?: GameMode): IntentChip[] {
@@ -536,6 +555,10 @@ export function ChatPanel({
   const budgetLabel = budgetPct >= 0.8 ? "Finale" : budgetPct >= 0.6 ? "Act 3" : null;
   const budgetColor = budgetPct >= 0.8 ? "#f87171" : "#fbbf24";
 
+  // Client-side lifecycle phase badge (approximation of server phase; server may be ahead if AI called advanceScenePhase)
+  const lifecyclePhase = userMessageCount > 0 ? computeClientLifecyclePhase(userMessageCount) : null;
+  const lifecycleColor = lifecyclePhase ? LIFECYCLE_PHASE_COLORS[lifecyclePhase] : null;
+
   const containerStyle: React.CSSProperties = mobileMode
     ? {
         // Fills the flex parent provided by Board's mobile layout
@@ -622,6 +645,21 @@ export function ChatPanel({
               }}
             >
               {budgetLabel}
+            </span>
+          )}
+          {lifecyclePhase && lifecycleColor && gameMode !== "hat" && gameMode !== "yesand" && (
+            <span
+              style={{
+                fontSize: "0.6875rem",
+                fontWeight: 700,
+                color: lifecycleColor,
+                border: `1px solid ${lifecycleColor}44`,
+                borderRadius: 8,
+                padding: "1px 6px",
+                textTransform: "capitalize",
+              }}
+            >
+              {lifecyclePhase}
             </span>
           )}
           {gameMode === "hat" && (

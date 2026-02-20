@@ -22,6 +22,8 @@ import {
   computeBudgetPhase,
   BUDGET_PROMPTS,
   buildGameModePromptBlock,
+  computeLifecyclePhase,
+  buildLifecycleBlock,
 } from "./prompts";
 import type { GameModeState } from "./prompts";
 import { HAT_PROMPTS, getRandomHatPrompt } from "./hat-prompts";
@@ -34,6 +36,7 @@ import type {
   CharacterRelationship,
   GameMode,
   Persona,
+  SceneLifecyclePhase,
 } from "../shared/types";
 import { SCENE_TURN_BUDGET, DEFAULT_PERSONAS, AI_MODELS, AI_USER_ID } from "../shared/types";
 import { getTemplateById } from "../shared/board-templates";
@@ -788,17 +791,44 @@ export class ChatAgent extends AIChatAgent<Bindings> {
     };
     const gameModeBlock = buildGameModePromptBlock(this._gameMode, gameModeState);
 
-    // Clear relationships at scene start (first message = fresh scene)
+    // Clear relationships and lifecycle phase at scene start (first message = fresh scene)
     if (this.messages.length <= 1) {
       await this.ctx.storage.delete("narrative:relationships");
+      await this.ctx.storage.delete("scene:lifecyclePhase");
     }
 
     // Load scene relationships for system prompt injection
     const relationships = (await this.ctx.storage.get<CharacterRelationship[]>("narrative:relationships")) ?? [];
     const relBlock = buildRelationshipBlock(relationships);
 
+    // Load stored lifecycle phase and compute effective phase (more advanced of stored vs auto)
+    const storedLifecyclePhase = await this.ctx.storage.get<SceneLifecyclePhase>("scene:lifecyclePhase");
+    const lifecyclePhase = computeLifecyclePhase(humanTurns, storedLifecyclePhase ?? undefined);
+
     // Build persona-aware system prompt with optional selection + multiplayer context
     let systemPrompt = buildPersonaSystemPrompt(activePersona, otherPersona, SYSTEM_PROMPT, gameModeBlock, relBlock);
+
+    // Inject lifecycle phase guidance (skip for hat mode - rapid-fire scenes don't have dramatic arc)
+    if (this._gameMode !== "hat") {
+      systemPrompt += `\n\n${buildLifecycleBlock(lifecyclePhase)}`;
+    }
+
+    // Auto-archive on curtain (>=5 human turns to avoid archiving micro-scenes)
+    // KEY-DECISION 2026-02-20: ctx.waitUntil so archiving never delays the AI response stream.
+    // 5-turn minimum prevents empty boards from appearing in the gallery after a quick curtain call.
+    if (lifecyclePhase === "curtain" && humanTurns >= 5) {
+      this.ctx.waitUntil(
+        boardStub.archiveScene().catch((err: unknown) => {
+          console.error(
+            JSON.stringify({
+              event: "archive:unhandled",
+              boardId: this.name,
+              error: String(err),
+            }),
+          );
+        }),
+      );
+    }
 
     // Scene setup: inject template description (if template was seeded) or generic scene structure
     if (templateDescription) {
@@ -1519,8 +1549,17 @@ export class ChatAgent extends AIChatAgent<Bindings> {
       (await this.ctx.storage.get<CharacterRelationship[]>("narrative:relationships")) ?? [];
     const reactiveRelBlock = buildRelationshipBlock(reactiveRelationships);
 
+    // Load lifecycle phase for reactive persona (same storage key)
+    const reactiveStoredPhase = await this.ctx.storage.get<SceneLifecyclePhase>("scene:lifecyclePhase");
+    const reactiveLifecyclePhase = computeLifecyclePhase(
+      this.messages.filter((m) => m.role === "user").length,
+      reactiveStoredPhase ?? undefined,
+    );
+
+    const reactiveLifecycleBlock = this._gameMode !== "hat" ? `\n\n${buildLifecycleBlock(reactiveLifecyclePhase)}` : "";
     const reactiveSystem =
       buildPersonaSystemPrompt(reactivePersona, activePersona, SYSTEM_PROMPT, reactiveGameModeBlock, reactiveRelBlock) +
+      reactiveLifecycleBlock +
       `\n\n[REACTIVE MODE] ${activePersona.name} just placed: ${lastActionSummary || "objects on the canvas"}. ` +
       `React in character with exactly 1 spoken sentence (required - always produce text). ` +
       `Optionally place 1 canvas object that BUILDS on theirs (same area, related content) - do NOT use batchExecute.`;
@@ -1751,6 +1790,12 @@ export class ChatAgent extends AIChatAgent<Bindings> {
         (await this.ctx.storage.get<CharacterRelationship[]>("narrative:relationships")) ?? [];
       const directorRelBlock = buildRelationshipBlock(directorRelationships);
 
+      // Load lifecycle phase for director (auto-computed from user message count)
+      const directorStoredPhase = await this.ctx.storage.get<SceneLifecyclePhase>("scene:lifecyclePhase");
+      const directorLifecyclePhase = computeLifecyclePhase(directorHumanTurns, directorStoredPhase ?? undefined);
+      const directorLifecycleBlock =
+        this._gameMode !== "hat" ? `\n\n${buildLifecycleBlock(directorLifecyclePhase)}` : "";
+
       // Director nudge uses the active persona's voice + budget-aware prompts
       let directorSystem =
         buildPersonaSystemPrompt(
@@ -1760,6 +1805,7 @@ export class ChatAgent extends AIChatAgent<Bindings> {
           directorGameModeBlock,
           directorRelBlock,
         ) +
+        directorLifecycleBlock +
         `\n\n[DIRECTOR MODE] You are the scene director. The players have been quiet for a while. ` +
         directorInstructions +
         `\n\nAct NOW - add something to the canvas to restart momentum. ` +

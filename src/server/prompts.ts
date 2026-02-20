@@ -3,10 +3,10 @@
  * Extracted for version tracking and reviewability.
  */
 
-import type { GameMode, Persona, CharacterRelationship } from "../shared/types";
+import type { GameMode, Persona, CharacterRelationship, SceneLifecyclePhase } from "../shared/types";
 
 /** Bump when prompt content changes - logged with every AI request for correlation */
-export const PROMPT_VERSION = "v13";
+export const PROMPT_VERSION = "v14";
 
 // ---------------------------------------------------------------------------
 // Multi-agent personas - dynamic AI characters with distinct improv styles
@@ -178,6 +178,69 @@ export const BUDGET_PROMPTS: Record<Exclude<BudgetPhase, "normal">, string> = {
     `[SCENE BUDGET: FINAL BOW] ONE closing line - a callback to the very first element of the scene. ` +
     `Then deliver a brief scene summary (2-3 sentences) of the whole arc. Take a bow.`,
 };
+
+// ---------------------------------------------------------------------------
+// Scene lifecycle phases - AI-directed dramatic arc with auto-advance fallback
+// The AI can explicitly advance phases via advanceScenePhase tool.
+// Auto-advance fires if the AI never calls it (turn-count thresholds).
+// "More advanced wins" merge: stored phase is honored unless auto caught up.
+// ---------------------------------------------------------------------------
+
+/** Human-turn thresholds for auto-advance (fallback when AI doesn't call advanceScenePhase) */
+const LIFECYCLE_THRESHOLDS: [SceneLifecyclePhase, number][] = [
+  ["curtain", 17],
+  ["resolve", 13],
+  ["peak", 9],
+  ["build", 4],
+  ["establish", 0],
+];
+
+const LIFECYCLE_PHASE_ORDER: SceneLifecyclePhase[] = ["establish", "build", "peak", "resolve", "curtain"];
+
+/** Compute effective lifecycle phase - returns the MORE advanced of auto vs stored.
+ *  This ensures AI-directed advances are respected AND auto-advance catches up when unused. */
+export function computeLifecyclePhase(humanTurns: number, storedPhase?: SceneLifecyclePhase): SceneLifecyclePhase {
+  let autoPhase: SceneLifecyclePhase = "establish";
+  for (const [phase, threshold] of LIFECYCLE_THRESHOLDS) {
+    if (humanTurns >= threshold) {
+      autoPhase = phase;
+      break;
+    }
+  }
+  if (!storedPhase) return autoPhase;
+  const autoIdx = LIFECYCLE_PHASE_ORDER.indexOf(autoPhase);
+  const storedIdx = LIFECYCLE_PHASE_ORDER.indexOf(storedPhase);
+  return autoIdx >= storedIdx ? autoPhase : storedPhase;
+}
+
+const LIFECYCLE_GUIDANCE: Record<SceneLifecyclePhase, string> = {
+  establish:
+    "Ground the world right now. Who is here? Where are we? What is the situation? " +
+    "Create 1-2 characters and a clear location. Build the playground the audience will inhabit. " +
+    "Call advanceScenePhase('build') once core characters and setting are established.",
+  build:
+    "Deepen what exists. Add wants, relationships, and complications. " +
+    "Every character needs something they desperately can't have. Raise the pressure. " +
+    "Call advanceScenePhase('peak') when tensions are clearly defined and colliding.",
+  peak:
+    "Maximum pressure. Everything is colliding. Wants crash against each other, relationships strain, chaos peaks. " +
+    "This is the point of no return - nothing can stay the same after this. " +
+    "Call advanceScenePhase('resolve') when the climactic moment has landed.",
+  resolve:
+    "Things must land now. Pull every thread together. Deliver on promises made in the establish phase. " +
+    "Emotional truth over plot logic. Callbacks to early moments pay off here. " +
+    "Call advanceScenePhase('curtain') when the scene has found its ending.",
+  curtain:
+    "Final bow. One last callback to the very first thing established in this scene. " +
+    "Wrap with grace, surprise, and inevitability. Make the audience feel it was always going to end this way. " +
+    "This is your last line - make it land.",
+};
+
+/** Build a lifecycle phase prompt block for injection into the system prompt.
+ *  Returns empty string for hat mode (scene lifecycle doesn't apply to rapid-fire hat scenes). */
+export function buildLifecycleBlock(phase: SceneLifecyclePhase): string {
+  return `[SCENE LIFECYCLE: ${phase.toUpperCase()}]\n${LIFECYCLE_GUIDANCE[phase]}`;
+}
 
 // KEY-DECISION 2026-02-19: Earlier LLM prompt rules dominate later ones. "batchExecute (preferred)"
 // must appear in the first TOOL RULES bullet, not just in a later rule. Without this, "call ALL

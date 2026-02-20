@@ -806,7 +806,27 @@ export function createSDKTools(stub: BoardStub, batchId?: string, ai?: Ai, stora
       }),
     }),
 
-    // 15. drawScene
+    // 15. advanceScenePhase
+    advanceScenePhase: tool({
+      description:
+        "Advance the scene to the next lifecycle phase. Call when the scene naturally transitions. " +
+        "Phases in order: establish -> build -> peak -> resolve -> curtain. " +
+        "Only call at genuine phase transitions - do not skip phases or regress.",
+      inputSchema: z.object({
+        phase: z
+          .enum(["establish", "build", "peak", "resolve", "curtain"])
+          .describe("Target phase to advance to (must be later than current phase)"),
+        reason: z.string().describe("Brief reason for advancing (e.g. 'All characters introduced, complications set')"),
+      }),
+      execute: instrumentExecute("advanceScenePhase", async ({ phase, reason }) => {
+        if (!storage) return { error: "Lifecycle storage unavailable" };
+        await storage.put("scene:lifecyclePhase", phase);
+        console.debug(JSON.stringify({ event: "lifecycle:advance", phase, reason }));
+        return { advanced: phase, reason };
+      }),
+    }),
+
+    // 16. drawScene
     drawScene: tool({
       description:
         "Compose a visual character or object from 2-10 shapes in a bounding box. Uses proportional " +
@@ -938,6 +958,7 @@ export function createSDKTools(stub: BoardStub, batchId?: string, ai?: Ai, stora
                   "generateImage",
                   "createText",
                   "highlightObject",
+                  "advanceScenePhase",
                   "drawScene",
                 ])
                 .describe("Tool name to execute"),

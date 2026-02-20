@@ -133,6 +133,9 @@ export const SCENE_TURN_BUDGET = 20;
 
 export type GameMode = "freeform" | "hat" | "yesand";
 
+/** Explicit scene lifecycle phases with AI-directed transitions */
+export type SceneLifecyclePhase = "establish" | "build" | "peak" | "resolve" | "curtain";
+
 export const GAME_MODES = [
   { mode: "freeform" as const, label: "Freeform", icon: "\u2728", description: "Classic improv - no rules, just play" },
   {
