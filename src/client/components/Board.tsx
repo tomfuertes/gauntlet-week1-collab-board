@@ -155,8 +155,8 @@ export function Board({
   const [chatInitialPrompt, setChatInitialPrompt] = useState<string | undefined>();
   const [boardGenStarted, setBoardGenStarted] = useState(false);
   const [gameMode, setGameMode] = useState<GameMode>("freeform");
-  // GPT-4o Mini default; sent on every message so server knows which provider to use
-  const [aiModel, setAIModel] = useState<AIModel>("gpt-4o-mini");
+  // Claude Haiku 4.5 default; sent on every message so server knows which provider to use
+  const [aiModel, setAIModel] = useState<AIModel>("claude-haiku-4.5");
   // Per-player persona claim - set via OnboardModal or ChatPanel inline picker
   const [claimedPersonaId, setClaimedPersonaId] = useState<string | null>(null);
 
@@ -902,6 +902,9 @@ export function Board({
   // ---------------------------------------------------------------------------
   if (isMobile && !canvasExpanded) {
     const previewHeight = Math.round(size.height * 0.3);
+    // KEY-DECISION 2026-02-19: Show OnboardModal on mobile when board is empty and no scene has started.
+    // boardGenStarted doubles as the "dismissed onboarding" flag on mobile too.
+    const showMobileOnboard = initialized && objects.size === 0 && !boardGenStarted;
     return (
       <div
         style={{
@@ -928,7 +931,11 @@ export function Board({
           }}
         >
           <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
-            <Button variant="link" onClick={onBack} style={{ color: colors.textMuted, fontSize: "0.875rem" }}>
+            <Button
+              variant="link"
+              onClick={onBack}
+              style={{ color: colors.textMuted, fontSize: "0.875rem", minHeight: 44, minWidth: 44 }}
+            >
               &larr; Boards
             </Button>
             <span style={{ fontWeight: 600, fontSize: "0.875rem", color: colors.text }}>CollabBoard</span>
@@ -1002,6 +1009,27 @@ export function Board({
           />
         </div>
 
+        {/* Onboard modal - rendered on top when board is empty (mobile-sized, full modal) */}
+        {showMobileOnboard && (
+          <OnboardModal
+            onSubmit={(prompt, mode, model, personaId) => {
+              setGameMode(mode);
+              setAIModel(model);
+              setClaimedPersonaId(personaId);
+              setBoardGenStarted(true);
+              setChatInitialPrompt(prompt);
+              if (mode !== "freeform") {
+                fetch(`/api/boards/${boardId}`, {
+                  method: "PATCH",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ game_mode: mode }),
+                }).catch(() => {});
+              }
+            }}
+            onDismiss={() => setBoardGenStarted(true)}
+          />
+        )}
+
         {/* Connection status toast */}
         <ConnectionToast connectionState={connectionState} />
       </div>
@@ -1055,12 +1083,16 @@ export function Board({
                 // Prevent chatInitialPrompt from re-firing on ChatPanel remount
                 setChatInitialPrompt(undefined);
               }}
-              style={{ color: colors.textMuted, fontSize: "0.875rem" }}
+              style={{ color: colors.textMuted, fontSize: "0.875rem", minHeight: 44, minWidth: 44 }}
             >
               &larr; Chat
             </Button>
           ) : (
-            <Button variant="link" onClick={onBack} style={{ color: "#94a3b8", fontSize: "0.875rem" }}>
+            <Button
+              variant="link"
+              onClick={onBack}
+              style={{ color: "#94a3b8", fontSize: "0.875rem", minHeight: 44, minWidth: 44 }}
+            >
               &larr; Boards
             </Button>
           )}
