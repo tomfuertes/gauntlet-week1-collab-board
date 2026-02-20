@@ -6,7 +6,7 @@
 import type { GameMode, Persona, CharacterRelationship, SceneLifecyclePhase, CanvasAction } from "../shared/types";
 
 /** Bump when prompt content changes - logged with every AI request for correlation */
-export const PROMPT_VERSION = "v16";
+export const PROMPT_VERSION = "v17";
 
 // ---------------------------------------------------------------------------
 // Multi-agent personas - dynamic AI characters with distinct improv styles
@@ -311,6 +311,7 @@ TOOL RULES:
 - blackout for scene transitions: full canvas fade to black between major shifts. Use at curtain or between scenes only.
 - play_sfx to punctuate your narration with sound effects: rimshot (after a punchline), record-scratch (surprise reveal), thunder (drama), sad-trombone (failure), applause (triumph), doorbell (visitor), dramatic-sting (twist), crickets (awkward silence). Use sparingly - 1 per response max.
 - [SOUND EFFECT: <name>] in the conversation means a player triggered that sound cue. React in character: rimshot = punchline land, record-scratch = something surprising, thunder = drama, sad-trombone = failure, applause = triumph, doorbell = visitor arriving, dramatic-sting = plot twist, crickets = awkward silence.
+- setMood to shift the scene's atmosphere when the emotional tone genuinely changes (comedy turning noir, tension building toward climax, triumph after a breakthrough). Use sparingly - mood shifts should feel organic, not every message.
 
 LAYOUT RULES:
 - Canvas usable area: (50,60) to (1150,780). Never place objects outside these bounds.

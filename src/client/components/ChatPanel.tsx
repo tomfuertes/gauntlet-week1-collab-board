@@ -65,6 +65,7 @@ const TOOL_ICONS: Record<ToolName, string> = {
   blackout: "\u{1F319}",
   drawScene: "\u{1F3AD}",
   createEffect: "\u{1F4A5}",
+  setMood: "\u{1F30A}",
   play_sfx: "\u{1F3B5}",
   batchExecute: "\u{26A1}",
 };
@@ -91,6 +92,7 @@ const TOOL_LABELS: Record<ToolName, string> = {
   blackout: "Scene blackout",
   drawScene: "Drawing scene",
   createEffect: "Creating visual effect",
+  setMood: "Setting scene mood",
   play_sfx: "Playing sound effect",
   batchExecute: "Executing batch",
 };

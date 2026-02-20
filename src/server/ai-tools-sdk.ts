@@ -1024,6 +1024,34 @@ export function createSDKTools(stub: BoardStub, batchId?: string, ai?: Ai, stora
       }),
     }),
 
+    // 21. setMood
+    setMood: tool({
+      description:
+        "Shift the scene's atmospheric mood for ambient lighting and visual tone. " +
+        "Use when the emotional tone genuinely changes - a comedy scene turning noir, " +
+        "tension building toward a climax, triumph after a breakthrough. " +
+        "Use sparingly - mood shifts should feel organic, not every message.",
+      inputSchema: z.object({
+        mood: z
+          .enum(["comedy", "noir", "horror", "romance", "tension", "triumph", "chaos", "neutral"])
+          .describe(
+            "Scene mood: comedy (warm bright), noir (cool dark), horror (eerie red), romance (soft pink), tension (amber), triumph (golden), chaos (strobing), neutral (default)",
+          ),
+        intensity: z
+          .number()
+          .min(0)
+          .max(1)
+          .default(0.3)
+          .describe("Intensity 0-1 (default 0.3 = subtle). Use 0.7+ only for peak/climax moments."),
+      }),
+      execute: instrumentExecute("setMood", async ({ mood, intensity }) => {
+        const result = await stub.mutate({ type: "mood", mood, intensity });
+        if (!result.ok) return { error: result.error };
+        console.debug(JSON.stringify({ event: "ai:mood", mood, intensity }));
+        return { mood, intensity };
+      }),
+    }),
+
     // 21. play_sfx
     play_sfx: tool({
       description:
@@ -1109,6 +1137,7 @@ export function createSDKTools(stub: BoardStub, batchId?: string, ai?: Ai, stora
                   "blackout",
                   "drawScene",
                   "createEffect",
+                  "setMood",
                   "play_sfx",
                 ])
                 .describe("Tool name to execute"),

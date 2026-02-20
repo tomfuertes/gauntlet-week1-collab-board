@@ -90,6 +90,8 @@ export interface ChoreographyStep {
   delayMs: number;
 }
 
+export type SceneMood = "comedy" | "noir" | "horror" | "romance" | "tension" | "triumph" | "chaos" | "neutral";
+
 /** Mutation messages the Board DO can receive (excludes cursor) */
 export type BoardMutation =
   | { type: "obj:create"; obj: BoardObject }
@@ -100,7 +102,8 @@ export type BoardMutation =
   | { type: "obj:transient"; effect: TransientEffect }
   | { type: "spotlight"; objectId?: string; x?: number; y?: number }
   | { type: "blackout" }
-  | { type: "sfx"; effect: string; x: number; y: number };
+  | { type: "sfx"; effect: string; x: number; y: number }
+  | { type: "mood"; mood: SceneMood; intensity: number };
 
 export type WSClientMessage =
   | { type: "cursor"; x: number; y: number }
@@ -117,7 +120,8 @@ export type WSClientMessage =
   | { type: "obj:sequence"; steps: ChoreographyStep[] }
   | { type: "spotlight"; objectId?: string; x?: number; y?: number }
   | { type: "blackout" }
-  | { type: "sfx"; effect: string; x: number; y: number };
+  | { type: "sfx"; effect: string; x: number; y: number }
+  | { type: "mood"; mood: SceneMood; intensity: number };
 
 export type WSServerMessage =
   | { type: "cursor"; userId: string; username: string; x: number; y: number }
@@ -137,7 +141,8 @@ export type WSServerMessage =
   | { type: "spotlight"; objectId?: string; x?: number; y?: number }
   | { type: "blackout" }
   | { type: "sfx"; userId: string; effect: string; x: number; y: number }
-  | { type: "curtain_call"; characters: { id: string; name: string }[]; sceneTitle: string };
+  | { type: "curtain_call"; characters: { id: string; name: string }[]; sceneTitle: string }
+  | { type: "mood"; mood: SceneMood; intensity: number };
 
 export const AI_USER_ID = "ai-agent" as const;
 export const AI_USERNAME = "AI Assistant" as const;

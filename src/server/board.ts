@@ -5,6 +5,7 @@ import type {
   CanvasAction,
   MutateResult,
   ReplayEvent,
+  SceneMood,
   WSClientMessage,
   WSServerMessage,
 } from "../shared/types";
@@ -39,6 +40,8 @@ export class Board extends DurableObject<Bindings> {
   private lastReactionAt = new Map<string, number>();
   // Rate limit: last SFX timestamp per userId - 1 SFX per user per 3s
   private lastSfxAt = new Map<string, number>();
+  // Current scene mood (ephemeral - resets on hibernation, which is fine for atmospheric state)
+  private currentMood: SceneMood = "neutral";
 
   private async getBoardId(): Promise<string | null> {
     if (!this._boardId) {
@@ -234,6 +237,10 @@ export class Board extends DurableObject<Bindings> {
     const { users, spectatorCount } = this.getPresenceList();
     server.send(JSON.stringify({ type: "init", objects } satisfies WSServerMessage));
     server.send(JSON.stringify({ type: "presence", users, spectatorCount } satisfies WSServerMessage));
+    // Sync current mood to new connections so late-joiners see the active atmosphere
+    if (this.currentMood !== "neutral") {
+      server.send(JSON.stringify({ type: "mood", mood: this.currentMood, intensity: 0.3 } satisfies WSServerMessage));
+    }
     this.broadcast({ type: "presence", users, spectatorCount }, server);
 
     // Mark board as seen for connecting user (non-blocking)
@@ -609,6 +616,14 @@ export class Board extends DurableObject<Bindings> {
         // SFX is an ephemeral theatrical effect - all clients should see the burst.
         // When called via mutate() RPC (AI tool), userId is AI_USER_ID.
         this.broadcast({ type: "sfx", userId: userId, effect: msg.effect, x: msg.x, y: msg.y });
+        return { ok: true };
+      }
+      case "mood": {
+        // Ephemeral atmospheric state - store in class property (resets on hibernation, correct behavior).
+        // Broadcast to ALL clients so every viewer sees the ambient lighting shift.
+        this.currentMood = msg.mood;
+        this.broadcast({ type: "mood", mood: msg.mood, intensity: msg.intensity });
+        console.debug(JSON.stringify({ event: "ai:mood", mood: msg.mood, intensity: msg.intensity }));
         return { ok: true };
       }
     }
