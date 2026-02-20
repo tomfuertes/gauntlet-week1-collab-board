@@ -4,7 +4,7 @@ import { cors } from "hono/cors";
 import { getCookie } from "hono/cookie";
 import { routeAgentRequest } from "agents";
 import { auth, getSessionUser } from "./auth";
-import { getRandomHatPrompt } from "./hat-prompts";
+import { getDailyChallengePrompt } from "./challenge-prompts";
 import { computeOverlapScore } from "./ai-tools-sdk";
 
 import type { Bindings } from "./env";
@@ -234,7 +234,7 @@ function parsePositiveInt(raw: string): number {
   return /^\d+$/.test(raw) ? parseInt(raw, 10) : NaN;
 }
 
-// GET /api/challenges/today - get or create today's challenge; includes userBoardId if authenticated
+// GET /api/challenges/today - get or create today's challenge; includes userBoardId + streak if authenticated
 app.get("/api/challenges/today", async (c) => {
   try {
     const sessionId = getCookie(c, "session");
@@ -242,19 +242,27 @@ app.get("/api/challenges/today", async (c) => {
 
     const today = new Date().toISOString().split("T")[0]; // YYYY-MM-DD UTC
 
-    let challenge = await c.env.DB.prepare("SELECT id, date, prompt FROM daily_challenges WHERE date = ?")
+    let challenge = await c.env.DB.prepare(
+      "SELECT id, date, prompt, template_id, game_mode FROM daily_challenges WHERE date = ?",
+    )
       .bind(today)
-      .first<{ id: number; date: string; prompt: string }>();
+      .first<{ id: number; date: string; prompt: string; template_id: string | null; game_mode: string }>();
 
     if (!challenge) {
       // INSERT ... RETURNING is not reliably supported in D1 - use INSERT then SELECT
-      const { prompt, index } = getRandomHatPrompt();
-      await c.env.DB.prepare("INSERT OR IGNORE INTO daily_challenges (date, prompt, hat_prompt_index) VALUES (?, ?, ?)")
-        .bind(today, prompt, index)
+      // KEY-DECISION 2026-02-20: getDailyChallengePrompt() is deterministic (daysSinceEpoch % count)
+      // so concurrent workers all produce the same row; INSERT OR IGNORE handles the race safely.
+      const { prompt, index, templateId, gameMode } = getDailyChallengePrompt(today);
+      await c.env.DB.prepare(
+        "INSERT OR IGNORE INTO daily_challenges (date, prompt, hat_prompt_index, template_id, game_mode) VALUES (?, ?, ?, ?, ?)",
+      )
+        .bind(today, prompt, index, templateId ?? null, gameMode)
         .run();
-      challenge = await c.env.DB.prepare("SELECT id, date, prompt FROM daily_challenges WHERE date = ?")
+      challenge = await c.env.DB.prepare(
+        "SELECT id, date, prompt, template_id, game_mode FROM daily_challenges WHERE date = ?",
+      )
         .bind(today)
-        .first<{ id: number; date: string; prompt: string }>();
+        .first<{ id: number; date: string; prompt: string; template_id: string | null; game_mode: string }>();
     }
 
     if (!challenge) {
@@ -270,10 +278,48 @@ app.get("/api/challenges/today", async (c) => {
         )?.board_id ?? null)
       : null;
 
-    return c.json({ ...challenge, userBoardId });
+    let streak: number | undefined;
+    let bestScore: number | null | undefined;
+    if (user) {
+      const userRow = await c.env.DB.prepare("SELECT challenge_streak, challenge_best_score FROM users WHERE id = ?")
+        .bind(user.id)
+        .first<{ challenge_streak: number; challenge_best_score: number | null }>();
+      streak = userRow?.challenge_streak ?? 0;
+      bestScore = userRow?.challenge_best_score ?? null;
+    }
+
+    return c.json({
+      id: challenge.id,
+      date: challenge.date,
+      prompt: challenge.prompt,
+      templateId: challenge.template_id ?? undefined,
+      gameMode: challenge.game_mode,
+      userBoardId,
+      ...(streak !== undefined ? { streak, bestScore } : {}),
+    });
   } catch (err) {
     console.error(JSON.stringify({ event: "challenge:today:error", error: String(err) }));
     return c.json({ error: "Failed to load challenge" }, 500);
+  }
+});
+
+// GET /api/challenges/streak - current streak + best score for authenticated user
+// Must be defined before /api/challenges/:id/... routes (Hono matches in registration order)
+app.get("/api/challenges/streak", async (c) => {
+  const user = await requireAuth(c);
+  if (!user) return c.text("Unauthorized", 401);
+
+  try {
+    const userRow = await c.env.DB.prepare("SELECT challenge_streak, challenge_best_score FROM users WHERE id = ?")
+      .bind(user.id)
+      .first<{ challenge_streak: number; challenge_best_score: number | null }>();
+    return c.json({
+      streak: userRow?.challenge_streak ?? 0,
+      bestScore: userRow?.challenge_best_score ?? null,
+    });
+  } catch (err) {
+    console.error(JSON.stringify({ event: "challenge:streak:error", error: String(err) }));
+    return c.json({ error: "Failed to load streak" }, 500);
   }
 });
 
@@ -293,19 +339,44 @@ app.post("/api/challenges/:id/enter", async (c) => {
     .first<{ board_id: string }>();
   if (existing) return c.json({ boardId: existing.board_id });
 
-  const challenge = await c.env.DB.prepare("SELECT id, prompt FROM daily_challenges WHERE id = ?")
+  const challenge = await c.env.DB.prepare(
+    "SELECT id, prompt, template_id, game_mode FROM daily_challenges WHERE id = ?",
+  )
     .bind(challengeId)
-    .first<{ id: number; prompt: string }>();
+    .first<{ id: number; prompt: string; template_id: string | null; game_mode: string }>();
   if (!challenge) return c.text("Challenge not found", 404);
 
   const boardId = crypto.randomUUID();
   const boardName = `Daily: ${challenge.prompt.length > 40 ? challenge.prompt.slice(0, 40) + "..." : challenge.prompt}`;
+  const gameMode = challenge.game_mode || "freeform";
+
+  // Calculate streak before creating the entry
+  const today = new Date().toISOString().split("T")[0];
+  const userRow = await c.env.DB.prepare(
+    "SELECT challenge_streak, challenge_best_score, challenge_last_date FROM users WHERE id = ?",
+  )
+    .bind(user.id)
+    .first<{ challenge_streak: number; challenge_best_score: number | null; challenge_last_date: string | null }>();
+
+  let newStreak = 1;
+  if (userRow?.challenge_last_date) {
+    if (userRow.challenge_last_date === today) {
+      // Already played today - preserve streak (entry check above handles the board redirect, but streak stays)
+      newStreak = userRow.challenge_streak || 1;
+    } else {
+      const yesterday = new Date();
+      yesterday.setUTCDate(yesterday.getUTCDate() - 1);
+      const yesterdayStr = yesterday.toISOString().split("T")[0];
+      newStreak = userRow.challenge_last_date === yesterdayStr ? (userRow.challenge_streak || 0) + 1 : 1;
+    }
+  }
+  const newBestScore = Math.max(newStreak, userRow?.challenge_best_score ?? 0);
 
   try {
     await c.env.DB.prepare(
-      "INSERT INTO boards (id, name, created_by, created_at, updated_at, game_mode) VALUES (?, ?, ?, datetime('now'), datetime('now'), 'hat')",
+      "INSERT INTO boards (id, name, created_by, created_at, updated_at, game_mode, challenge_id) VALUES (?, ?, ?, datetime('now'), datetime('now'), ?, ?)",
     )
-      .bind(boardId, boardName, user.id)
+      .bind(boardId, boardName, user.id, gameMode, challengeId)
       .run();
     await recordBoardActivity(c.env.DB, boardId);
     await markBoardSeen(c.env.DB, user.id, boardId);
@@ -313,6 +384,11 @@ app.post("/api/challenges/:id/enter", async (c) => {
       "INSERT INTO challenge_entries (challenge_id, board_id, user_id, created_at) VALUES (?, ?, ?, datetime('now'))",
     )
       .bind(challengeId, boardId, user.id)
+      .run();
+    await c.env.DB.prepare(
+      "UPDATE users SET challenge_streak = ?, challenge_best_score = ?, challenge_last_date = ? WHERE id = ?",
+    )
+      .bind(newStreak, newBestScore, today, user.id)
       .run();
   } catch (err) {
     // UNIQUE constraint fired from concurrent request - re-fetch the winner's entry
@@ -326,10 +402,10 @@ app.post("/api/challenges/:id/enter", async (c) => {
     return c.text("Failed to create challenge entry", 500);
   }
 
-  return c.json({ boardId }, 201);
+  return c.json({ boardId, templateId: challenge.template_id ?? undefined, gameMode }, 201);
 });
 
-// GET /api/challenges/:id/leaderboard - top 20 entries by reaction count (public)
+// GET /api/challenges/:id/leaderboard - top 20 entries sorted by critic score (public)
 app.get("/api/challenges/:id/leaderboard", async (c) => {
   const challengeId = parsePositiveInt(c.req.param("id"));
   if (isNaN(challengeId)) return c.text("Invalid challenge id", 400);
@@ -337,15 +413,25 @@ app.get("/api/challenges/:id/leaderboard", async (c) => {
   try {
     const { results } = await c.env.DB.prepare(
       `SELECT ce.board_id AS boardId, ce.user_id AS userId,
-              u.display_name AS username, ce.reaction_count AS reactionCount
+              u.display_name AS username, ce.reaction_count AS reactionCount,
+              b.critic_score AS criticScore, b.critic_review AS criticReview, b.name AS sceneName
        FROM challenge_entries ce
        JOIN users u ON u.id = ce.user_id
+       LEFT JOIN boards b ON b.id = ce.board_id
        WHERE ce.challenge_id = ?
-       ORDER BY ce.reaction_count DESC
+       ORDER BY b.critic_score DESC NULLS LAST, ce.reaction_count DESC
        LIMIT 20`,
     )
       .bind(challengeId)
-      .all<{ boardId: string; userId: string; username: string; reactionCount: number }>();
+      .all<{
+        boardId: string;
+        userId: string;
+        username: string;
+        reactionCount: number;
+        criticScore: number | null;
+        criticReview: string | null;
+        sceneName: string | null;
+      }>();
 
     return c.json(results);
   } catch (err) {

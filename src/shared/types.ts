@@ -219,8 +219,16 @@ export interface DailyChallenge {
   id: number;
   date: string;
   prompt: string;
+  /** Optional board template ID for pre-seeded canvas objects */
+  templateId?: string | null;
+  /** Game mode for the challenge board (freeform | hat | yesand) */
+  gameMode: string;
   /** null when user has not entered; always present in authenticated responses */
   userBoardId: string | null;
+  /** Current daily challenge streak for authenticated user */
+  streak?: number;
+  /** Best streak ever for authenticated user */
+  bestScore?: number | null;
 }
 
 export interface LeaderboardEntry {
@@ -229,7 +237,10 @@ export interface LeaderboardEntry {
   userId: string;
   username: string;
   reactionCount: number;
-  // Ordered by reactionCount DESC server-side; rank = array index - do not re-sort
+  criticScore?: number | null;
+  criticReview?: string | null;
+  sceneName?: string | null;
+  // Ordered by criticScore DESC NULLS LAST, reactionCount DESC server-side; rank = array index - do not re-sort
 }
 
 export interface ReplayEvent {
