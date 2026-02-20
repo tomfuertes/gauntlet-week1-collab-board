@@ -92,7 +92,36 @@ export function computeConnectedLineGeometry(
   };
 }
 
-/** Find the nearest object edge point within threshold distance of (x, y). */
+/** Check if point (px, py) is inside an object's bounding shape (handles rotation). */
+function isPointInside(
+  px: number,
+  py: number,
+  obj: { x: number; y: number; width: number; height: number; rotation: number; type: string },
+): boolean {
+  const cx = obj.x + obj.width / 2;
+  const cy = obj.y + obj.height / 2;
+  let dx = px - cx;
+  let dy = py - cy;
+
+  if (obj.type === "circle") {
+    return Math.sqrt(dx * dx + dy * dy) <= obj.width / 2;
+  }
+
+  // Rotate into local space for rotated rects
+  const rot = (obj.rotation || 0) * (Math.PI / 180);
+  if (rot !== 0) {
+    const cos = Math.cos(-rot);
+    const sin = Math.sin(-rot);
+    const ldx = dx * cos - dy * sin;
+    const ldy = dx * sin + dy * cos;
+    dx = ldx;
+    dy = ldy;
+  }
+
+  return Math.abs(dx) <= obj.width / 2 && Math.abs(dy) <= obj.height / 2;
+}
+
+/** Find the nearest object edge point within threshold distance of (x, y), or inside the object. */
 export function findSnapTarget(
   x: number,
   y: number,
@@ -116,7 +145,11 @@ export function findSnapTarget(
     const edge = getEdgePoint(obj, x, y);
     const dx = edge.x - x;
     const dy = edge.y - y;
-    const dist = Math.sqrt(dx * dx + dy * dy);
+    // KEY-DECISION 2026-02-20: Cursor inside a shape auto-snaps (dist=0). Without this,
+    // releasing a connector drag inside a large box (>20px from edge) fails to connect
+    // because the edge point is too far from the cursor.
+    const inside = isPointInside(x, y, obj);
+    const dist = inside ? 0 : Math.sqrt(dx * dx + dy * dy);
 
     if (dist <= threshold && (!best || dist < best.dist)) {
       best = { objectId: obj.id, snapPoint: edge, dist };
