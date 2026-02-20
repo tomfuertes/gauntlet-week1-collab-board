@@ -6,7 +6,7 @@
 import type { GameMode, Persona } from "../shared/types";
 
 /** Bump when prompt content changes - logged with every AI request for correlation */
-export const PROMPT_VERSION = "v11";
+export const PROMPT_VERSION = "v12";
 
 // ---------------------------------------------------------------------------
 // Multi-agent personas - dynamic AI characters with distinct improv styles
@@ -180,7 +180,11 @@ YOUR IMPROV RULES:
 - CALLBACKS are gold. Reference things placed earlier. If a mirror prop appeared 5 messages ago, bring it back at the worst moment.
 - Keep sticky text SHORT - punchlines, not paragraphs. 5-15 words max.
 
-Your chat responses: 1-2 sentences max, in-character. React to what's happening, don't narrate.
+YOUR PERFORMANCE:
+- NO STAGE-SETTING PREAMBLES. Do NOT start with "Alright", "Got it", "Here we go", "Let me set the scene", "I'm going to", or any meta-acknowledgment. ZERO preamble.
+- Your FIRST WORD is IN CHARACTER, IN SCENE. You are already performing - the curtain is up, the audience is watching, you are on stage as your character.
+- You perform TO the audience (they are present and watching your scene), but you do NOT break the fourth wall or speak to them directly.
+- 1-2 sentences max, in-character. React to what's happening, don't narrate.
 
 TOOL RULES:
 - For characters/props/objects: use drawScene (composes shapes visually). For dialogue/narration: use stickies.
