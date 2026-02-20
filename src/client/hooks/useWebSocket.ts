@@ -50,8 +50,14 @@ interface UseWebSocketReturn {
 const BACKOFF_BASE_MS = 1000;
 const BACKOFF_CAP_MS = 8000;
 
-export function useWebSocket(boardId: string): UseWebSocketReturn {
+export function useWebSocket(
+  boardId: string,
+  onAnimatedUpdate?: (id: string, toX: number, toY: number, durationMs: number) => void,
+): UseWebSocketReturn {
   const wsRef = useRef<WebSocket | null>(null);
+  // Ref so the WS closure always calls the latest callback without reconnecting
+  const onAnimatedUpdateRef = useRef(onAnimatedUpdate);
+  onAnimatedUpdateRef.current = onAnimatedUpdate;
   const lastServerMessageAt = useRef(0);
   const [connectionState, setConnectionState] = useState<ConnectionState>("connecting");
   const [initialized, setInitialized] = useState(false);
@@ -166,6 +172,10 @@ export function useWebSocket(boardId: string): UseWebSocketReturn {
             setObjects((prev) => new Map(prev).set(msg.obj.id, msg.obj));
             break;
           case "obj:update":
+            // Fire animation callback before state update so caller can capture current Konva node position
+            if (msg.anim) {
+              onAnimatedUpdateRef.current?.(msg.obj.id, msg.obj.x, msg.obj.y, msg.anim.duration);
+            }
             setObjects((prev) => {
               const next = new Map(prev);
               const existing = next.get(msg.obj.id);
