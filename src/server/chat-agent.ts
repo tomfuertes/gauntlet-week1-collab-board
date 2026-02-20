@@ -30,6 +30,33 @@ import type { BoardObject, BoardObjectProps, GameMode, Persona } from "../shared
 import { SCENE_TURN_BUDGET, DEFAULT_PERSONAS, AI_MODELS } from "../shared/types";
 
 /**
+ * Strip leaked model internals from output text: <think> blocks, <tool_call> fragments,
+ * and content before stray </think> tags. GLM 4.7 Flash leaks these into visible chat by
+ * exchange 3+, causing 1000-3000+ word circular reasoning blobs in the UI.
+ *
+ * KEY-DECISION 2026-02-19: Applied at 3 sites - display (ensurePersonaPrefix),
+ * message construction (buildGenerateTextMessage), and history storage (both above).
+ * Cleaning at construction time handles both display AND history pollution in one pass.
+ */
+function cleanModelOutput(text: string): string {
+  // Strip <think>...</think> blocks (multiline, lazy - handles multiple blocks correctly)
+  let cleaned = text.replace(/<think>[\s\S]*?<\/think>/g, "");
+  // Strip <tool_call>...</tool_call> fragments
+  cleaned = cleaned.replace(/<tool_call>[\s\S]*?<\/tool_call>/g, "");
+  // Strip content before stray </think> tags (partial leak: block opened but truncated before close)
+  const strayThinkClose = cleaned.indexOf("</think>");
+  if (strayThinkClose !== -1) {
+    cleaned = cleaned.slice(strayThinkClose + "</think>".length);
+  }
+  // Strip stray <tool_call> without closing tag (truncated leak)
+  const strayToolCall = cleaned.indexOf("<tool_call>");
+  if (strayToolCall !== -1) {
+    cleaned = cleaned.slice(0, strayToolCall);
+  }
+  return cleaned.trim();
+}
+
+/**
  * Sanitize UIMessages to ensure all tool invocation inputs are valid objects.
  * Some LLMs (especially smaller ones) sometimes emit tool calls with string,
  * null, or array inputs instead of JSON objects. This causes API validation
@@ -751,26 +778,33 @@ export class ChatAgent extends AIChatAgent<Bindings> {
 
     // Only check the first text part to avoid false positives on subsequent parts (e.g. "Done!")
     const firstTextPart = lastMsg.parts.find((p) => p.type === "text");
-    const needsFix = !!firstTextPart && !firstTextPart.text.startsWith(`[${personaName}]`);
-    if (!needsFix) {
-      if (!firstTextPart) {
-        console.warn(
-          JSON.stringify({
-            event: "persona:prefix:no-text-part",
-            boardId: this.name,
-            persona: personaName,
-          }),
-        );
-      }
+    if (!firstTextPart) {
+      console.warn(
+        JSON.stringify({
+          event: "persona:prefix:no-text-part",
+          boardId: this.name,
+          persona: personaName,
+        }),
+      );
       return;
     }
+    // Clean think/tool_call leaks from raw text and strip any wrong-persona prefix before checking
+    const cleanedFirst = cleanModelOutput(firstTextPart.text).replace(/^\[([^\]]+)\]\s*/, (match, name) =>
+      name === personaName ? match : "",
+    );
+    // Guard: if cleaning wiped the entire text (LLM emitted only reasoning, no visible content),
+    // skip patching - a "[PERSONA] " placeholder is worse than leaving the message as-is.
+    if (!cleanedFirst) return;
+    const needsFix = !cleanedFirst.startsWith(`[${personaName}]`);
+    if (!needsFix && cleanedFirst === firstTextPart.text) return; // text unchanged, nothing to do
 
     // Only prefix the first text part - leave subsequent parts (e.g. "Done!") untouched
     let patched = false;
     const newParts = lastMsg.parts.map((part) => {
-      if (!patched && part.type === "text" && !part.text.startsWith(`[${personaName}]`)) {
+      if (!patched && part.type === "text") {
         patched = true;
-        return { ...part, text: `[${personaName}] ${part.text}` };
+        const finalText = needsFix ? `[${personaName}] ${cleanedFirst}` : cleanedFirst;
+        return { ...part, text: finalText };
       }
       return part;
     });
@@ -832,10 +866,20 @@ export class ChatAgent extends AIChatAgent<Bindings> {
     let text: string;
     if (!result.text) {
       text = fallbackText ?? "";
-    } else if (result.text.startsWith(`[${personaName}]`)) {
-      text = result.text;
     } else {
-      text = `[${personaName}] ${result.text}`;
+      // Clean think/tool_call leaks before prefixing (handles both display and history pollution)
+      let cleaned = cleanModelOutput(result.text);
+      // Strip wrong-persona prefix: reactive persona may echo the active persona's [NAME] tag
+      // because the conversation history is saturated with the other persona's prefix style.
+      // Replace any [NAME] prefix that doesn't match the expected persona.
+      cleaned = cleaned.replace(/^\[([^\]]+)\]\s*/, (match, name) => {
+        return name === personaName ? match : "";
+      });
+      if (cleaned.startsWith(`[${personaName}]`)) {
+        text = cleaned;
+      } else {
+        text = cleaned ? `[${personaName}] ${cleaned}` : "";
+      }
     }
     if (text) {
       parts.push({ type: "text" as const, text });
