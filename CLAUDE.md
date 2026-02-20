@@ -21,6 +21,7 @@ React + Vite + react-konva + TypeScript | Cloudflare Workers + Hono + Durable Ob
 | `src/server/tracing-middleware.ts` | AI SDK middleware -> D1 traces + optional Langfuse |
 | `src/server/auth.ts` | Custom auth (PBKDF2, D1 sessions, rate limiting) |
 | `src/shared/types.ts` | Persona, BoardObject, GameMode, AIModel, AI_MODELS, DEFAULT_PERSONAS |
+| `src/shared/board-templates.ts` | Template registry: typed BoardObject arrays, displayText, `getTemplateById()` for server-side seeding |
 
 **Key client files:**
 
@@ -37,6 +38,7 @@ React + Vite + react-konva + TypeScript | Cloudflare Workers + Hono + Durable Ob
 - Class-level state resets on DO hibernation. Client re-sends model/gameMode/personaId each message.
 - `tool_choice: "auto"` shim in workers-ai-provider (CF issue #404). Belt-and-suspenders.
 - Canvas bounds (50,60)-(1150,780) in prompts.ts LAYOUT RULES - keep in sync with quality telemetry.
+- Default model is Claude Haiku 4.5. GLM available but degrades by exchange 3+.
 - Deploy via `git push` to main (CF git integration). Never `wrangler deploy` manually.
 
 ## Commands
@@ -253,22 +255,13 @@ Each object stored as separate DO Storage key (`obj:{uuid}`, ~200 bytes). LWW vi
 - `getUserColor(userId)` is hash-based (not array-index). Same palette in Board.tsx and Cursors.tsx.
 - Dev: `scripts/dev.sh` raises `ulimit -n 10240` (macOS default 256 causes EMFILE in multi-worktree).
 
-## Doc Sync Workflow
+## Doc Sync
 
-**MANDATORY: Every commit that touches `src/` must also update relevant docs.** This is not optional. Do not ask "should I update docs?" - just do it as part of the commit.
-
-| Trigger | Action | File |
-|---------|--------|------|
-| Any `src/` change | Update if layout, data flow, or constraints changed | `CLAUDE.md` |
-| Feature completed | Update Roadmap Status in notes | `docs/notes.md` (orchestrator only) |
-| Decision made (chose X over Y) | `// KEY-DECISION <date>: <rationale>` at the code location | Source file |
-| New dependency added | Add to Stack section | `CLAUDE.md` |
-| Session ending or context pressure | Full context dump: done, next, blockers, impl plan | `docs/sessions/<branch>.md` (worktrees) or `docs/notes.md` (orchestrator) |
-| Session starting | Read `docs/notes.md` + `CLAUDE.md`, git log, summarize status | (read only) |
-| notes.md > ~150 lines or 5+ sessions | Prune: collapse old sessions, delete implemented plans, keep only latest "What's Next" and active reference. Architecture/constraints belong in `CLAUDE.md`, not `notes.md`. | `docs/notes.md` |
-| PR review identifies tech debt | Append to Known Tech Debt section so it's visible at merge time | `docs/notes.md` (orchestrator only) |
-
-Hooks enforce the bookends: `SessionStart` reminds to read context, `PreCompact` reminds to dump context. Everything in between is your responsibility.
+- **Session start:** Read `docs/notes.md` + `CLAUDE.md`, `git log --oneline -20`. No summary needed.
+- **CLAUDE.md:** Update only when file map, key constraints, or gotchas change. Not a changelog.
+- **`docs/notes.md`:** Loose ends, unshipped features, tech debt. ~30 lines max. Not session logs.
+- **KEY-DECISION comments:** Non-obvious decisions go in code, not docs. `// KEY-DECISION <date>: <rationale>`
+- **Worktree agents:** Write session notes to `docs/sessions/<branch>.md`. Don't touch `docs/notes.md`.
 
 ## Custom Agents (Delegation)
 

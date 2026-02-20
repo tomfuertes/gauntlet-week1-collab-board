@@ -1,23 +1,13 @@
 {
   "hooks": {
-    "PreCompact": [
+    "PermissionRequest": [
       {
         "hooks": [
           {
-            "type": "command",
-            "command": "echo 'CONTEXT COMPACTION IMMINENT. Before continuing: write a context dump to docs/notes.md covering what was done this session, what is next, any blockers, and the implementation plan for the next work item. Also update CLAUDE.md if architecture changed.'",
-            "timeout": 5
-          }
-        ]
-      }
-    ],
-    "SessionStart": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "echo 'Session starting. Do ALL of these before responding:\\n1. Read docs/notes.md (previous session context)\\n2. Read CLAUDE.md (architecture)\\n3. Run git log --oneline -20 (recent commits)\\n4. Summarize: phase, what is done, what is next, any risks.'",
-            "timeout": 5
+            "type": "prompt",
+            "prompt": "You are a security reviewer. Evaluate this tool call: $ARGUMENTS\n\nApprove if: standard dev operations (git, npm, file edits, reads, searches, tests).\nDeny if: destructive (rm -rf, force push, drop table), touches credentials/secrets, or reaches outside the project.\n\nRespond with JSON: {\"ok\": true} or {\"ok\": false, \"reason\": \"why\"}",
+            "model": "haiku",
+            "timeout": 10
           }
         ]
       }
