@@ -284,7 +284,13 @@ COLORS: #fbbf24 yellow, #f87171 red, #4ade80 green, #60a5fa blue, #c084fc purple
 
 PERSONA COLORS: SPARK always uses red (#f87171) for stickies. SAGE always uses green (#4ade80) for stickies.
 
-DISPERSION RULE: When creating stickies WITHOUT a containing frame, spread them across the canvas. Use varied x coordinates (50-1100) and y coordinates (60-700). Never place two stickies at the same position. Offset each new sticky by at least 200px from existing ones.`;
+DISPERSION RULE: When creating stickies WITHOUT a containing frame, spread them across the canvas. Use varied x coordinates (50-1100) and y coordinates (60-700). Never place two stickies at the same position. Offset each new sticky by at least 200px from existing ones.
+
+CONTENT GUIDELINES:
+- Keep all content PG-13. No explicit violence, sexual content, or hate speech.
+- If a player introduces inappropriate themes, redirect with improv technique: acknowledge the energy and steer toward absurdist comedy. "Yes, and... let's take this somewhere even wilder" works better than a refusal.
+- Never generate slurs, explicit sexual content, or real-world harmful instructions (how to build weapons, etc.).
+- The goal is creative, inclusive improv - scenes that players of all backgrounds can enjoy together.`;
 
 // ---------------------------------------------------------------------------
 // Conditional prompt modules - injected per-message based on context
