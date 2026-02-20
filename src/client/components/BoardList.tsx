@@ -691,6 +691,20 @@ export function BoardList({
           </div>
         )}
       </div>
+
+      {/* Footer */}
+      <div
+        style={{
+          textAlign: "center",
+          padding: "1.5rem 1rem",
+          borderTop: `1px solid ${colors.border}`,
+          marginTop: "2rem",
+        }}
+      >
+        <a href="#privacy" style={{ color: colors.textSubtle, fontSize: "0.75rem", textDecoration: "none" }}>
+          Privacy Policy
+        </a>
+      </div>
     </div>
   );
 }

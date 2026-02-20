@@ -1,5 +1,5 @@
 import { useState, useEffect, Component } from "react";
-import type { ReactNode, ErrorInfo } from "react";
+import type { CSSProperties, ReactNode, ErrorInfo } from "react";
 import { Board } from "./components/Board";
 import { BoardList } from "./components/BoardList";
 import { AuthForm } from "./components/AuthForm";
@@ -82,32 +82,72 @@ function parseChallenge(): boolean {
 }
 
 function PrivacyPolicy() {
+  const sectionHead: CSSProperties = {
+    fontSize: "1.125rem",
+    fontWeight: 600,
+    marginTop: "1.5rem",
+    marginBottom: "0.5rem",
+  };
+  const body: CSSProperties = { color: colors.textMuted, lineHeight: 1.8, margin: 0 };
+
   return (
     <div style={{ minHeight: "100vh", background: colors.bg, color: colors.text, padding: "2rem" }}>
       <div style={{ maxWidth: 640, margin: "0 auto" }}>
-        <a href="#" style={{ color: colors.accentLight, fontSize: "0.875rem" }}>
+        <a href="#" style={{ color: colors.accentLight, fontSize: "0.875rem", textDecoration: "none" }}>
           &larr; Back
         </a>
-        <h1 style={{ fontSize: "1.5rem", marginTop: "1rem" }}>Privacy Policy</h1>
-        <p style={{ color: colors.textMuted, lineHeight: 1.8 }}>
-          YesAInd stores only the data you provide: username, display name, and a hashed password. Board content
-          (objects, positions, text) is stored in Cloudflare Durable Objects tied to each board. Session cookies are
-          used for authentication and expire after 7 days.
+        <h1 style={{ fontSize: "1.5rem", marginTop: "1rem", marginBottom: "0.25rem" }}>Privacy Policy</h1>
+        <p style={{ color: colors.textSubtle, fontSize: "0.8125rem", margin: "0 0 1.5rem" }}>
+          Last updated: February 2026
         </p>
-        <h2 style={{ fontSize: "1.125rem", marginTop: "1.5rem" }}>Data Collection</h2>
-        <p style={{ color: colors.textMuted, lineHeight: 1.8 }}>
-          We collect only what you explicitly provide. No analytics, tracking pixels, or third-party scripts are used.
-          AI chat messages are processed server-side via Cloudflare Workers AI and are not stored beyond the session.
+
+        <h2 style={sectionHead}>Data We Collect</h2>
+        <p style={body}>
+          We collect only what you provide: username, display name, and either a PBKDF2-hashed password or a
+          passkey/WebAuthn credential stored server-side. Board content (canvas objects, positions, text) is stored in
+          Cloudflare Durable Objects and D1 database tied to your account.
         </p>
-        <h2 style={{ fontSize: "1.125rem", marginTop: "1.5rem" }}>Data Deletion</h2>
-        <p style={{ color: colors.textMuted, lineHeight: 1.8 }}>
-          You can delete your account and all associated data at any time via the account settings or by sending a
-          DELETE request to <code style={{ color: colors.accentLight }}>/api/user</code>. This permanently removes your
-          user record, sessions, and all boards you created.
+
+        <h2 style={sectionHead}>AI Data Flow</h2>
+        <p style={body}>
+          Chat messages are sent server-side to AI providers depending on the model you select: Anthropic (Claude),
+          OpenAI, or Cloudflare Workers AI. None of these providers train on your data under their API terms. Messages
+          are not stored beyond what is needed to maintain the conversation context in the current session.
         </p>
-        <h2 style={{ fontSize: "1.125rem", marginTop: "1.5rem" }}>Contact</h2>
-        <p style={{ color: colors.textMuted, lineHeight: 1.8 }}>
-          For privacy inquiries, contact the project maintainer via the repository.
+
+        <h2 style={sectionHead}>Cookies &amp; Tracking</h2>
+        <p style={body}>
+          We use a single session cookie for authentication only. It expires after 7 days. There are no tracking pixels,
+          advertising cookies, or third-party analytics scripts. Langfuse is used for AI observability (latency, tool
+          use) and processes no personally identifiable information.
+        </p>
+
+        <h2 style={sectionHead}>Public Content</h2>
+        <p style={body}>
+          Boards you mark public (or that appear in the community gallery) are intentionally visible to anyone via the
+          gallery, replay, and spectator views - no account required. Content on public boards should be treated as
+          publicly accessible.
+        </p>
+
+        <h2 style={sectionHead}>Data Storage</h2>
+        <p style={body}>
+          All data is stored on Cloudflare infrastructure (Durable Objects + D1 database) in the United States. No data
+          is sold or shared with third parties beyond the AI providers listed above for the purpose of generating
+          responses.
+        </p>
+
+        <h2 style={sectionHead}>Contact</h2>
+        <p style={body}>
+          For privacy questions, open an issue on the{" "}
+          <a
+            href="https://github.com/thomasfuertes/yesaind"
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{ color: colors.accentLight }}
+          >
+            GitHub repository
+          </a>
+          .
         </p>
       </div>
     </div>
