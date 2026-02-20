@@ -110,9 +110,9 @@ When the user asks for work in a worktree (any format, rambly is fine), the orch
 8. `SendMessage(type="shutdown_request")` to each agent when done, then `TeamDelete`
 
 **Model selection by task complexity:**
-- `model: "sonnet"` - Default: refactors, well-scoped features, DX fixes
-- `model: "opus"` - Architectural changes, novel integrations, complex multi-system work
-- `model: "haiku"` - Mechanical tasks: bulk renames, migration boilerplate, config changes
+- `model: "opus"` - Thought-heavy: architectural design, complex decisions, ambiguous debugging, multi-system reasoning
+- `model: "sonnet"` - Default workhorse: scoped implementation, plan execution, long-form exploration, digest-heavy research
+- `model: "haiku"` - Only for truly mechanical zero-reasoning tasks: bulk renames, single config value changes. If it requires any logic, decisions, or has unclear scope, use sonnet.
 
 **Why `scripts/worktree.sh` instead of `claude -w` or `isolation: "worktree"`:** This project needs deps install (APFS clone), Vite build, D1 migrations, port assignment, and `.claude/settings.local.json` seeding per worktree. The script handles all of this. Native worktree isolation doesn't run project-specific setup.
 
@@ -163,17 +163,24 @@ npx playwright test --reporter=dot     # minimal output (default 'list' floods c
 
 ### Worktree Agent Conventions
 
-Worktree agent lifecycle: **implement -> PR review -> fix review issues -> UAT -> commit -> /recap -> /last-call**. PR review gates UAT. After UAT passes, commit all changes to the feature branch (no PR - the orchestrator merges from main). After committing, run `/recap` (analyze session, extract learnings) then `/last-call` (dump learnings to disk, then commit). **The branch MUST be clean-committed when the agent finishes** so `git merge feat/<branch>` works from main. Uncommitted worktree work requires painful manual integration across a rebased codebase - this has caused real problems.
+**Two agent tiers by task size:**
+
+**Lightweight (single-file, <20 lines):** implement -> typecheck -> lint -> commit. No UAT, no PR review, no session notes. Trust the types. Orchestrator merges on sight.
+
+**Standard (multi-file or behavioral):** implement -> PR review (Skill) -> fix issues -> UAT if behavioral -> commit. **The branch MUST be clean-committed when the agent finishes** so `git merge feat/<branch>` works from main.
+
+**Task atomicity:** Pre-split complex tasks (3+ files or server+client) into atomic worktrees. Each touches one concern. Orchestrator checks in every 3 minutes on long-running agents - if stuck, redirect or break smaller. Bias toward many small agents over one big one.
+
+**No session notes files.** Task list + git log is the source of truth. `docs/sessions/` is deprecated. KEY-DECISION comments in code are still mandatory for non-obvious decisions.
 
 Worktree prompts must explicitly mention:
-- **Dev server startup:** `npm run dev` (build once + serve, no HMR/watchers). Must use `run_in_background: true` on the Bash tool (not `&`), and `dangerouslyDisableSandbox: true` (sandbox blocks wrangler's log writes). Then `npm run health` to wait for readiness. Kill and rebuild between test rounds.
-- `scripts/localcurl.sh` instead of `curl` (agents default to raw curl which isn't in the permission allowlist)
-- **Namespace `playwright-cli` sessions in worktrees** - use `-s=<branch-name>` (e.g., `playwright-cli -s=feat-frames open ...`) to avoid conflicts with other worktrees running simultaneously. Without `-s`, all worktrees share the default session.
+- **Dev server startup** (only if UAT needed): `npm run dev` with `run_in_background: true` and `dangerouslyDisableSandbox: true`. Then `npm run health` to wait.
+- `scripts/localcurl.sh` instead of `curl`
 - "Read CLAUDE.md and relevant source files before implementing" (not "Enter plan mode first")
-- "After implementation, run `/pr-review-toolkit:review-pr` and fix all issues before starting UAT"
-- "After UAT passes, commit all changes to the feature branch. Do not open a PR."
-- **Do NOT edit `docs/notes.md`** - the orchestrator owns it. Worktree agents write session notes to `docs/sessions/<branch>.md` (unique per branch = zero merge conflicts). The merge script consolidates session files into notes.md automatically.
-- **KEY-DECISION comments**: When making a non-obvious decision, add `// KEY-DECISION <YYYY-MM-DD>: <rationale>` at the exact code location. Searchable via `grep -r "KEY-DECISION"`. Also include in commit messages for `git log --grep` searchability.
+- "Commit all changes to the feature branch. Do not open a PR."
+- **KEY-DECISION comments**: `// KEY-DECISION <YYYY-MM-DD>: <rationale>` at the code location. Also in commit messages for `git log --grep`.
+
+**Worktree cleanup:** Always `rm -rf <worktree-dir> && git worktree prune && git branch -d feat/<branch>`. The `git worktree remove --force` pattern fails when agent processes have files locked - skip straight to rm.
 
 ## Architecture
 
@@ -257,11 +264,11 @@ Each object stored as separate DO Storage key (`obj:{uuid}`, ~200 bytes). LWW vi
 
 ## Doc Sync
 
-- **Session start:** Read `docs/notes.md` + `CLAUDE.md`, `git log --oneline -20`. No summary needed.
+- **Session start:** Read `CLAUDE.md`, `git log --oneline -20`, `TaskList`. No summary needed.
+- **Task list is the single source of truth** for backlog, loose ends, tech debt, and unshipped features. Use `TaskCreate`/`TaskList`/`TaskUpdate`. Not notes.md, not GitHub issues (unless external collaboration needed).
 - **CLAUDE.md:** Update only when file map, key constraints, or gotchas change. Not a changelog.
-- **`docs/notes.md`:** Loose ends, unshipped features, tech debt. ~30 lines max. Not session logs.
 - **KEY-DECISION comments:** Non-obvious decisions go in code, not docs. `// KEY-DECISION <date>: <rationale>`
-- **Worktree agents:** Write session notes to `docs/sessions/<branch>.md`. Don't touch `docs/notes.md`.
+- **No session notes files.** `docs/sessions/` is deprecated. Task list + git log is the source of truth.
 
 ## Custom Agents (Delegation)
 
@@ -270,11 +277,14 @@ Main context is the orchestrator. Delegate aggressively - keep main context for 
 | Task | Agent | Model | Mode | How |
 |------|-------|-------|------|-----|
 | Feature worktree | `general-purpose` | sonnet | `bypassPermissions` | team member |
-| UAT / smoke test | `uat` | haiku | `bypassPermissions` | team member |
+| Design / architecture | `general-purpose` | opus | `bypassPermissions` | team member |
+| UAT / smoke test | `uat` | sonnet | `bypassPermissions` | team member |
 | Quality exploration | `general-purpose` | sonnet | `bypassPermissions` | team member |
 | PR review | `pr-review-toolkit:*` | sonnet | default | invoked by worktree agent via Skill |
-| E2E / eval harness | `general-purpose` | haiku | `bypassPermissions` | team member (reports via SendMessage) |
+| E2E / eval harness | `general-purpose` | sonnet | `bypassPermissions` | team member (reports via SendMessage) |
 | Codebase exploration | `Explore` (built-in) | sonnet | default | team member or background (atomic) |
+
+**Architect agents can spawn sub-agents.** Opus architects should delegate exploratory token-burning (file reads, grep sweeps, pattern research) to sonnet or haiku background agents rather than burning opus tokens on mechanical exploration.
 
 **Always spawn agents with `mode: "bypassPermissions"`** unless they need user approval for destructive actions. The OS sandbox (`sandbox.enabled: true`) is the safety boundary - it blocks writes outside allowed paths and network outside allowed domains. Permission prompts inside sandboxed agents are redundant friction.
 
