@@ -18,6 +18,7 @@ import {
   computeScenePhase,
   MAX_AUTONOMOUS_EXCHANGES,
   buildPersonaSystemPrompt,
+  buildRelationshipBlock,
   computeBudgetPhase,
   BUDGET_PROMPTS,
   buildGameModePromptBlock,
@@ -26,7 +27,14 @@ import type { GameModeState } from "./prompts";
 import { HAT_PROMPTS, getRandomHatPrompt } from "./hat-prompts";
 import type { Bindings } from "./env";
 import { recordBoardActivity } from "./env";
-import type { BoardObject, BoardObjectProps, BoardStub, GameMode, Persona } from "../shared/types";
+import type {
+  BoardObject,
+  BoardObjectProps,
+  BoardStub,
+  CharacterRelationship,
+  GameMode,
+  Persona,
+} from "../shared/types";
 import { SCENE_TURN_BUDGET, DEFAULT_PERSONAS, AI_MODELS, AI_USER_ID } from "../shared/types";
 import { getTemplateById } from "../shared/board-templates";
 
@@ -723,7 +731,7 @@ export class ChatAgent extends AIChatAgent<Bindings> {
     }
 
     const batchId = crypto.randomUUID();
-    const tools = createSDKTools(boardStub, batchId, this.env.AI);
+    const tools = createSDKTools(boardStub, batchId, this.env.AI, this.ctx.storage);
 
     // Update game mode from client (sent on every message so it survives DO hibernation)
     if (body?.gameMode && ["hat", "yesand", "freeform"].includes(body.gameMode)) {
@@ -780,8 +788,17 @@ export class ChatAgent extends AIChatAgent<Bindings> {
     };
     const gameModeBlock = buildGameModePromptBlock(this._gameMode, gameModeState);
 
+    // Clear relationships at scene start (first message = fresh scene)
+    if (this.messages.length <= 1) {
+      await this.ctx.storage.delete("narrative:relationships");
+    }
+
+    // Load scene relationships for system prompt injection
+    const relationships = (await this.ctx.storage.get<CharacterRelationship[]>("narrative:relationships")) ?? [];
+    const relBlock = buildRelationshipBlock(relationships);
+
     // Build persona-aware system prompt with optional selection + multiplayer context
-    let systemPrompt = buildPersonaSystemPrompt(activePersona, otherPersona, SYSTEM_PROMPT, gameModeBlock);
+    let systemPrompt = buildPersonaSystemPrompt(activePersona, otherPersona, SYSTEM_PROMPT, gameModeBlock, relBlock);
 
     // Scene setup: inject template description (if template was seeded) or generic scene structure
     if (templateDescription) {
@@ -1483,7 +1500,7 @@ export class ChatAgent extends AIChatAgent<Bindings> {
     const doId = this.env.BOARD.idFromName(this.name);
     const boardStub = this.env.BOARD.get(doId);
     const batchId = crypto.randomUUID();
-    const tools = createSDKTools(boardStub, batchId, this.env.AI);
+    const tools = createSDKTools(boardStub, batchId, this.env.AI, this.ctx.storage);
 
     // Pass the same game mode block to the reactive persona
     const reactiveGameModeState: GameModeState = {
@@ -1497,8 +1514,13 @@ export class ChatAgent extends AIChatAgent<Bindings> {
     // Extract what the active persona just created for context injection
     const lastActionSummary = this._describeLastAction();
 
+    // Load scene relationships for reactive persona context
+    const reactiveRelationships =
+      (await this.ctx.storage.get<CharacterRelationship[]>("narrative:relationships")) ?? [];
+    const reactiveRelBlock = buildRelationshipBlock(reactiveRelationships);
+
     const reactiveSystem =
-      buildPersonaSystemPrompt(reactivePersona, activePersona, SYSTEM_PROMPT, reactiveGameModeBlock) +
+      buildPersonaSystemPrompt(reactivePersona, activePersona, SYSTEM_PROMPT, reactiveGameModeBlock, reactiveRelBlock) +
       `\n\n[REACTIVE MODE] ${activePersona.name} just placed: ${lastActionSummary || "objects on the canvas"}. ` +
       `React in character with exactly 1 spoken sentence (required - always produce text). ` +
       `Optionally place 1 canvas object that BUILDS on theirs (same area, related content) - do NOT use batchExecute.`;
@@ -1689,7 +1711,7 @@ export class ChatAgent extends AIChatAgent<Bindings> {
     const doId = this.env.BOARD.idFromName(this.name);
     const boardStub = this.env.BOARD.get(doId);
     const batchId = crypto.randomUUID();
-    const tools = createSDKTools(boardStub, batchId, this.env.AI);
+    const tools = createSDKTools(boardStub, batchId, this.env.AI, this.ctx.storage);
 
     // Show AI presence while generating
     await boardStub.setAiPresence(true).catch((err: unknown) => {
@@ -1724,9 +1746,20 @@ export class ChatAgent extends AIChatAgent<Bindings> {
         directorInstructions = `Current scene phase: ${phase.toUpperCase()}. ` + DIRECTOR_PROMPTS[phase];
       }
 
+      // Load scene relationships for director context
+      const directorRelationships =
+        (await this.ctx.storage.get<CharacterRelationship[]>("narrative:relationships")) ?? [];
+      const directorRelBlock = buildRelationshipBlock(directorRelationships);
+
       // Director nudge uses the active persona's voice + budget-aware prompts
       let directorSystem =
-        buildPersonaSystemPrompt(directorPersona, directorOther, SYSTEM_PROMPT, directorGameModeBlock) +
+        buildPersonaSystemPrompt(
+          directorPersona,
+          directorOther,
+          SYSTEM_PROMPT,
+          directorGameModeBlock,
+          directorRelBlock,
+        ) +
         `\n\n[DIRECTOR MODE] You are the scene director. The players have been quiet for a while. ` +
         directorInstructions +
         `\n\nAct NOW - add something to the canvas to restart momentum. ` +

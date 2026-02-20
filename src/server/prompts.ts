@@ -3,7 +3,7 @@
  * Extracted for version tracking and reviewability.
  */
 
-import type { GameMode, Persona } from "../shared/types";
+import type { GameMode, Persona, CharacterRelationship } from "../shared/types";
 
 /** Bump when prompt content changes - logged with every AI request for correlation */
 export const PROMPT_VERSION = "v13";
@@ -16,6 +16,14 @@ export const PROMPT_VERSION = "v13";
 /** Max consecutive autonomous persona exchanges before requiring human input */
 export const MAX_AUTONOMOUS_EXCHANGES = 3;
 
+/** Build a character web block from scene relationships for injection into the system prompt.
+ *  Returns empty string when no relationships exist (no-op for early scenes). */
+export function buildRelationshipBlock(relationships: CharacterRelationship[]): string {
+  if (relationships.length === 0) return "";
+  const bullets = relationships.map((r) => `- ${r.entityA} & ${r.entityB}: ${r.descriptor}`).join("\n");
+  return `[CHARACTER WEB]\n${bullets}\nHonor these relationships. Use them for callbacks and dramatic irony.`;
+}
+
 /** Build a persona-aware system prompt from the base prompt.
  *  Accepts Persona objects directly so custom personas work alongside defaults. */
 export function buildPersonaSystemPrompt(
@@ -23,6 +31,7 @@ export function buildPersonaSystemPrompt(
   other: Pick<Persona, "name" | "trait"> | undefined,
   basePrompt: string,
   gameModeBlock?: string,
+  relationshipBlock?: string,
 ): string {
   const partnerBlock = other
     ? `\n\n[IMPROV PARTNER]\nYou are part of an improv duo with ${other.name}. ` +
@@ -30,9 +39,16 @@ export function buildPersonaSystemPrompt(
       `Build on their contributions even when they conflict with your instincts.`
     : "";
 
+  const narrativeSection = relationshipBlock ? `\n\n${relationshipBlock}` : "";
+  const relationshipGuidance =
+    `\n\nNARRATIVE TRACKING: Call setRelationship when characters first meaningfully interact or when a relationship changes. ` +
+    `Max 1 setRelationship call per exchange. Use character names as they appear on canvas.`;
+
   return (
     basePrompt +
     (gameModeBlock ? `\n\n${gameModeBlock}` : "") +
+    narrativeSection +
+    relationshipGuidance +
     `\n\n[CHARACTER IDENTITY]\n${active.trait}` +
     `\nYou MUST start every chat response with [${active.name}] followed by your message. Example: "[${active.name}] The floor is now lava."` +
     partnerBlock
