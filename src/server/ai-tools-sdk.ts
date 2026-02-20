@@ -8,6 +8,21 @@ import { computeConnectedLineGeometry, getEdgePoint, type ObjectBounds } from ".
 // Constants
 // ---------------------------------------------------------------------------
 
+/** Visually distinct colors for AI-created objects on the dark canvas background.
+ *  Mirrors CURSOR_COLORS in theme.ts - kept separate to avoid client/server coupling.
+ *  KEY-DECISION 2026-02-20: Per-createSDKTools-call rotation ensures multi-entity scenes
+ *  have distinct colors without requiring the LLM to specify them each time. */
+const AI_PALETTE = [
+  "#f87171", // red
+  "#60a5fa", // blue
+  "#4ade80", // green
+  "#fbbf24", // yellow
+  "#a78bfa", // violet
+  "#f472b6", // pink
+  "#34d399", // emerald
+  "#fb923c", // orange
+] as const;
+
 /** Magic number defaults for tool dimensions and colors */
 const TOOL_DEFAULTS = {
   sticky: { width: 200, height: 200, color: "#fbbf24" },
@@ -320,6 +335,11 @@ export async function generateImageDataUrl(ai: Ai, prompt: string): Promise<stri
 
 /** Create the full AI SDK tool registry bound to a specific Board DO stub */
 export function createSDKTools(stub: BoardStub, batchId?: string, ai?: Ai) {
+  // Rotate through AI_PALETTE per streamText call so multi-entity scenes get distinct colors.
+  // Only used as fallback when the LLM doesn't specify an explicit color.
+  let paletteIndex = 0;
+  const nextPaletteColor = () => AI_PALETTE[paletteIndex++ % AI_PALETTE.length];
+
   const baseTools = {
     // 1. createStickyNote
     createStickyNote: tool({
@@ -346,7 +366,7 @@ export function createSDKTools(stub: BoardStub, batchId?: string, ai?: Ai) {
           TOOL_DEFAULTS.sticky.height,
           {
             text: text || "New note",
-            color: color || TOOL_DEFAULTS.sticky.color,
+            color: color || nextPaletteColor(),
           },
           batchId,
         );
@@ -380,7 +400,7 @@ export function createSDKTools(stub: BoardStub, batchId?: string, ai?: Ai) {
           TOOL_DEFAULTS.person.height,
           {
             text: typeof name === "string" && name.trim() ? name.trim() : "Character",
-            color: color || TOOL_DEFAULTS.person.color,
+            color: color || nextPaletteColor(),
           },
           batchId,
         );
@@ -413,12 +433,13 @@ export function createSDKTools(stub: BoardStub, batchId?: string, ai?: Ai) {
         if (shape === "circle") {
           const diameter = width ?? TOOL_DEFAULTS.circle.diameter;
           const center = randomPos(x, y);
+          const palFill = fill || nextPaletteColor();
           const obj = makeObject(
             "circle",
             { x: center.x - diameter / 2, y: center.y - diameter / 2 },
             diameter,
             diameter,
-            { fill: fill || TOOL_DEFAULTS.circle.fill, stroke: stroke || TOOL_DEFAULTS.circle.stroke },
+            { fill: palFill, stroke: stroke || palFill },
             batchId,
           );
           return createAndMutate(stub, obj);
@@ -437,12 +458,13 @@ export function createSDKTools(stub: BoardStub, batchId?: string, ai?: Ai) {
         }
 
         // Default: rect
+        const palFill = fill || nextPaletteColor();
         const obj = makeObject(
           "rect",
           randomPos(x, y),
           width ?? TOOL_DEFAULTS.rect.width,
           height ?? TOOL_DEFAULTS.rect.height,
-          { fill: fill || TOOL_DEFAULTS.rect.fill, stroke: stroke || TOOL_DEFAULTS.rect.stroke },
+          { fill: palFill, stroke: stroke || palFill },
           batchId,
         );
         return createAndMutate(stub, obj);
