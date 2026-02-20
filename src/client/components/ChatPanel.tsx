@@ -24,6 +24,10 @@ interface ChatPanelProps {
   onAIComplete?: () => void;
   /** Mobile mode: fills parent instead of floating as absolute panel; larger touch targets */
   mobileMode?: boolean;
+  /** The persona id this player has claimed as their improv partner (null = anyone/round-robin) */
+  claimedPersonaId?: string | null;
+  /** Callback to change the claimed persona (enables inline picker in header for Player B) */
+  onClaimChange?: (personaId: string | null) => void;
 }
 
 // ---------------------------------------------------------------------------
@@ -277,6 +281,8 @@ export function ChatPanel({
   selectedIds,
   onAIComplete,
   mobileMode = false,
+  claimedPersonaId,
+  onClaimChange,
 }: ChatPanelProps) {
   const selectedIdsArray = useMemo(() => (selectedIds?.size ? [...selectedIds] : undefined), [selectedIds]);
 
@@ -392,7 +398,13 @@ export function ChatPanel({
     clearHistory,
   } = useAgentChat({
     agent,
-    body: { selectedIds: selectedIdsArray, username, gameMode, model: aiModel },
+    body: {
+      selectedIds: selectedIdsArray,
+      username,
+      gameMode,
+      model: aiModel,
+      personaId: claimedPersonaId ?? undefined,
+    },
   });
 
   // Prefix [username] for multiplayer attribution in persisted history
@@ -591,6 +603,64 @@ export function ChatPanel({
           </button>
         )}
       </div>
+
+      {/* Inline persona claim picker - shown for Player B who joins mid-scene without OnboardModal */}
+      {onClaimChange && personas.length >= 2 && (
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 6,
+            padding: "6px 12px",
+            borderBottom: `1px solid ${colors.border}`,
+            flexShrink: 0,
+            flexWrap: "wrap",
+          }}
+        >
+          <span style={{ fontSize: "0.6875rem", color: colors.textMuted, flexShrink: 0 }}>Partner:</span>
+          {/* "Anyone" pill */}
+          <button
+            onClick={() => onClaimChange(null)}
+            style={{
+              background: claimedPersonaId === null ? colors.accentSubtle : "transparent",
+              border: `1px solid ${claimedPersonaId === null ? colors.accent : colors.border}`,
+              borderRadius: 20,
+              padding: "2px 10px",
+              color: claimedPersonaId === null ? colors.text : colors.textMuted,
+              fontSize: "0.6875rem",
+              cursor: "pointer",
+              transition: "border-color 0.15s, color 0.15s, background 0.15s",
+            }}
+          >
+            Anyone
+          </button>
+          {personas.map((persona) => {
+            const active = claimedPersonaId === persona.id;
+            return (
+              <button
+                key={persona.id}
+                onClick={() => onClaimChange(active ? null : persona.id)}
+                style={{
+                  background: active ? `${persona.color}18` : "transparent",
+                  border: `1px solid ${active ? persona.color : colors.border}`,
+                  borderRadius: 20,
+                  padding: "2px 10px",
+                  color: active ? colors.text : colors.textMuted,
+                  fontSize: "0.6875rem",
+                  cursor: "pointer",
+                  transition: "border-color 0.15s, color 0.15s, background 0.15s",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 4,
+                }}
+              >
+                <span style={{ color: persona.color, fontSize: "0.5rem" }}>&#9679;</span>
+                {persona.name}
+              </button>
+            );
+          })}
+        </div>
+      )}
 
       {/* Messages */}
       <div

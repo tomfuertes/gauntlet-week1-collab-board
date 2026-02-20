@@ -97,6 +97,11 @@ export class ChatAgent extends AIChatAgent<Bindings> {
   private _activePersonaIndex = 0; // which persona responds to the next human message
   private _autonomousExchangeCount = 0; // consecutive autonomous exchanges (reset on human msg)
 
+  // KEY-DECISION 2026-02-19: Per-message ephemeral pattern (same as body.model/body.gameMode).
+  // Claims reset on DO hibernation; client re-sends personaId on every message so DO wakes up
+  // knowing the claim without any persistence layer. This avoids D1 writes for ephemeral state.
+  private _personaClaims = new Map<string, string>(); // username -> Persona.id
+
   // Game mode state (resets on DO hibernation - client re-sends gameMode on each message)
   private _gameMode: GameMode = "freeform";
   private _hatPromptIndex = -1;
@@ -181,6 +186,28 @@ export class ChatAgent extends AIChatAgent<Bindings> {
       );
       return [...DEFAULT_PERSONAS];
     }
+  }
+
+  /** Resolve which persona should respond to the current message.
+   *  If the username has a claimed personaId that still exists in the personas array, use it.
+   *  Otherwise fall back to round-robin via _activePersonaIndex (backward compatible). */
+  private _resolveActivePersona(
+    personas: Persona[],
+    username?: string,
+  ): { activeIndex: number; activePersona: Persona; otherPersona: Persona | undefined } {
+    let activeIndex = this._activePersonaIndex % personas.length;
+    if (username) {
+      const claimedId = this._personaClaims.get(username);
+      if (claimedId) {
+        const claimedIndex = personas.findIndex((p) => p.id === claimedId);
+        if (claimedIndex !== -1) {
+          activeIndex = claimedIndex;
+        }
+      }
+    }
+    const activePersona = personas[activeIndex];
+    const otherPersona = personas.length > 1 ? personas[(activeIndex + 1) % personas.length] : undefined;
+    return { activeIndex, activePersona, otherPersona };
   }
 
   /** Resolve the selected model entry from AI_MODELS registry.
@@ -374,10 +401,14 @@ export class ChatAgent extends AIChatAgent<Bindings> {
     this._isGenerating = true;
     this._autonomousExchangeCount = 0; // human spoke - reset cooldown
     const startTime = Date.now();
+
+    // Update persona claim from client (re-sent on every message for hibernation resilience)
+    if (body?.personaId && body?.username) {
+      this._personaClaims.set(body.username as string, body.personaId as string);
+    }
+
     const personas = await this._getPersonas();
-    const activeIndex = this._activePersonaIndex % personas.length;
-    const activePersona = personas[activeIndex];
-    const otherPersona = personas.length > 1 ? personas[(activeIndex + 1) % personas.length] : undefined;
+    const { activeIndex, activePersona, otherPersona } = this._resolveActivePersona(personas, body?.username);
     // Budget enforcement: count human turns (the message just added is already in this.messages)
     const humanTurns = this.messages.filter((m) => m.role === "user").length;
     const budgetPhase = computeBudgetPhase(humanTurns, SCENE_TURN_BUDGET);
