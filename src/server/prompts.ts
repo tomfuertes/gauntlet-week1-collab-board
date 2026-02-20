@@ -378,3 +378,19 @@ export function buildCanvasReactionPrompt(actions: CanvasAction[]): string {
     `Do NOT use batchExecute.`
   );
 }
+
+// ---------------------------------------------------------------------------
+// Tag-out prompt - injected when a player switches their persona mid-scene
+// ---------------------------------------------------------------------------
+
+/**
+ * Injected when a player switches their persona claim mid-scene (tag-out mechanic).
+ * Instructs the AI to narrate the character handoff theatrically before continuing.
+ */
+export function buildTagOutPrompt(oldPersonaName: string, newPersonaName: string, playerName: string): string {
+  return (
+    `[TAG-OUT] ${playerName} just tagged out - switching from ${oldPersonaName} to ${newPersonaName}. ` +
+    `Open your response with a 1-sentence theatrical handoff (e.g. "${oldPersonaName} exits stage left as ${newPersonaName} bursts through the door..."). ` +
+    `Then continue the scene AS ${newPersonaName}. Brief and dramatic - keep the scene moving.`
+  );
+}
