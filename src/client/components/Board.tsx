@@ -202,6 +202,48 @@ export function Board({
     pendingAnimRef.current.set(id, { fromX: node.x(), fromY: node.y(), toX, toY, durationMs });
   }, []);
 
+  const onEffect = useCallback((id: string, effect: string) => {
+    const node = shapeRefs.current.get(id);
+    if (!node || node.isDragging()) return;
+    // KEY-DECISION 2026-02-20: Skip effect if a position tween is pending for this node.
+    // The pending tween will reset x/y (and therefore scale/opacity) mid-flight, making
+    // the effect invisible and causing a visual glitch.
+    if (pendingAnimRef.current.has(id)) return;
+
+    if (effect === "pulse") {
+      node.to({
+        scaleX: 1.12,
+        scaleY: 1.12,
+        duration: 0.12,
+        onFinish: () => node.to({ scaleX: 1, scaleY: 1, duration: 0.12 }),
+      });
+    } else if (effect === "shake") {
+      const origX = node.x();
+      node.to({
+        x: origX + 8,
+        duration: 0.05,
+        onFinish: () =>
+          node.to({
+            x: origX - 8,
+            duration: 0.1,
+            onFinish: () =>
+              node.to({
+                x: origX + 6,
+                duration: 0.1,
+                onFinish: () =>
+                  node.to({ x: origX - 6, duration: 0.1, onFinish: () => node.to({ x: origX, duration: 0.05 }) }),
+              }),
+          }),
+      });
+    } else if (effect === "flash") {
+      node.to({
+        opacity: 0.2,
+        duration: 0.1,
+        onFinish: () => node.to({ opacity: 1, duration: 0.15 }),
+      });
+    }
+  }, []);
+
   // Object fade-in animation tracking
   const wasInitializedRef = useRef(false);
   useEffect(() => {
@@ -264,7 +306,7 @@ export function Board({
     patchObjectLocal,
     batchUndo,
     lastServerMessageAt,
-  } = useWebSocket(boardId, onAnimatedUpdate);
+  } = useWebSocket(boardId, onAnimatedUpdate, onEffect);
 
   // Apply pending tweens after each React commit (before browser paint) to avoid visual snap.
   // Sequence: WS fires callback (captures fromX/Y) -> state update snaps Konva node ->

@@ -744,7 +744,24 @@ export function createSDKTools(stub: BoardStub, batchId?: string, ai?: Ai) {
       }),
     }),
 
-    // 13. drawScene
+    // 13. highlightObject
+    highlightObject: tool({
+      description:
+        "Apply a transient visual effect to an existing object for dramatic emphasis. " +
+        "pulse: brief scale-up bounce. shake: rapid side-to-side jitter. flash: opacity blink.",
+      inputSchema: z.object({
+        id: z.string().describe("ID of the object to highlight"),
+        effect: z.enum(["pulse", "shake", "flash"]).describe("Effect type: 'pulse', 'shake', or 'flash'"),
+      }),
+      execute: instrumentExecute("highlightObject", async ({ id, effect }) => {
+        await readAndCenter(stub, id);
+        const result = await stub.mutate({ type: "obj:effect", id, effect });
+        if (!result.ok) return { error: result.error };
+        return { highlighted: id, effect };
+      }),
+    }),
+
+    // 14. drawScene
     drawScene: tool({
       description:
         "Compose a visual character or object from 2-10 shapes in a bounding box. Uses proportional " +
@@ -875,6 +892,7 @@ export function createSDKTools(stub: BoardStub, batchId?: string, ai?: Ai) {
                   "deleteObject",
                   "generateImage",
                   "createText",
+                  "highlightObject",
                   "drawScene",
                 ])
                 .describe("Tool name to execute"),

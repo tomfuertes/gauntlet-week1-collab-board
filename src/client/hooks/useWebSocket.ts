@@ -61,11 +61,14 @@ function isNonRetryableCode(code: number): boolean {
 export function useWebSocket(
   boardId: string,
   onAnimatedUpdate?: (id: string, toX: number, toY: number, durationMs: number) => void,
+  onEffect?: (id: string, effect: string) => void,
 ): UseWebSocketReturn {
   const wsRef = useRef<WebSocket | null>(null);
-  // Ref so the WS closure always calls the latest callback without reconnecting
+  // Refs so the WS closure always calls the latest callbacks without reconnecting
   const onAnimatedUpdateRef = useRef(onAnimatedUpdate);
   onAnimatedUpdateRef.current = onAnimatedUpdate;
+  const onEffectRef = useRef(onEffect);
+  onEffectRef.current = onEffect;
   const lastServerMessageAt = useRef(0);
   const [connectionState, setConnectionState] = useState<ConnectionState>("connecting");
   const [initialized, setInitialized] = useState(false);
@@ -213,6 +216,9 @@ export function useWebSocket(
               next.delete(msg.id);
               return next;
             });
+            break;
+          case "obj:effect":
+            onEffectRef.current?.(msg.id, msg.effect);
             break;
           case "reaction":
             setReactions((prev) => [

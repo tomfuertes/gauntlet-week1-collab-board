@@ -389,6 +389,11 @@ export class Board extends DurableObject<Bindings> {
         this.ctx.waitUntil(this.disconnectLines(msg.id));
         return { ok: true };
       }
+      case "obj:effect": {
+        // Broadcast-only transient effect - no storage write, no replay event
+        this.broadcast({ type: "obj:effect", id: msg.id, effect: msg.effect });
+        return { ok: true };
+      }
     }
     return { ok: false, error: `Unknown message type` };
   }
