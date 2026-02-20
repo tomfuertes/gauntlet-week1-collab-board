@@ -413,6 +413,22 @@ export class Board extends DurableObject<Bindings> {
         this.broadcast({ type: "obj:effect", id: msg.id, effect: msg.effect });
         return { ok: true };
       }
+      case "obj:sequence": {
+        // KEY-DECISION 2026-02-20: Apply final positions to DO Storage immediately so state is
+        // consistent after the sequence plays. Clients handle the timed playback via setTimeout.
+        // Broadcast to ALL clients (no excludeWs) since there's no optimistic apply for sequences.
+        for (const step of msg.steps) {
+          if (step.action === "move" && step.x !== undefined && step.y !== undefined) {
+            const existing = await this.ctx.storage.get<BoardObject>(`obj:${step.objectId}`);
+            if (existing) {
+              const updated = { ...existing, x: step.x, y: step.y, updatedAt: Date.now() };
+              await this.ctx.storage.put(`obj:${step.objectId}`, updated);
+            }
+          }
+        }
+        this.broadcast({ type: "obj:sequence", steps: msg.steps });
+        return { ok: true };
+      }
     }
     return { ok: false, error: `Unknown message type` };
   }

@@ -4,7 +4,7 @@ import type { KonvaEventObject } from "konva/lib/Node";
 import Konva from "konva";
 import type { AuthUser } from "../App";
 import { AI_USER_ID } from "@shared/types";
-import type { BoardObject, BoardObjectProps, GameMode, AIModel } from "@shared/types";
+import type { BoardObject, BoardObjectProps, ChoreographyStep, GameMode, AIModel } from "@shared/types";
 import { findSnapTarget, computeConnectedLineGeometry, getEdgePoint } from "@shared/connection-geometry";
 import { AI_MODELS } from "@shared/types";
 import { TRANSFORMER_CONFIG } from "../constants";
@@ -244,6 +244,37 @@ export function Board({
     }
   }, []);
 
+  // KEY-DECISION 2026-02-20: patchObjectLocalRef lets onSequence (defined before useWebSocket)
+  // update React state after animations complete. Ref is updated each render so setTimeout
+  // callbacks always get the latest function reference.
+  const patchObjectLocalRef = useRef<((id: string, patch: Partial<BoardObject>) => void) | null>(null);
+
+  const onSequence = useCallback(
+    (steps: ChoreographyStep[]) => {
+      for (const step of steps) {
+        setTimeout(() => {
+          const node = shapeRefs.current.get(step.objectId);
+          if (!node || node.isDragging()) return;
+          if (step.action === "move" && step.x !== undefined && step.y !== undefined) {
+            node.to({ x: step.x, y: step.y, duration: 0.4, easing: Konva.Easings.EaseInOut });
+          } else if (step.action === "effect" && step.effect) {
+            onEffect(step.objectId, step.effect);
+          }
+        }, step.delayMs);
+      }
+      // After all tweens finish, sync React state so positions match DO Storage
+      const maxDelay = steps.length > 0 ? Math.max(...steps.map((s) => s.delayMs)) + 600 : 600;
+      setTimeout(() => {
+        for (const step of steps) {
+          if (step.action === "move" && step.x !== undefined && step.y !== undefined) {
+            patchObjectLocalRef.current?.(step.objectId, { x: step.x, y: step.y });
+          }
+        }
+      }, maxDelay);
+    },
+    [onEffect],
+  );
+
   // Object fade-in animation tracking
   const wasInitializedRef = useRef(false);
   useEffect(() => {
@@ -306,7 +337,9 @@ export function Board({
     patchObjectLocal,
     batchUndo,
     lastServerMessageAt,
-  } = useWebSocket(boardId, onAnimatedUpdate, onEffect);
+  } = useWebSocket(boardId, onAnimatedUpdate, onEffect, onSequence);
+  // Keep ref current so onSequence's setTimeout callbacks always use the latest patchObjectLocal
+  patchObjectLocalRef.current = patchObjectLocal;
 
   // Apply pending tweens after each React commit (before browser paint) to avoid visual snap.
   // Sequence: WS fires callback (captures fromX/Y) -> state update snaps Konva node ->

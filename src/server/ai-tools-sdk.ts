@@ -826,7 +826,41 @@ export function createSDKTools(stub: BoardStub, batchId?: string, ai?: Ai, stora
       }),
     }),
 
-    // 16. drawScene
+    // 16. choreograph
+    choreograph: tool({
+      description:
+        "Play a sequenced animation across multiple objects. Steps execute at their specified delay from sequence start. " +
+        "Use for dramatic scene moments: characters walking in, objects falling, reveal sequences. " +
+        "action='move' animates the object to (x,y). action='effect' applies a transient visual effect. " +
+        "delayMs is cumulative from sequence start (e.g. 0, 500, 1000 for a 3-beat sequence). Max 20 steps.",
+      inputSchema: z.object({
+        steps: z
+          .array(
+            z.object({
+              objectId: z.string().describe("ID of the object to animate"),
+              action: z.enum(["move", "effect"]).describe("'move' to animate position, 'effect' for visual effect"),
+              x: z.number().optional().describe("Target X position (required for move, canvas 50-1150)"),
+              y: z.number().optional().describe("Target Y position (required for move, canvas 60-780)"),
+              effect: z
+                .enum(["pulse", "shake", "flash"])
+                .optional()
+                .describe("Effect type (required for effect action)"),
+              delayMs: z.number().describe("Delay from sequence start in ms (0 = immediate, 500, 1000, ...)"),
+            }),
+          )
+          .min(2)
+          .max(20)
+          .describe("Ordered animation steps with timing"),
+      }),
+      execute: instrumentExecute("choreograph", async ({ steps }) => {
+        const result = await stub.mutate({ type: "obj:sequence", steps });
+        if (!result.ok) return { error: result.error };
+        console.debug(JSON.stringify({ event: "ai:choreograph", stepCount: steps.length }));
+        return { sequenced: steps.length };
+      }),
+    }),
+
+    // 17. drawScene
     drawScene: tool({
       description:
         "Compose a visual character or object from 2-10 shapes in a bounding box. Uses proportional " +
@@ -959,6 +993,7 @@ export function createSDKTools(stub: BoardStub, batchId?: string, ai?: Ai, stora
                   "createText",
                   "highlightObject",
                   "advanceScenePhase",
+                  "choreograph",
                   "drawScene",
                 ])
                 .describe("Tool name to execute"),
