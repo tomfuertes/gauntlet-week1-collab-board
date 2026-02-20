@@ -104,6 +104,25 @@ export class Board extends DurableObject<Bindings> {
     });
   }
 
+  /** Mark this board as publicly archived in D1 (called from ChatAgent on curtain phase).
+   *  KEY-DECISION 2026-02-20: Board DO owns the D1 write so boardId is always available
+   *  via getBoardId() - ChatAgent would need a separate D1 query to get it. */
+  async archiveScene(): Promise<void> {
+    const boardId = await this.getBoardId();
+    if (!boardId) {
+      console.debug(JSON.stringify({ event: "archive:skip", reason: "no-boardId" }));
+      return;
+    }
+    try {
+      await this.env.DB.prepare("UPDATE boards SET is_public = 1, updated_at = datetime('now') WHERE id = ?")
+        .bind(boardId)
+        .run();
+      console.debug(JSON.stringify({ event: "archive:scene", boardId }));
+    } catch (err) {
+      console.error(JSON.stringify({ event: "archive:error", boardId, error: String(err) }));
+    }
+  }
+
   /** Set AI presence visibility in the presence list */
   async setAiPresence(active: boolean): Promise<void> {
     this.aiActiveUntil = active ? Date.now() + 60_000 : 0;
