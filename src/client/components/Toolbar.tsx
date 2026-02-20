@@ -32,6 +32,7 @@ export interface ToolbarProps {
   onZoomIn: () => void;
   onZoomOut: () => void;
   onZoomReset: () => void;
+  onPostcard: () => void;
   isMobile?: boolean;
 }
 
@@ -50,6 +51,7 @@ export function Toolbar({
   onZoomIn,
   onZoomOut,
   onZoomReset,
+  onPostcard,
   isMobile,
 }: ToolbarProps) {
   // Color picker state
@@ -160,6 +162,8 @@ export function Toolbar({
           active={chatOpen}
           onClick={() => setChatOpen((o) => !o)}
         />
+        <ToolbarSep />
+        <ToolIconBtn icon={<IconPostcard />} title="Scene Postcard" active={false} onClick={onPostcard} />
       </div>
 
       {/* Arrow style picker - shown above toolbar when connectors are selected */}
@@ -570,6 +574,25 @@ function IconChat() {
       strokeLinejoin="round"
     >
       <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z" />
+    </svg>
+  );
+}
+
+function IconPostcard() {
+  return (
+    <svg
+      width="20"
+      height="20"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      {/* Camera body */}
+      <path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z" />
+      <circle cx="12" cy="13" r="4" />
     </svg>
   );
 }

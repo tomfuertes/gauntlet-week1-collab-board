@@ -28,8 +28,10 @@ import { ConfettiBurst } from "./ConfettiBurst";
 import { BoardGrid } from "./BoardGrid";
 import { AudienceRow, getAudienceFigureXs, AUDIENCE_Y } from "./AudienceRow";
 import { PerfOverlay } from "./PerfOverlay";
+import { PostcardModal } from "./PostcardModal";
 import { Button } from "./Button";
 import { useIsMobile } from "../hooks/useIsMobile";
+import type { UIMessage } from "ai";
 import "../styles/animations.css";
 
 const MIN_ZOOM = 0.1;
@@ -282,6 +284,9 @@ export function Board({
   const lastDragSendRef = useRef(0);
   const [toolMode, setToolMode] = useState<ToolMode>("select");
   const [chatOpen, setChatOpen] = useState(false);
+  const [postcardOpen, setPostcardOpen] = useState(false);
+  const [postcardSnapshot, setPostcardSnapshot] = useState("");
+  const [recentChatMessages, setRecentChatMessages] = useState<UIMessage[]>([]);
   const [chatInitialPrompt, setChatInitialPrompt] = useState<string | undefined>();
   const [chatInitialTemplateId, setChatInitialTemplateId] = useState<string | undefined>();
   const [boardGenStarted, setBoardGenStarted] = useState(false);
@@ -545,6 +550,17 @@ export function Board({
     if (undoAiTimerRef.current) clearTimeout(undoAiTimerRef.current);
     undoAiTimerRef.current = setTimeout(() => setUndoAiBatchId(null), 10000);
   }, [pushExternalBatch]);
+
+  /** Capture Konva stage snapshot and open PostcardModal */
+  const handleOpenPostcard = useCallback(() => {
+    const stage = stageRef.current;
+    if (!stage) return;
+    // KEY-DECISION 2026-02-20: toDataURL at pixelRatio:2 gives retina-quality snapshot without
+    // changing the visible canvas; the offscreen compositing canvas handles final 1200x630 resize.
+    const dataUrl = stage.toDataURL({ pixelRatio: 2 });
+    setPostcardSnapshot(dataUrl);
+    setPostcardOpen(true);
+  }, []);
 
   /** Handle "Undo AI" button click */
   const handleUndoAiBatch = useCallback(() => {
@@ -2563,6 +2579,7 @@ export function Board({
             setScale(1);
             setStagePos({ x: 0, y: 0 });
           }}
+          onPostcard={handleOpenPostcard}
           isMobile={isMobile}
         />
       )}
@@ -2596,8 +2613,18 @@ export function Board({
           onAIComplete={handleAIComplete}
           claimedPersonaId={claimedPersonaId}
           onClaimChange={setClaimedPersonaId}
+          onMessagesChange={setRecentChatMessages}
         />
       )}
+
+      {/* Scene Postcard modal */}
+      <PostcardModal
+        open={postcardOpen}
+        onClose={() => setPostcardOpen(false)}
+        snapshotDataUrl={postcardSnapshot}
+        messages={recentChatMessages}
+        boardId={boardId}
+      />
 
       {/* Undo AI batch button - appears after AI creates objects */}
       {undoAiBatchId && (

@@ -30,6 +30,8 @@ interface ChatPanelProps {
   claimedPersonaId?: string | null;
   /** Callback to change the claimed persona (enables inline picker in header for Player B) */
   onClaimChange?: (personaId: string | null) => void;
+  /** Called whenever the chat message list changes - used by PostcardModal to pull recent quotes */
+  onMessagesChange?: (messages: UIMessage[]) => void;
 }
 
 // ---------------------------------------------------------------------------
@@ -319,6 +321,7 @@ export function ChatPanel({
   mobileMode = false,
   claimedPersonaId,
   onClaimChange,
+  onMessagesChange,
 }: ChatPanelProps) {
   const selectedIdsArray = useMemo(() => (selectedIds?.size ? [...selectedIds] : undefined), [selectedIds]);
 
@@ -548,6 +551,11 @@ export function ChatPanel({
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
   }, [uiMessages, loading, status]);
+
+  // Expose messages to parent for PostcardModal quote selection
+  useEffect(() => {
+    onMessagesChange?.(uiMessages);
+  }, [uiMessages, onMessagesChange]);
 
   // Auto-send initialPrompt when it changes (supports overlay + context menu)
   // When initialTemplateId is provided, route through the template flow (sets pendingTemplateId
