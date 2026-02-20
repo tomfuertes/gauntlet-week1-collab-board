@@ -39,6 +39,7 @@ import { PerfOverlay } from "./PerfOverlay";
 import { PostcardModal } from "./PostcardModal";
 import { RecapOverlay } from "./RecapOverlay";
 import { Button } from "./Button";
+import { Select } from "./Select";
 import { useIsMobile } from "../hooks/useIsMobile";
 import type { UIMessage } from "ai";
 import "../styles/animations.css";
@@ -2211,26 +2212,11 @@ export function Board({
             </div>
             <span style={{ color: colors.textDim }}>{Math.round(scale * 100)}%</span>
             <span>{user.displayName}</span>
-            <select
+            <Select
               value={aiModel}
-              onChange={(e) => setAIModel(e.target.value as AIModel)}
-              style={{
-                background: colors.overlayHeader,
-                border: `1px solid ${colors.border}`,
-                borderRadius: 6,
-                color: colors.text,
-                fontSize: "0.75rem",
-                padding: "2px 8px",
-                cursor: "pointer",
-                outline: "none",
-              }}
-            >
-              {AI_MODELS.map((m) => (
-                <option key={m.id} value={m.id}>
-                  {m.label}
-                </option>
-              ))}
-            </select>
+              onChange={(v) => setAIModel(v as AIModel)}
+              options={AI_MODELS.map((m) => ({ value: m.id, label: m.label }))}
+            />
             <Button
               onClick={() => {
                 navigator.clipboard.writeText(`${location.origin}/#watch/${boardId}`);

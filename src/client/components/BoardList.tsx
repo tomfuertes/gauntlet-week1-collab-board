@@ -4,6 +4,7 @@ import type { DailyChallenge } from "../../shared/types";
 import { BOARD_TEMPLATES } from "../../shared/board-templates";
 import { colors } from "../theme";
 import { Button } from "./Button";
+import { Select } from "./Select";
 
 interface BoardMeta {
   id: string;
@@ -736,23 +737,15 @@ export function BoardList({
           }}
         >
           <h2 style={{ fontSize: "1.25rem", fontWeight: 600, margin: 0 }}>Community Scenes</h2>
-          <select
+          <Select
             value={sceneSort}
-            onChange={(e) => setSceneSort(e.target.value as "recent" | "top" | "low")}
-            style={{
-              background: colors.surface,
-              color: colors.text,
-              border: `1px solid ${colors.border}`,
-              borderRadius: 6,
-              padding: "0.25rem 0.5rem",
-              fontSize: "0.8125rem",
-              cursor: "pointer",
-            }}
-          >
-            <option value="recent">Recent</option>
-            <option value="top">Top Rated</option>
-            <option value="low">Lowest Rated</option>
-          </select>
+            onChange={(v) => setSceneSort(v as "recent" | "top" | "low")}
+            options={[
+              { value: "recent", label: "Recent" },
+              { value: "top", label: "Top Rated" },
+              { value: "low", label: "Lowest Rated" },
+            ]}
+          />
         </div>
         <p style={{ color: colors.textMuted, marginBottom: "1rem", fontSize: "0.875rem" }}>
           Watch replays of collaborative improv sessions
