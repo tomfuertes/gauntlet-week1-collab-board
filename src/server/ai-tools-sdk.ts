@@ -964,6 +964,13 @@ export function createSDKTools(stub: BoardStub, batchId?: string, ai?: Ai, stora
   return {
     ...baseTools,
 
+    // KEY-DECISION 2026-02-20: @cloudflare/codemode (LLM code-execution for tool orchestration)
+    // evaluated and rejected. Our budget models (GLM, GPT-4o Mini) can't reliably generate
+    // TypeScript, batchExecute + choreograph cover multi-step needs declaratively, and CodeMode
+    // would regress per-tool Langfuse observability. Revisit if: tool count >40 with cross-deps,
+    // default model upgrades to frontier tier, AND Worker Loader API exits beta.
+    // Full analysis: docs/cloudflare-codemod-exploration.md
+
     // 12. batchExecute
     batchExecute: tool({
       description:

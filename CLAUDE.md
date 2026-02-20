@@ -16,10 +16,10 @@ React + Vite + react-konva + TypeScript | Cloudflare Workers + Hono + Durable Ob
 |------|-------------|
 | `src/server/index.ts` | Hono routes, board CRUD, DO exports, WS upgrade, persona/replay/gallery APIs |
 | `src/server/chat-agent.ts` | ChatAgent DO - AI chat, per-player persona claims, game modes, scene budgets, director nudges |
-| `src/server/ai-tools-sdk.ts` | 12 AI tools (Zod schemas, batchExecute meta-tool) |
+| `src/server/ai-tools-sdk.ts` | 18 AI tools (Zod schemas, batchExecute meta-tool) |
 | `src/server/prompts.ts` | System prompt assembly, persona identity, scene phases, PROMPT_VERSION |
 | `src/server/tracing-middleware.ts` | AI SDK middleware -> D1 traces + optional Langfuse |
-| `src/server/auth.ts` | Custom auth (PBKDF2, D1 sessions, rate limiting) |
+| `src/server/auth.ts` | Passkey/WebAuthn primary auth + password fallback (PBKDF2, D1 sessions, rate limiting) |
 | `src/shared/types.ts` | Persona, BoardObject, GameMode, AIModel, AI_MODELS, DEFAULT_PERSONAS |
 | `src/shared/board-templates.ts` | Template registry: typed BoardObject arrays, displayText, `getTemplateById()` for server-side seeding |
 
@@ -30,6 +30,7 @@ React + Vite + react-konva + TypeScript | Cloudflare Workers + Hono + Durable Ob
 | `src/client/components/Board.tsx` | Canvas + chat integration, mobile layout, model/persona state |
 | `src/client/components/ChatPanel.tsx` | AI chat sidebar, persona claim pills, intent chips, useAgentChat |
 | `src/client/components/OnboardModal.tsx` | Scene-start dialog: game mode + character picker + model selector |
+| `src/client/components/AuthForm.tsx` | Passkey/WebAuthn registration + login UI with password fallback |
 
 **AI architecture (gotchas that will bite you):**
 - 8 models across 3 providers. `body.model` sent per-message for DO hibernation resilience.
@@ -219,7 +220,7 @@ migrations/             # D1 SQL (npm run migrate)
 
 ### Data Flow
 
-1. Auth via POST /auth/signup or /auth/login (session cookie)
+1. Auth via passkey/WebAuthn (primary: /auth/passkey/register|login/options+verify) or password fallback (/auth/signup, /auth/login); issues session cookie
 2. BoardList (`GET /api/boards`) -> select/create board -> `#board/{id}`
 3. WebSocket to `wss://host/board/:id` (cookie validated before upgrade)
 4. Board DO manages state: objects in DO Storage (`obj:{uuid}`), cursors in memory
