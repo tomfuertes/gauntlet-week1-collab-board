@@ -5,6 +5,7 @@ export const OBJECT_DEFAULTS = {
   line: { stroke: "#f43f5e" },
   sticky: { color: "#fbbf24" },
   text: { color: "#ffffff" },
+  person: { color: "#6366f1" }, // indigo; AI personas use SPARK=#fb923c, SAGE=#4ade80
 } as const;
 
 // Konva Transformer configuration - extracted from Board.tsx

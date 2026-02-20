@@ -17,6 +17,7 @@ type LineProps = Pick<BoardObjectProps, "stroke" | "arrow">;
 type TextObjectProps = Pick<BoardObjectProps, "text" | "color">;
 type FrameProps = Pick<BoardObjectProps, "text">;
 type ImageObjectProps = Pick<BoardObjectProps, "src" | "prompt">;
+type PersonProps = Pick<BoardObjectProps, "text" | "color">; // text = character name, color = figure color
 
 type BoardObjectVariant =
   | { type: "sticky"; props: StickyProps }
@@ -25,7 +26,8 @@ type BoardObjectVariant =
   | { type: "line"; props: LineProps }
   | { type: "text"; props: TextObjectProps }
   | { type: "frame"; props: FrameProps }
-  | { type: "image"; props: ImageObjectProps };
+  | { type: "image"; props: ImageObjectProps }
+  | { type: "person"; props: PersonProps };
 
 interface BoardObjectBase {
   id: string;

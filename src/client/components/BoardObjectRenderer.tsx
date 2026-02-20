@@ -191,5 +191,60 @@ export const BoardObjectRenderer = React.memo(function BoardObjectRenderer({
       </Group>
     );
   }
+  if (obj.type === "person") {
+    const w = obj.width;
+    const h = obj.height;
+    const color = obj.props.color || OBJECT_DEFAULTS.person.color;
+    const headR = w * 0.28;
+    const headCX = w / 2;
+    const headCY = headR + 2;
+    const bodyTop = headR * 2 + 4;
+    const bodyBot = h * 0.68;
+    const bodyCX = w / 2;
+    const armY = h * 0.42;
+    const strokeW = Math.max(2, w * 0.04);
+    const nameFontSize = Math.max(9, Math.min(13, w * 0.14));
+    return (
+      <Group {...merged} {...glowProps}>
+        {/* Name label floats above head */}
+        {obj.props.text ? (
+          <Text
+            x={0}
+            y={-(nameFontSize + 4)}
+            text={obj.props.text}
+            fontSize={nameFontSize}
+            fill={color}
+            fontStyle="600"
+            width={w}
+            align="center"
+          />
+        ) : null}
+        {/* Head */}
+        <Ellipse x={headCX} y={headCY} radiusX={headR} radiusY={headR} fill={color} />
+        {/* Torso */}
+        <KonvaLine points={[bodyCX, bodyTop, bodyCX, bodyBot]} stroke={color} strokeWidth={strokeW} lineCap="round" />
+        {/* Arms */}
+        <KonvaLine
+          points={[bodyCX - w * 0.38, armY, bodyCX + w * 0.38, armY]}
+          stroke={color}
+          strokeWidth={strokeW}
+          lineCap="round"
+        />
+        {/* Legs */}
+        <KonvaLine
+          points={[bodyCX, bodyBot, bodyCX - w * 0.28, h * 0.96]}
+          stroke={color}
+          strokeWidth={strokeW}
+          lineCap="round"
+        />
+        <KonvaLine
+          points={[bodyCX, bodyBot, bodyCX + w * 0.28, h * 0.96]}
+          stroke={color}
+          strokeWidth={strokeW}
+          lineCap="round"
+        />
+      </Group>
+    );
+  }
   return null;
 });

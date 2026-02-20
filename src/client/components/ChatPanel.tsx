@@ -38,6 +38,7 @@ interface ChatPanelProps {
 
 const TOOL_ICONS: Record<ToolName, string> = {
   createStickyNote: "\u{1F4CC}",
+  createPerson: "\u{1F9CD}",
   createShape: "\u{1F7E6}",
   createFrame: "\u{1F5BC}",
   createConnector: "\u{27A1}",
@@ -55,6 +56,7 @@ const TOOL_ICONS: Record<ToolName, string> = {
 
 const TOOL_LABELS: Record<ToolName, string> = {
   createStickyNote: "Creating sticky",
+  createPerson: "Placing character",
   createShape: "Creating shape",
   createFrame: "Creating frame",
   createConnector: "Connecting objects",

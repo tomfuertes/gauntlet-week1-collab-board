@@ -17,6 +17,7 @@ const TOOL_DEFAULTS = {
   frame: { width: 400, height: 300 },
   image: { width: 512, height: 512 },
   connector: { stroke: "#94a3b8" },
+  person: { width: 80, height: 120, color: "#6366f1" }, // indigo; SPARK=#fb923c, SAGE=#4ade80
 } as const;
 
 // ---------------------------------------------------------------------------
@@ -348,7 +349,41 @@ export function createSDKTools(stub: BoardStub, batchId?: string, ai?: Ai) {
       }),
     }),
 
-    // 2. createShape (rect, circle, line)
+    // 2. createPerson
+    createPerson: tool({
+      description:
+        "Place a character (stick figure) on the canvas with a name label above their head. " +
+        "Use for scene characters, players, NPCs, and crowd members. " +
+        "Use persona colors for AI characters: SPARK=#fb923c, SAGE=#4ade80. " +
+        "Prefer createPerson over drawScene for human characters.",
+      inputSchema: z.object({
+        name: z.string().describe("Character name shown above the figure (e.g. 'Dr. Fang', 'The Patient', 'Nurse')"),
+        x: z.number().optional().describe("X position on canvas (default: random 100-800)"),
+        y: z.number().optional().describe("Y position on canvas (default: random 100-600)"),
+        color: z
+          .string()
+          .optional()
+          .describe(
+            "Figure color hex (default: #6366f1 indigo). SPARK=#fb923c, SAGE=#4ade80. Use player color to represent a specific user.",
+          ),
+      }),
+      execute: instrumentExecute("createPerson", async ({ name, x, y, color }) => {
+        const obj = makeObject(
+          "person",
+          randomPos(x, y),
+          TOOL_DEFAULTS.person.width,
+          TOOL_DEFAULTS.person.height,
+          {
+            text: typeof name === "string" && name.trim() ? name.trim() : "Character",
+            color: color || TOOL_DEFAULTS.person.color,
+          },
+          batchId,
+        );
+        return createAndMutate(stub, obj);
+      }),
+    }),
+
+    // 3. createShape (rect, circle, line)
     createShape: tool({
       description:
         "Create a shape on the whiteboard. Use shape='rect' for rectangle, 'circle' for circle, 'line' for line.",
@@ -559,7 +594,7 @@ export function createSDKTools(stub: BoardStub, batchId?: string, ai?: Ai) {
         filter: z
           .string()
           .optional()
-          .describe("Filter by object type: 'sticky', 'rect', 'circle', 'line', 'text', 'frame', 'image'"),
+          .describe("Filter by object type: 'sticky', 'rect', 'circle', 'line', 'text', 'frame', 'image', 'person'"),
         ids: z.array(z.string()).optional().describe("Array of specific object IDs to return"),
       }),
       execute: instrumentExecute("getBoardState", async ({ filter, ids }) => {
@@ -792,6 +827,7 @@ export function createSDKTools(stub: BoardStub, batchId?: string, ai?: Ai) {
               tool: z
                 .enum([
                   "createStickyNote",
+                  "createPerson",
                   "createShape",
                   "createFrame",
                   "createConnector",

@@ -2,7 +2,7 @@ import React from "react";
 import type { BoardObject, BoardObjectProps } from "@shared/types";
 import { colors } from "../theme";
 
-export type ToolMode = "select" | "sticky" | "rect" | "circle" | "connector" | "text" | "frame";
+export type ToolMode = "select" | "sticky" | "person" | "rect" | "circle" | "connector" | "text" | "frame";
 
 export const COLOR_PRESETS = [
   "#fbbf24", // amber (sticky default)
@@ -103,6 +103,12 @@ export function Toolbar({
           title="Sticky note (S)"
           active={toolMode === "sticky"}
           onClick={() => setToolMode("sticky")}
+        />
+        <ToolIconBtn
+          icon={<IconPerson />}
+          title="Character (P)"
+          active={toolMode === "person"}
+          onClick={() => setToolMode("person")}
         />
         <ToolIconBtn
           icon={<IconRect />}
@@ -325,6 +331,7 @@ function ZoomBtn({ label, onClick }: { label: string; onClick: () => void }) {
 const SHORTCUTS = [
   ["V", "Select"],
   ["S", "Sticky note"],
+  ["P", "Character"],
   ["R", "Rectangle"],
   ["C", "Circle"],
   ["L", "Connector"],
@@ -421,6 +428,26 @@ function IconSelect() {
     <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
       <path d="M4 4l7.07 16.97 2.51-7.39 7.39-2.51L4 4z" />
       <path d="M13.5 13.5l5 5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" fill="none" />
+    </svg>
+  );
+}
+
+function IconPerson() {
+  return (
+    <svg
+      width="20"
+      height="20"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+    >
+      <circle cx="12" cy="5" r="3" fill="currentColor" />
+      <line x1="12" y1="8" x2="12" y2="16" />
+      <line x1="7" y1="11" x2="17" y2="11" />
+      <line x1="12" y1="16" x2="8" y2="22" />
+      <line x1="12" y1="16" x2="16" y2="22" />
     </svg>
   );
 }
