@@ -18,7 +18,7 @@ CollabBoard - multiplayer improv canvas with AI agent integration. Real-time col
   - **Tools:** 12 tools in `src/server/ai-tools-sdk.ts` (Zod schemas, `instrumentExecute` wrapper). Tool #12 is `batchExecute` - accepts an ordered array of up to 10 operations and executes them sequentially in one LLM round-trip, eliminating N-round-trip tax for scene setup. `rectsOverlap` + `computeOverlapScore` exported for reuse by objects API and quality telemetry. Display metadata in `ChatPanel.tsx` (was `ai-tool-meta.ts`). Prompts in `src/server/prompts.ts` (versioned via `PROMPT_VERSION`).
   - **Quality telemetry:** After every `streamText` with tool calls, `wrappedOnFinish` in `chat-agent.ts` calls `boardStub.readObjects()`, filters to the current `batchId`, and logs `{ event: "ai:quality", promptVersion, batchOverlap, crossOverlap, objectsCreated, inBounds, model }`. Canvas bounds (50,60)-(1150,780) mirror LAYOUT RULES in `prompts.ts` - keep in sync. Used by prompt-eval harness to tune LAYOUT RULES.
   - **D1 Tracing + Langfuse:** `src/server/tracing-middleware.ts` - `LanguageModelMiddleware` (AI SDK v6) that intercepts every `streamText`/`generateText` call. Writes to `ai_traces` D1 table AND Langfuse cloud UI if `LANGFUSE_PUBLIC_KEY`/`LANGFUSE_SECRET_KEY` secrets are set. Captures: assembled system prompt (persona+gamemode+phase), message count, tool calls (name+args), token usage, duration, finish reason. `_getTracedModel(trigger, persona)` in `chat-agent.ts` wraps `_getModel()` at 3 call sites (chat/reactive/director). `_getLangfuse()` lazily initializes `langfuse@3` client (fetch-based, CF Workers safe - NOT `@langfuse/otel` which requires NodeTracerProvider). Writes are fire-and-forget: errors log but never block AI responses. Query traces: `npm run traces` (local) / `npm run traces:remote` (prod). See `docs/sessions/langsmith-observability.md` for decision rationale.
-  - **Multi-agent Personas:** Dynamic per-board AI characters. Default SPARK (energetic) + SAGE (grounded); custom personas stored in D1 `board_personas` table. `Persona { id, name, trait, color }` in `shared/types.ts`. `DEFAULT_PERSONAS` fallback when no custom personas. `ChatAgent._getPersonas()` loads from D1 on each request (never throws - D1 errors log + degrade to defaults). `buildPersonaSystemPrompt(active, other, basePrompt, gameModeBlock)` in `prompts.ts` takes Persona objects. Human message -> active persona -> other reacts autonomously via `_triggerReactivePersona` (`ctx.waitUntil`). `MAX_AUTONOMOUS_EXCHANGES` caps auto-exchanges; resets on human message. Turn-taking state is class-level (resets on DO hibernation, defaults work). TOCTOU: claim `_isGenerating` mutex BEFORE 2s UX delay, re-check after. `_ensurePersonaPrefix(personaName)` patches LLM responses missing `[NAME]` prefix. Skips reactive if only 1 persona. CRUD API: `GET/POST/DELETE /api/boards/:boardId/personas` (auth required; POST/DELETE require ownership; max 10 per board). `ChatPanel` "AI Characters" modal lets board owner add/delete custom characters.
+  - **Multi-agent Personas:** Dynamic per-board AI characters. Default SPARK (energetic) + SAGE (grounded); custom personas stored in D1 `board_personas` table. `Persona { id, name, trait, color }` in `shared/types.ts`. `DEFAULT_PERSONAS` fallback when no custom personas. `ChatAgent._getPersonas()` loads from D1 on each request (never throws - D1 errors log + degrade to defaults). `buildPersonaSystemPrompt(active, other, basePrompt, gameModeBlock)` in `prompts.ts` takes Persona objects. **Per-player persona claims:** `_personaClaims = Map<username, personaId>` in ChatAgent (ephemeral, resets on hibernation). `body.personaId` sent per-message (same pattern as `body.model`/`body.gameMode`). `_resolveActivePersona(personas, username)` checks claim first, falls back to round-robin `_activePersonaIndex`. OnboardModal character picker (scene start) + ChatPanel inline pill row (mid-scene join). Reactive persona untouched - `(activeIndex + 1) % N` works correctly with claims. Director untouched - uses round-robin (no player context). Human message -> claimed persona (or round-robin) -> other reacts autonomously via `_triggerReactivePersona` (`ctx.waitUntil`). `MAX_AUTONOMOUS_EXCHANGES` caps auto-exchanges; resets on human message. Turn-taking state is class-level (resets on DO hibernation, defaults work). TOCTOU: claim `_isGenerating` mutex BEFORE 2s UX delay, re-check after. `_ensurePersonaPrefix(personaName)` patches LLM responses missing `[NAME]` prefix. Skips reactive if only 1 persona. CRUD API: `GET/POST/DELETE /api/boards/:boardId/personas` (auth required; POST/DELETE require ownership; max 10 per board). `ChatPanel` "AI Characters" modal lets board owner add/delete custom characters.
   - **AI Director:** After 60s inactivity, `onDirectorNudge` fires via DO schedule alarm. Uses `generateText` (non-streaming) with scene-phase-specific prompts.
   - **AI Image Generation:** `generateImage` tool calls CF Workers AI SDXL (512x512), base64 data URL in `props.src`, Konva `Image` rendering.
   - **Game Modes:** `GameMode` type (`freeform | hat | yesand`) in `shared/types.ts`. Hat prompts in `src/server/hat-prompts.ts` (30+ curated). `buildGameModePromptBlock()` injects mode rules between base prompt and persona identity. ChatAgent tracks `_gameMode`, `_hatPromptIndex`, `_hatExchangeCount`, `_yesAndCount` (class-level; client re-sends mode each message for hibernation resilience). `[NEXT-HAT-PROMPT]` marker protocol advances hat scene. `PATCH /api/boards/:boardId` persists to D1 (`game_mode` column, migration 0004).
@@ -80,22 +80,40 @@ cd /path/to/worktree && claude --model sonnet "$(cat /private/tmp/claude-501/pro
 ```
 This launches Claude with the prompt pre-loaded so the user just hits enter. Always include a specific, actionable prompt describing the feature to build. **Do NOT use "Enter plan mode first"** - it adds an approval gate that blocks the agent and the context exploration can compress away during implementation. Instead, write detailed prompts that specify the approach, and instruct the agent to read CLAUDE.md and relevant source files before implementing.
 
-### "venom" - Orchestrator-owned worktree agents (experimental)
+### "venom" - Team-based worktree agents
 
-When the user says **"venom"** followed by a task description (any format, rambly is fine), the orchestrator owns the full lifecycle:
-1. Derive a kebab-case branch name from the task (user won't provide one)
+When the user says **"venom"** followed by task descriptions (any format, rambly is fine), the orchestrator owns the full lifecycle using agent teams:
+
+**Single task:**
+1. Derive a kebab-case branch name from the task
 2. `scripts/worktree.sh create <branch>` - required (handles git-crypt, deps, build, migrations, ports, permissions)
 3. Write detailed prompt to `$TMPDIR/prompt-<branch>.txt` (include worktree checklist items from below)
 4. Launch background `general-purpose` agent with CWD set to the worktree absolute path
 5. Monitor via task notifications in main context
 6. Merge when agent finishes (same merge protocol below)
 
+**Multiple tasks (team mode):**
+1. `TeamCreate` with a session-level team name
+2. `TaskCreate` for each work item (tasks can be added dynamically as scope grows)
+3. For each task: `scripts/worktree.sh create <branch>`, write prompt, spawn team member with `Task(team_name=..., name=<branch>, run_in_background=true)`
+4. Team members pick up tasks, implement, communicate progress via `SendMessage`
+5. Orchestrator reviews, redirects, assigns new tasks as they emerge
+6. Spawn new agents on-the-fly as tasks are added - agents join the team and claim work
+7. Merge each branch as it completes (same merge protocol - orchestrator only)
+8. `SendMessage(type="shutdown_request")` to each agent when done, then `TeamDelete`
+
+**Adding agents dynamically:** New team members can be spawned at any time as tasks emerge. No need to plan all agents upfront. The shared task list coordinates work - new agents check `TaskList` and claim unassigned, unblocked tasks.
+
 **Model selection by task complexity** (not hardcoded):
 - `model: "sonnet"` - Default for most: refactors, well-scoped features, DX fixes
 - `model: "opus"` - Architectural changes, novel integrations, complex multi-system work
 - `model: "haiku"` - Mechanical tasks: bulk renames, migration boilerplate, config changes
 
-This replaces the "print a command for the user to run" flow. The old flow still works for cases where the user wants manual control. "venom" is experimental - if it works, consolidate into the default flow.
+**Claude Code 2.1.49+ features** (available but not yet integrated into our workflow):
+- `isolation: "worktree"` in agent definitions - Claude Code creates temporary worktrees automatically. Does NOT handle git-crypt/deps/build, so we still use `scripts/worktree.sh` for this project.
+- `background: true` in `.claude/agents/` frontmatter - agent always runs in background without needing `run_in_background: true` at call site.
+- `Ctrl+F` kills background agents (2-press confirm) - use when agents go sideways instead of `TaskStop`.
+- `SubagentStart`/`SubagentStop` hooks - can trigger setup/cleanup scripts when agents spawn. Future: could replace `scripts/worktree.sh` if hooks can handle git-crypt + full setup.
 
 **NEVER delegate merging to sub-agents.** Always merge worktree branches in main context (the orchestrator). Worktree branches fork from a point-in-time snapshot of main. If other branches merge first, a sub-agent's squash merge will silently revert the intervening changes (the branch diff includes deletions it never made). The orchestrator must: (1) check `git diff main..feat/<branch>` for unexpected reversions, (2) rebase onto current main if needed, (3) resolve conflicts with full project context, (4) typecheck after merge.
 
@@ -174,7 +192,7 @@ src/
       Modal.tsx         # Shared modal overlay component
       TextInput.tsx     # Shared text input component
       BoardList.tsx     # Board grid (CRUD) - landing page after login
-      ChatPanel.tsx     # AI chat sidebar (dynamic intent chips, improv scene interaction). mobileMode prop: full-width flow layout, 44px touch targets, safe-area-inset bottom padding
+      ChatPanel.tsx     # AI chat sidebar (dynamic intent chips, improv scene interaction). mobileMode prop: full-width flow layout, 44px touch targets, safe-area-inset bottom padding. Inline persona claim pill row (Player B mid-scene join). `claimedPersonaId`/`onClaimChange` props thread to `body.personaId` in useAgentChat.
       CanvasPreview.tsx # Read-only scaled-down Konva Stage for mobile preview strip (listening={false}, auto-fits bounding box)
       ReplayViewer.tsx  # Read-only scene replay player (public, no auth)
       SpectatorView.tsx # Live read-only board view with emoji reactions (public, no auth)
@@ -200,7 +218,7 @@ src/
     env.ts              # Bindings type, D1 helpers (recordBoardActivity, markBoardSeen)
     prompts.ts          # All LLM prompt content + scene phases + game mode blocks + PROMPT_VERSION constant
     hat-prompts.ts      # 30+ curated "Scenes From a Hat" prompts + getRandomHatPrompt()
-    chat-agent.ts       # AIChatAgent DO - WebSocket AI chat, model selection, game mode state, request metrics
+    chat-agent.ts       # AIChatAgent DO - WebSocket AI chat, model selection, game mode state, per-player persona claims, request metrics
     tracing-middleware.ts  # LanguageModelMiddleware -> D1 ai_traces table + optional Langfuse (system prompt, tool calls, usage)
     ai-tools-sdk.ts     # 12 tools as AI SDK tool() with Zod schemas + instrumentExecute wrapper + DRY helpers (tool #12: batchExecute)
   shared/               # Types shared between client and server
@@ -216,7 +234,7 @@ migrations/             # D1 SQL migrations (tracked via d1_migrations table, np
 4. Worker routes WebSocket to Board Durable Object
 5. DO manages all board state: objects in DO Storage (`obj:{uuid}`), cursors in memory
 6. Mutations flow: client applies optimistically -> sends to DO -> DO persists + broadcasts to other clients
-7. AI commands: client connects to ChatAgent DO via WebSocket (`/agents/ChatAgent/<boardId>`) -> `useAgentChat` sends messages -> ChatAgent runs `streamText()` with tools -> tool callbacks via Board DO RPC (`readObject`/`mutate`) -> Board DO persists + broadcasts to all board WebSocket clients
+7. AI commands: client connects to ChatAgent DO via WebSocket (`/agents/ChatAgent/<boardId>`) -> `useAgentChat` sends messages with `body: { username, gameMode, model, personaId, selectedIds }` -> ChatAgent resolves persona via `_resolveActivePersona` (claim lookup -> round-robin fallback) -> runs `streamText()` with tools -> tool callbacks via Board DO RPC (`readObject`/`mutate`) -> Board DO persists + broadcasts to all board WebSocket clients. After response, reactive persona fires via `ctx.waitUntil`.
 8. Scene replay: Board DO records mutations as `evt:{ts}:{rand}` keys in storage (debounced 500ms for updates, 2000 cap). Public `GET /api/boards/:id/replay` returns sorted events. `#replay/{id}` route renders read-only ReplayViewer (no auth required).
 9. Scene gallery: Public `GET /api/boards/public` returns boards with activity (D1 join: boards + users + board_activity). `#gallery` route renders SceneGallery grid (no auth). Cards link to `#replay/{id}`.
 10. Live spectator: Public `GET /ws/watch/:boardId` upgrades to spectator WebSocket (no auth). DO tags connection as `role: "spectator"` via `ConnectionMeta` discriminated union. Spectators receive all broadcasts but can only send cursor + reaction messages. `#watch/{id}` route renders read-only SpectatorView with emoji reaction bar.

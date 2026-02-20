@@ -22,7 +22,9 @@
 | Feature | Priority | Notes |
 |---------|----------|-------|
 | AI canvas cursor presence | **Shipped** | Purple dot (#a855f7) animates to each AI creation point with lerp + Konva Tween fade. `AiCursor.tsx` + `useAiObjectEffects.ts`. |
+| Per-player persona claims | **Shipped** | Each player claims an AI persona as improv partner. `body.personaId` per-message, `_resolveActivePersona()` in ChatAgent. OnboardModal character picker + ChatPanel inline pill row. |
 | Narrative/relationship state | Medium | Who-hates-whom graph, structural multi-agent memory. Architectural - needs opus worktree. |
+| Improv scene lifecycle | Medium | Tag-out/tap-out, bench/stage personas, join-as-scene-event, multi-scene arc. Natural extensions of per-player persona claims. |
 
 ## Roadmap
 
@@ -32,11 +34,11 @@
 
 **AI agent:** 12 tools (Zod schemas, DRY helpers), chat panel (chips, templates, typing, server-side history), selection-aware AI, AI object glow/confetti, batch undo, AI presence (cursor dot, bar), board generation (overlay + suggestion chips), AI image generation (SDXL), defensive tool validation, batchExecute meta-tool (N round trips -> 1 for scene setup), quality telemetry (`ai:quality` events), prompt eval harness.
 
-**Multiplayer improv:** Multi-agent personas (SPARK + SAGE defaults, custom AI characters with CRUD API + modal UI, autonomous "yes, and", 3-exchange cooldown), AI Director (scene phases, 60s inactivity nudge, DO schedule alarms), dynamic intent chips, improv game modes (Scenes From a Hat, Yes-And Chain), per-scene token budgets (20-turn, 4 dramatic arc phases). **Persona chat quality fixes** (f5cccb1): empty-bubble suppression, global prefix strip, reactive context injection, CHARACTER COMPOSITION + structured SCENE SETUP prompt, PROMPT_VERSION v5.
+**Multiplayer improv:** Multi-agent personas (SPARK + SAGE defaults, custom AI characters with CRUD API + modal UI, autonomous "yes, and", 3-exchange cooldown, **per-player persona claims** via `body.personaId` + OnboardModal character picker + ChatPanel inline pill row), AI Director (scene phases, 60s inactivity nudge, DO schedule alarms), dynamic intent chips, improv game modes (Scenes From a Hat, Yes-And Chain), per-scene token budgets (20-turn, 4 dramatic arc phases). **Persona chat quality fixes** (f5cccb1): empty-bubble suppression, global prefix strip, reactive context injection, CHARACTER COMPOSITION + structured SCENE SETUP prompt, PROMPT_VERSION v5.
 
 **Sharing/discovery:** Scene playback (event recording, public replay, ReplayViewer), scene gallery (public grid, gradient thumbnails), spectator mode (#watch, emoji reactions, spectator count), async notifications (unread badges), daily scene challenges + leaderboard.
 
-**Infra/DX:** Custom auth (PBKDF2, D1 sessions), hash routing, onboard modal, connection toasts, perf overlay (always-on, Shift+P toggle), AI architecture audit (prompt versioning, structured logging, quality telemetry), vendor chunk splitting, Board.tsx decomposition, code cleanup sprint (16 items), AI model upgrade (GLM-4.7-flash default, runtime model selector dropdown, $5/day cap, Anthropic toggle), tool_choice shim (belt-and-suspenders for Workers AI models).
+**Infra/DX:** Custom auth (PBKDF2, D1 sessions), hash routing, onboard modal, connection toasts, perf overlay (always-on, Shift+P toggle), AI architecture audit (prompt versioning, structured logging, quality telemetry), vendor chunk splitting, Board.tsx decomposition, code cleanup sprint (16 items), AI model upgrade (GLM-4.7-flash default, runtime model selector dropdown + OnboardModal model picker, $5/day cap, Anthropic toggle), tool_choice shim (belt-and-suspenders for Workers AI models).
 
 **Killed:** Contextual AI Actions (clustering unreliable), Intent Preview (overlap with batch undo at 3x cost).
 
