@@ -190,3 +190,23 @@
     transform: translateY(0);
   }
 }
+
+/* Audience row reaction - emoji floats up from audience silhouette */
+@keyframes cb-audience-float {
+  0% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-80px) scale(0.8);
+  }
+}
+
+.cb-audience-reaction {
+  position: absolute;
+  pointer-events: none;
+  font-size: 1.5rem;
+  animation: cb-audience-float 2s ease-out forwards;
+  z-index: 50;
+}
