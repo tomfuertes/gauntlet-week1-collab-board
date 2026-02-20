@@ -64,8 +64,9 @@ function cleanModelOutput(text: string): string {
  * errors ("Input should be a valid dictionary") when the conversation history
  * is sent back to the model on subsequent turns.
  */
-function sanitizeMessages(messages: UIMessage[]): UIMessage[] {
-  return messages.map((msg) => {
+function sanitizeMessages(messages: UIMessage[]): { messages: UIMessage[]; repairedCount: number } {
+  let repairedCount = 0;
+  const sanitized = messages.map((msg) => {
     if (msg.role !== "assistant" || !msg.parts) return msg;
 
     let needsRepair = false;
@@ -110,9 +111,13 @@ function sanitizeMessages(messages: UIMessage[]): UIMessage[] {
       return part;
     });
 
-    if (needsRepair) return { ...msg, parts: cleanedParts };
+    if (needsRepair) {
+      repairedCount++;
+      return { ...msg, parts: cleanedParts };
+    }
     return msg;
   });
+  return { messages: sanitized, repairedCount };
 }
 
 export class ChatAgent extends AIChatAgent<Bindings> {
@@ -404,6 +409,67 @@ export class ChatAgent extends AIChatAgent<Bindings> {
     );
   }
 
+  /** Fire-and-forget: record sanitize repair event in Langfuse when weak models emit malformed tool inputs.
+   *  KEY-DECISION 2026-02-20: Separate trace (not correlated with generation trace) because sanitize
+   *  runs before the AI call. Grouped by model tag so degradation appears as rising metric over time. */
+  private _traceSanitizeRepair(trigger: string, repairedCount: number): void {
+    const lf = this._getLangfuse();
+    if (!lf) return;
+    try {
+      const trace = lf.trace({
+        name: "sanitize:repair",
+        metadata: { boardId: this.name, model: this._getModelName(), trigger, repairedCount },
+        tags: ["sanitize", `model:${this._getModelName()}`, `trigger:${trigger}`],
+      });
+      lf.score({ traceId: trace.id, name: "sanitized_messages", value: repairedCount });
+      lf.flushAsync().catch((err) => {
+        console.error(JSON.stringify({ event: "trace:langfuse-flush-error", boardId: this.name, error: String(err) }));
+      });
+    } catch (err) {
+      console.error(JSON.stringify({ event: "trace:sanitize-error", boardId: this.name, error: String(err) }));
+    }
+  }
+
+  /** Fire-and-forget: record tool execution failures in Langfuse.
+   *  Called after streamText/generateText when any tool returned an error response.
+   *  Tool errors here mean Board DO rejected the mutation (object not found, out of bounds, etc.) */
+  private _traceToolFailures(
+    trigger: string,
+    steps: { toolCalls: unknown[]; toolResults?: { toolCallId: string; output: unknown }[] }[],
+  ): void {
+    const lf = this._getLangfuse();
+    if (!lf) return;
+    try {
+      const failedOutcomes: { toolName: string; error: unknown }[] = [];
+      for (const step of steps) {
+        for (const tr of step.toolResults ?? []) {
+          if (isPlainObject(tr.output) && "error" in tr.output) {
+            const toolCall = step.toolCalls.find((tc) => isPlainObject(tc) && tc.toolCallId === tr.toolCallId) as
+              | Record<string, unknown>
+              | undefined;
+            const toolName = typeof toolCall?.toolName === "string" ? toolCall.toolName : "unknown";
+            failedOutcomes.push({
+              toolName,
+              error: tr.output.error,
+            });
+          }
+        }
+      }
+      if (failedOutcomes.length === 0) return;
+      const trace = lf.trace({
+        name: "tool:outcome:failed",
+        metadata: { boardId: this.name, model: this._getModelName(), trigger, failedTools: failedOutcomes },
+        tags: ["tool:failed", `model:${this._getModelName()}`, `trigger:${trigger}`],
+      });
+      lf.score({ traceId: trace.id, name: "tool_failures", value: failedOutcomes.length });
+      lf.flushAsync().catch((err) => {
+        console.error(JSON.stringify({ event: "trace:langfuse-flush-error", boardId: this.name, error: String(err) }));
+      });
+    } catch (err) {
+      console.error(JSON.stringify({ event: "trace:tool-outcome-error", boardId: this.name, error: String(err) }));
+    }
+  }
+
   async onChatMessage(onFinish: any, options?: { abortSignal?: AbortSignal }) {
     // this.name = boardId (set by client connecting to /agents/ChatAgent/<boardId>)
 
@@ -423,6 +489,19 @@ export class ChatAgent extends AIChatAgent<Bindings> {
           user: userKey,
         }),
       );
+      const lf = this._getLangfuse();
+      if (lf) {
+        lf.trace({
+          name: "rate-limit:ai",
+          metadata: { boardId: this.name, user: userKey, retryAfter: rl.retryAfter },
+          tags: ["rate-limit"],
+        });
+        lf.flushAsync().catch((err) => {
+          console.error(
+            JSON.stringify({ event: "trace:langfuse-flush-error", boardId: this.name, error: String(err) }),
+          );
+        });
+      }
       const rlMsg: UIMessage = {
         id: crypto.randomUUID(),
         role: "assistant",
@@ -532,6 +611,19 @@ export class ChatAgent extends AIChatAgent<Bindings> {
           neurons: this._dailySpendNeurons,
         }),
       );
+      const lf = this._getLangfuse();
+      if (lf) {
+        lf.trace({
+          name: "budget:daily-cap",
+          metadata: { boardId: this.name, neurons: this._dailySpendNeurons },
+          tags: ["budget", "daily-cap"],
+        });
+        lf.flushAsync().catch((err) => {
+          console.error(
+            JSON.stringify({ event: "trace:langfuse-flush-error", boardId: this.name, error: String(err) }),
+          );
+        });
+      }
       const capMsg: UIMessage = {
         id: crypto.randomUUID(),
         role: "assistant",
@@ -561,6 +653,19 @@ export class ChatAgent extends AIChatAgent<Bindings> {
           budget: SCENE_TURN_BUDGET,
         }),
       );
+      const lf = this._getLangfuse();
+      if (lf) {
+        lf.trace({
+          name: "budget:scene-over",
+          metadata: { boardId: this.name, humanTurns, budget: SCENE_TURN_BUDGET },
+          tags: ["budget", "scene-over"],
+        });
+        lf.flushAsync().catch((err) => {
+          console.error(
+            JSON.stringify({ event: "trace:langfuse-flush-error", boardId: this.name, error: String(err) }),
+          );
+        });
+      }
       // Build a "scene is over" assistant message so the client sees feedback
       const overMsg: UIMessage = {
         id: crypto.randomUUID(),
@@ -755,12 +860,17 @@ export class ChatAgent extends AIChatAgent<Bindings> {
       await clearPresence();
 
       // Request-level metrics from onFinish
-      const finishArg = args[0] as { steps?: { toolCalls?: unknown[] }[] } | undefined;
+      const finishArg = args[0] as
+        | {
+            steps?: { toolCalls?: unknown[]; toolResults?: { toolCallId: string; output: unknown }[] }[];
+          }
+        | undefined;
       const steps = finishArg?.steps?.length ?? 0;
       const toolCalls =
         finishArg?.steps?.reduce((sum: number, s: { toolCalls?: unknown[] }) => sum + (s.toolCalls?.length ?? 0), 0) ??
         0;
       this._logRequestEnd("chat", activePersona.name, startTime, steps, toolCalls);
+      this._traceToolFailures("chat", (finishArg?.steps ?? []) as any[]);
 
       // Quality telemetry: per-response layout scoring for prompt tuning
       // Canvas bounds mirror LAYOUT RULES in prompts.ts: (50,60) to (1150,780)
@@ -873,6 +983,8 @@ export class ChatAgent extends AIChatAgent<Bindings> {
     this._resetDirectorTimer();
 
     try {
+      const { messages: sanitizedMsgs, repairedCount } = sanitizeMessages(this.messages);
+      if (repairedCount > 0) this._traceSanitizeRepair("chat", repairedCount);
       const result = streamText({
         model: this._getTracedModel("chat", activePersona.name, {
           gameMode: this._gameMode,
@@ -880,7 +992,7 @@ export class ChatAgent extends AIChatAgent<Bindings> {
           intentChip,
         }),
         system: systemPrompt,
-        messages: await convertToModelMessages(sanitizeMessages(this.messages)),
+        messages: await convertToModelMessages(sanitizedMsgs),
         tools,
         onFinish: wrappedOnFinish,
         stopWhen: stepCountIs(5),
@@ -1409,10 +1521,12 @@ export class ChatAgent extends AIChatAgent<Bindings> {
     });
 
     try {
+      const { messages: sanitizedMsgs, repairedCount } = sanitizeMessages(this.messages);
+      if (repairedCount > 0) this._traceSanitizeRepair("reactive", repairedCount);
       const result = await generateText({
         model,
         system: reactiveSystem,
-        messages: await convertToModelMessages(sanitizeMessages(this.messages)),
+        messages: await convertToModelMessages(sanitizedMsgs),
         tools,
         stopWhen: stepCountIs(2),
       });
@@ -1430,6 +1544,7 @@ export class ChatAgent extends AIChatAgent<Bindings> {
 
       const totalToolCalls = result.steps.reduce((sum, s) => sum + s.toolCalls.length, 0);
       this._logRequestEnd("reactive", reactivePersona.name, startTime, result.steps.length, totalToolCalls);
+      this._traceToolFailures("reactive", result.steps as any[]);
     } catch (err) {
       console.error(
         JSON.stringify({
@@ -1620,13 +1735,15 @@ export class ChatAgent extends AIChatAgent<Bindings> {
         directorSystem += `\n\n${BUDGET_PROMPTS[directorBudget]}`;
       }
 
+      const { messages: sanitizedMsgs, repairedCount } = sanitizeMessages(this.messages);
+      if (repairedCount > 0) this._traceSanitizeRepair("director", repairedCount);
       const result = await generateText({
         model: this._getTracedModel("director", directorPersona.name, {
           gameMode: this._gameMode,
           scenePhase: phase,
         }),
         system: directorSystem,
-        messages: await convertToModelMessages(sanitizeMessages(this.messages)),
+        messages: await convertToModelMessages(sanitizedMsgs),
         tools,
         stopWhen: stepCountIs(3),
       });
@@ -1640,6 +1757,7 @@ export class ChatAgent extends AIChatAgent<Bindings> {
 
       const totalToolCalls = result.steps.reduce((sum, s) => sum + s.toolCalls.length, 0);
       this._logRequestEnd("director", directorPersona.name, startTime, result.steps.length, totalToolCalls, { phase });
+      this._traceToolFailures("director", result.steps as any[]);
 
       // Director nudge also triggers the other persona to react
       // Pass directorPersonas to avoid a redundant second D1 query
