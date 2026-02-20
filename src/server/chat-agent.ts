@@ -73,6 +73,8 @@ function cleanModelOutput(text: string): string {
   if (strayToolCall !== -1) {
     cleaned = cleaned.slice(0, strayToolCall);
   }
+  // Strip leading markdown heading markers (e.g. "# Previously on..." from recap narration)
+  cleaned = cleaned.replace(/^#+\s+/, "");
   return cleaned.trim();
 }
 
