@@ -37,6 +37,11 @@ export interface Reaction {
   ts: number;
 }
 
+export interface CurtainCallData {
+  characters: { id: string; name: string }[];
+  sceneTitle: string;
+}
+
 interface UseWebSocketReturn {
   connectionState: ConnectionState;
   initialized: boolean;
@@ -47,6 +52,8 @@ interface UseWebSocketReturn {
   spectatorCount: number;
   reactions: Reaction[];
   heckleEvents: HeckleEvent[];
+  curtainCall: CurtainCallData | null;
+  clearCurtainCall: () => void;
   send: (msg: WSClientMessage) => void;
   createObject: (obj: BoardObject) => void;
   updateObject: (partial: BoardObjectUpdate) => void;
@@ -111,6 +118,7 @@ export function useWebSocket(
   const [spectatorCount, setSpectatorCount] = useState(0);
   const [reactions, setReactions] = useState<Reaction[]>([]);
   const [heckleEvents, setHeckleEvents] = useState<HeckleEvent[]>([]);
+  const [curtainCall, setCurtainCall] = useState<CurtainCallData | null>(null);
 
   useEffect(() => {
     let intentionalClose = false;
@@ -291,6 +299,9 @@ export function useWebSocket(
           case "obj:transient":
             onTransientRef.current?.(msg.effect);
             break;
+          case "curtain_call":
+            setCurtainCall({ characters: msg.characters, sceneTitle: msg.sceneTitle });
+            break;
           case "board:deleted":
             // Board was deleted by owner - navigate away
             intentionalClose = true;
@@ -406,6 +417,8 @@ export function useWebSocket(
     });
   }, []);
 
+  const clearCurtainCall = useCallback(() => setCurtainCall(null), []);
+
   /** Send batch:undo to Board DO via WS - deletes all objects with matching batchId server-side */
   const batchUndo = useCallback(
     (batchId: string) => {
@@ -424,6 +437,8 @@ export function useWebSocket(
     spectatorCount,
     reactions,
     heckleEvents,
+    curtainCall,
+    clearCurtainCall,
     send,
     createObject,
     updateObject,

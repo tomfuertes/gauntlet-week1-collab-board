@@ -23,6 +23,8 @@ interface SceneMeta {
   eventCount: number;
   critic_score?: number | null;
   critic_review?: string | null;
+  avg_rating?: number | null;
+  rating_count?: number | null;
 }
 
 const MODE_BADGES: Record<string, { icon: string; label: string }> = {
@@ -88,7 +90,7 @@ function SceneCard({ scene }: { scene: SceneMeta }) {
         >
           {scene.eventCount} events
         </div>
-        {/* Star rating badge - top left */}
+        {/* Critic star rating badge - top left */}
         {scene.critic_score != null && (
           <div
             style={{
@@ -101,6 +103,30 @@ function SceneCard({ scene }: { scene: SceneMeta }) {
             }}
           >
             <StarRating score={scene.critic_score} />
+          </div>
+        )}
+        {/* Audience avg_rating badge - bottom left of thumbnail (shown when no critic score or as supplement) */}
+        {scene.avg_rating != null && scene.critic_score == null && (
+          <div
+            title={`${scene.rating_count ?? 0} audience rating${(scene.rating_count ?? 0) !== 1 ? "s" : ""}`}
+            style={{
+              position: "absolute",
+              bottom: 8,
+              left: 8,
+              background: "rgba(0,0,0,0.65)",
+              borderRadius: 6,
+              padding: "2px 6px",
+              display: "flex",
+              alignItems: "center",
+              gap: 4,
+              fontSize: "0.65rem",
+              color: "#fbbf24",
+            }}
+          >
+            ★ {scene.avg_rating.toFixed(1)}
+            {scene.rating_count != null && (
+              <span style={{ color: "rgba(255,255,255,0.45)" }}>({scene.rating_count})</span>
+            )}
           </div>
         )}
         {scene.game_mode && MODE_BADGES[scene.game_mode] && (

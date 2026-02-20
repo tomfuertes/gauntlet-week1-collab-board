@@ -308,6 +308,12 @@ export function Board({
   // "Previously On..." recap narration (null = not ready or not available)
   const [recapNarration, setRecapNarration] = useState<string | null>(null);
 
+  // Curtain call overlay: confetti burst positions + rating state
+  const [curtainConfettis, setCurtainConfettis] = useState<Array<{ id: string; x: number; y: number }>>([]);
+  const [curtainRating, setCurtainRating] = useState(0);
+  const [curtainRatingHover, setCurtainRatingHover] = useState(0);
+  const [curtainRatingSubmitted, setCurtainRatingSubmitted] = useState(false);
+
   // Hydrate game mode from D1 on mount (so returning users get the right mode)
   useEffect(() => {
     fetch(`/api/boards/${boardId}`)
@@ -602,6 +608,8 @@ export function Board({
     spectatorCount,
     reactions,
     heckleEvents,
+    curtainCall,
+    clearCurtainCall,
     send,
     createObject: wsCreate,
     updateObject: wsUpdate,
@@ -698,6 +706,28 @@ export function Board({
       })
       .catch(() => {}); // non-critical: fail silently, no recap shown
   }, [boardId, initialized]);
+
+  // Curtain call: fire confetti across viewport + reset rating state when a new curtain_call arrives
+  useEffect(() => {
+    if (!curtainCall) return;
+    // Reset rating form state
+    setCurtainRating(0);
+    setCurtainRatingHover(0);
+    setCurtainRatingSubmitted(false);
+    // Fire confetti at 5 spread positions across the viewport
+    const w = window.innerWidth;
+    const h = window.innerHeight;
+    setCurtainConfettis([
+      { id: crypto.randomUUID(), x: w * 0.15, y: h * 0.3 },
+      { id: crypto.randomUUID(), x: w * 0.4, y: h * 0.2 },
+      { id: crypto.randomUUID(), x: w * 0.6, y: h * 0.15 },
+      { id: crypto.randomUUID(), x: w * 0.8, y: h * 0.3 },
+      { id: crypto.randomUUID(), x: w * 0.5, y: h * 0.5 },
+    ]);
+    // Auto-dismiss after 15 seconds
+    const t = setTimeout(clearCurtainCall, 15000);
+    return () => clearTimeout(t);
+  }, [curtainCall, clearCurtainCall]);
 
   // --- AI Batch Undo state ---
   const [undoAiBatchId, setUndoAiBatchId] = useState<string | null>(null);
@@ -3070,6 +3100,164 @@ export function Board({
         stageRef={stageRef}
         lastServerMessageAt={lastServerMessageAt}
       />
+
+      {/* Curtain call confetti bursts - spread across viewport */}
+      {curtainConfettis.map((c) => (
+        <ConfettiBurst
+          key={c.id}
+          x={c.x}
+          y={c.y}
+          onDone={() => setCurtainConfettis((prev) => prev.filter((p) => p.id !== c.id))}
+        />
+      ))}
+
+      {/* Curtain call overlay - scene end celebration + star rating */}
+      {curtainCall && (
+        <div
+          onClick={clearCurtainCall}
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 80,
+            background: "rgba(0,0,0,0.75)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              background: "#1a1a2e",
+              border: "1px solid rgba(255,255,255,0.12)",
+              borderRadius: 16,
+              padding: "40px 48px",
+              maxWidth: 480,
+              width: "90%",
+              textAlign: "center",
+              boxShadow: "0 24px 80px rgba(0,0,0,0.6)",
+            }}
+          >
+            {/* Scene complete header */}
+            <div
+              style={{
+                fontFamily: "Georgia, 'Times New Roman', serif",
+                fontSize: "0.8rem",
+                letterSpacing: "0.2em",
+                textTransform: "uppercase",
+                color: "rgba(255,255,255,0.4)",
+                marginBottom: 12,
+              }}
+            >
+              Scene Complete
+            </div>
+            <div
+              style={{
+                fontFamily: "Georgia, 'Times New Roman', serif",
+                fontSize: "clamp(1.25rem, 4vw, 1.75rem)",
+                fontWeight: 700,
+                color: "#f5f5f5",
+                marginBottom: 16,
+                lineHeight: 1.2,
+              }}
+            >
+              {curtainCall.sceneTitle}
+            </div>
+
+            {/* Starring line */}
+            {curtainCall.characters.length > 0 && (
+              <div
+                style={{
+                  fontSize: "0.875rem",
+                  color: "rgba(255,255,255,0.55)",
+                  marginBottom: 32,
+                  letterSpacing: "0.03em",
+                }}
+              >
+                Starring:{" "}
+                <span style={{ color: "rgba(255,255,255,0.8)" }}>
+                  {curtainCall.characters.map((ch) => ch.name).join(", ")}
+                </span>
+              </div>
+            )}
+
+            {/* Star rating UI */}
+            {curtainRatingSubmitted ? (
+              <div style={{ color: "#4ade80", fontSize: "1rem", fontWeight: 600, marginBottom: 24 }}>
+                Thanks for rating!
+              </div>
+            ) : (
+              <div style={{ marginBottom: 24 }}>
+                <div
+                  style={{
+                    fontSize: "0.8rem",
+                    color: "rgba(255,255,255,0.4)",
+                    marginBottom: 12,
+                    letterSpacing: "0.05em",
+                    textTransform: "uppercase",
+                  }}
+                >
+                  Rate this scene
+                </div>
+                <div style={{ display: "flex", gap: 8, justifyContent: "center", marginBottom: 16 }}>
+                  {[1, 2, 3, 4, 5].map((star) => (
+                    <button
+                      key={star}
+                      onMouseEnter={() => setCurtainRatingHover(star)}
+                      onMouseLeave={() => setCurtainRatingHover(0)}
+                      onClick={() => setCurtainRating(star)}
+                      style={{
+                        background: "none",
+                        border: "none",
+                        fontSize: "2rem",
+                        cursor: "pointer",
+                        color: star <= (curtainRatingHover || curtainRating) ? "#fbbf24" : "rgba(255,255,255,0.2)",
+                        padding: "0 2px",
+                        lineHeight: 1,
+                        transition: "color 0.1s",
+                      }}
+                    >
+                      ★
+                    </button>
+                  ))}
+                </div>
+                <button
+                  disabled={curtainRating === 0}
+                  onClick={() => {
+                    if (!curtainRating) return;
+                    fetch(`/api/boards/${boardId}/rate`, {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({ rating: curtainRating }),
+                    })
+                      .then(() => setCurtainRatingSubmitted(true))
+                      .catch(() => setCurtainRatingSubmitted(true)); // optimistic: show thanks even on network error
+                  }}
+                  style={{
+                    background: curtainRating > 0 ? "#6366f1" : "rgba(255,255,255,0.08)",
+                    border: "none",
+                    borderRadius: 8,
+                    color: curtainRating > 0 ? "#fff" : "rgba(255,255,255,0.3)",
+                    padding: "10px 28px",
+                    fontSize: "0.9rem",
+                    fontWeight: 600,
+                    cursor: curtainRating > 0 ? "pointer" : "default",
+                    transition: "background 0.15s, color 0.15s",
+                    letterSpacing: "0.04em",
+                  }}
+                >
+                  Submit
+                </button>
+              </div>
+            )}
+
+            {/* Dismiss hint */}
+            <div style={{ fontSize: "0.72rem", color: "rgba(255,255,255,0.2)", letterSpacing: "0.04em" }}>
+              Click outside or wait 15 seconds to dismiss
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
