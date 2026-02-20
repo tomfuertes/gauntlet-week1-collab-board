@@ -3,6 +3,7 @@ import type { CSSProperties, ReactNode, ErrorInfo } from "react";
 import { Board } from "./components/Board";
 import { BoardList } from "./components/BoardList";
 import { AuthForm } from "./components/AuthForm";
+import { LandingPage } from "./components/LandingPage";
 import { ReplayViewer } from "./components/ReplayViewer";
 import { SpectatorView } from "./components/SpectatorView";
 import { LeaderboardPanel } from "./components/LeaderboardPanel";
@@ -165,6 +166,7 @@ export function App() {
 function AppContent() {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [loading, setLoading] = useState(true);
+  const [showAuth, setShowAuth] = useState(false);
   const [boardId, setBoardId] = useState<string | null>(parseBoardId);
   const [replayId, setReplayId] = useState<string | null>(parseReplayId);
   const [watchId, setWatchId] = useState<string | null>(parseWatchId);
@@ -253,7 +255,17 @@ function AppContent() {
   }
 
   if (!user) {
-    return <AuthForm onAuth={setUser} />;
+    if (showAuth) {
+      return (
+        <AuthForm
+          onAuth={(u) => {
+            setShowAuth(false);
+            setUser(u);
+          }}
+        />
+      );
+    }
+    return <LandingPage onStartImprov={() => setShowAuth(true)} />;
   }
 
   if (boardId) {
