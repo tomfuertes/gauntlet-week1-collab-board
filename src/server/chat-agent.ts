@@ -315,13 +315,12 @@ export class ChatAgent extends AIChatAgent<Bindings> {
   }
 
   /** Return a traced model for a specific request type.
-   *  Wraps the base model with D1 + Langfuse tracing middleware that captures
-   *  system prompt, token usage, and tool calls for each request. */
+   *  Wraps the base model with Langfuse tracing middleware that captures
+   *  full conversation I/O, token usage, and tool calls for each request. */
   private _getTracedModel(trigger: string, persona: string) {
     return wrapLanguageModel({
       model: this._getModel(),
       middleware: createTracingMiddleware(
-        this.env.DB,
         {
           boardId: this.name,
           trigger,

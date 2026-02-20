@@ -11,69 +11,15 @@ interface TraceContext {
   promptVersion: string;
 }
 
-/** Extract the system prompt string from a prompt messages array.
- *  In AI SDK v6, the system is always the first message with role === 'system'. */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function extractSystemPrompt(prompt: any[]): string {
-  const sys = prompt.find((m) => m.role === "system");
-  if (!sys) return "";
-  return typeof sys.content === "string" ? sys.content : JSON.stringify(sys.content);
-}
-
-/** Write a trace row to D1. Fire-and-forget safe - logs errors internally, never throws. */
-async function writeD1Trace(
-  db: D1Database,
-  ctx: TraceContext & {
-    ts: number;
-    durationMs: number;
-    inputTokens: number;
-    outputTokens: number;
-    systemPrompt: string;
-    messageCount: number;
-    toolCallsJson: string;
-    finishReason: string;
-    error?: string;
-  },
-): Promise<void> {
-  try {
-    await db
-      .prepare(
-        `INSERT INTO ai_traces
-         (board_id, ts, trigger, persona, model, prompt_version,
-          duration_ms, input_tokens, output_tokens, system_prompt,
-          message_count, tool_calls_json, finish_reason, error)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-      )
-      .bind(
-        ctx.boardId,
-        ctx.ts,
-        ctx.trigger,
-        ctx.persona,
-        ctx.model,
-        ctx.promptVersion,
-        ctx.durationMs,
-        ctx.inputTokens,
-        ctx.outputTokens,
-        ctx.systemPrompt,
-        ctx.messageCount,
-        ctx.toolCallsJson,
-        ctx.finishReason,
-        ctx.error ?? null,
-      )
-      .run();
-  } catch (err) {
-    // Never let trace writes surface to callers - observability must not affect reliability
-    console.error(JSON.stringify({ event: "trace:d1-error", boardId: ctx.boardId, error: String(err) }));
-  }
-}
-
 /** Create a Langfuse generation span and end it with results.
- *  Requires langfuse to be initialized (non-null). Fire-and-forget safe. */
+ *  Fire-and-forget safe - logs errors internally, never throws. */
 function recordLangfuseGeneration(
   lf: Langfuse,
   ctx: TraceContext & {
     startTime: Date;
-    systemPrompt: string;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    prompt: any[];
+    responseText: string;
     inputTokens: number;
     outputTokens: number;
     toolCallsJson: string;
@@ -91,8 +37,8 @@ function recordLangfuseGeneration(
       name: `${ctx.trigger}:${ctx.persona}`,
       model: ctx.model,
       startTime: ctx.startTime,
-      // Truncate system prompt for display - full version is in D1
-      input: ctx.systemPrompt.slice(0, 4000),
+      // Full conversation messages - Langfuse renders arrays nicely
+      input: ctx.prompt,
       metadata: { promptVersion: ctx.promptVersion, boardId: ctx.boardId },
     });
     const toolCalls = (() => {
@@ -102,8 +48,11 @@ function recordLangfuseGeneration(
         return [];
       }
     })();
+    const output: { text?: string; toolCalls?: unknown[] } = {};
+    if (ctx.responseText) output.text = ctx.responseText;
+    if (toolCalls.length > 0) output.toolCalls = toolCalls;
     generation.end({
-      output: toolCalls.length > 0 ? toolCalls : ctx.finishReason,
+      output: Object.keys(output).length > 0 ? output : ctx.finishReason,
       usage: { input: ctx.inputTokens, output: ctx.outputTokens, unit: "TOKENS" },
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       level: (ctx.error ? "ERROR" : "DEFAULT") as any,
@@ -119,18 +68,16 @@ function recordLangfuseGeneration(
 }
 
 /**
- * Creates a LanguageModelMiddleware that writes AI request traces to D1 and
- * optionally to Langfuse (if a Langfuse client is provided).
+ * Creates a LanguageModelMiddleware that writes AI request traces to Langfuse.
  *
  * KEY-DECISION 2026-02-19: wrapLanguageModel middleware chosen over LangSmith npm or
- * @microlabs/otel-cf-workers because: (1) zero new deps for D1 path - uses ai@6 already
- * installed, (2) no untested AIChatAgent + instrumentDO() interaction, (3) captures the
- * assembled system prompt (persona+gamemode+phase) which is the primary debugging target.
- * Langfuse v3 (fetch-based) added as optional cloud UI layer on top of D1.
- * See docs/sessions/langsmith-observability.md for full decision rationale.
+ * @microlabs/otel-cf-workers because: (1) zero new deps - uses ai@6 already installed,
+ * (2) no untested AIChatAgent + instrumentDO() interaction, (3) captures the assembled
+ * system prompt (persona+gamemode+phase) which is the primary debugging target.
+ * Langfuse v3 (fetch-based) provides full I/O capture for debugging tool calls and
+ * board quality. D1 ai_traces table removed - Langfuse is the sole observability layer.
  */
 export function createTracingMiddleware(
-  db: D1Database,
   ctx: TraceContext,
   langfuse?: Langfuse | null,
 ): LanguageModelMiddleware {
@@ -139,54 +86,55 @@ export function createTracingMiddleware(
 
     // Intercept non-streaming calls (reactive persona + director nudge use generateText)
     wrapGenerate: async ({ doGenerate, params }) => {
-      const startMs = Date.now();
       const startTime = new Date();
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const prompt = (params as any).prompt ?? [];
-      const systemPrompt = extractSystemPrompt(prompt);
-      const messageCount = prompt.filter((m: { role: string }) => m.role !== "system").length;
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       let result: any;
       try {
         result = await doGenerate();
       } catch (err) {
-        const row = {
-          ...ctx,
-          ts: Date.now(),
-          durationMs: Date.now() - startMs,
-          inputTokens: 0,
-          outputTokens: 0,
-          systemPrompt,
-          messageCount,
-          toolCallsJson: "[]",
-          finishReason: "error",
-          error: String(err),
-        };
-        writeD1Trace(db, row).catch(() => {});
-        if (langfuse) recordLangfuseGeneration(langfuse, { ...row, startTime });
+        if (langfuse) {
+          recordLangfuseGeneration(langfuse, {
+            ...ctx,
+            startTime,
+            prompt,
+            responseText: "",
+            inputTokens: 0,
+            outputTokens: 0,
+            toolCallsJson: "[]",
+            finishReason: "error",
+            error: String(err),
+          });
+        }
         throw err;
       }
 
       const toolCalls = Array.isArray(result?.content)
         ? result.content
             .filter((c: { type: string }) => c.type === "tool-call")
-            .map((c: { toolName: string; args: unknown }) => ({ name: c.toolName, args: c.args }))
+            .map((c: { toolName: string; input: unknown }) => ({ name: c.toolName, input: c.input }))
         : [];
-      const row = {
-        ...ctx,
-        ts: Date.now(),
-        durationMs: Date.now() - startMs,
-        inputTokens: result?.usage?.inputTokens ?? 0,
-        outputTokens: result?.usage?.outputTokens ?? 0,
-        systemPrompt,
-        messageCount,
-        toolCallsJson: JSON.stringify(toolCalls),
-        finishReason: result?.finishReason ?? "unknown",
-      };
+      const responseText = Array.isArray(result?.content)
+        ? result.content
+            .filter((c: { type: string }) => c.type === "text")
+            .map((c: { text: string }) => c.text)
+            .join("")
+        : "";
 
-      writeD1Trace(db, row).catch(() => {});
-      if (langfuse) recordLangfuseGeneration(langfuse, { ...row, startTime });
+      if (langfuse) {
+        recordLangfuseGeneration(langfuse, {
+          ...ctx,
+          startTime,
+          prompt,
+          responseText,
+          inputTokens: result?.usage?.inputTokens?.total ?? 0,
+          outputTokens: result?.usage?.outputTokens?.total ?? 0,
+          toolCallsJson: JSON.stringify(toolCalls),
+          finishReason: result?.finishReason ?? "unknown",
+        });
+      }
 
       return result;
     },
@@ -194,25 +142,26 @@ export function createTracingMiddleware(
     // Intercept streaming calls (main chat uses streamText). Tee the stream so we can
     // observe the finish event without blocking the client-facing stream.
     wrapStream: async ({ doStream, params }) => {
-      const startMs = Date.now();
       const startTime = new Date();
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const prompt = (params as any).prompt ?? [];
-      const systemPrompt = extractSystemPrompt(prompt);
-      const messageCount = prompt.filter((m: { role: string }) => m.role !== "system").length;
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const streamResult = (await doStream()) as any;
+
+      if (!langfuse) return streamResult;
+
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const [stream1, stream2]: [ReadableStream<any>, ReadableStream<any>] = streamResult.stream.tee();
 
-      // Consume stream2 in background to capture finish event, then write traces.
+      // Consume stream2 in background to capture finish event, then write trace.
       // stream1 is returned to the caller unchanged.
       (async () => {
-        const toolCalls: Array<{ name: string; args: unknown }> = [];
+        const toolCalls: Array<{ name: string; input: unknown }> = [];
         let inputTokens = 0;
         let outputTokens = 0;
         let finishReason = "unknown";
+        let responseText = "";
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const reader = (stream2 as ReadableStream<any>).getReader();
         try {
@@ -221,31 +170,31 @@ export function createTracingMiddleware(
             if (done) break;
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             const chunk = value as any;
+            if (chunk?.type === "text-delta") {
+              responseText += chunk.delta;
+            }
             if (chunk?.type === "tool-call") {
-              toolCalls.push({ name: chunk.toolName, args: chunk.args });
+              toolCalls.push({ name: chunk.toolName, input: chunk.input });
             }
             if (chunk?.type === "finish") {
               finishReason = chunk.finishReason ?? "unknown";
-              inputTokens = chunk.usage?.inputTokens ?? 0;
-              outputTokens = chunk.usage?.outputTokens ?? 0;
+              inputTokens = chunk.usage?.inputTokens?.total ?? 0;
+              outputTokens = chunk.usage?.outputTokens?.total ?? 0;
             }
           }
         } finally {
           reader.releaseLock();
         }
-        const row = {
+        recordLangfuseGeneration(langfuse, {
           ...ctx,
-          ts: Date.now(),
-          durationMs: Date.now() - startMs,
+          startTime,
+          prompt,
+          responseText,
           inputTokens,
           outputTokens,
-          systemPrompt,
-          messageCount,
           toolCallsJson: JSON.stringify(toolCalls),
           finishReason,
-        };
-        await writeD1Trace(db, row);
-        if (langfuse) recordLangfuseGeneration(langfuse, { ...row, startTime });
+        });
       })().catch((err) => {
         console.error(JSON.stringify({ event: "trace:stream-error", boardId: ctx.boardId, error: String(err) }));
       });
