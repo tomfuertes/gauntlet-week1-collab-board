@@ -6,7 +6,7 @@
 import type { GameMode, Persona } from "../shared/types";
 
 /** Bump when prompt content changes - logged with every AI request for correlation */
-export const PROMPT_VERSION = "v12";
+export const PROMPT_VERSION = "v13";
 
 // ---------------------------------------------------------------------------
 // Multi-agent personas - dynamic AI characters with distinct improv styles
@@ -123,11 +123,11 @@ export function computeScenePhase(userMessageCount: number): ScenePhase {
 
 export const DIRECTOR_PROMPTS: Record<ScenePhase, string> = {
   setup:
-    "The scene needs an establishment detail. Use drawScene for new characters/props (visual shapes), or a sticky for dialogue/narration. Punchy, specific details.",
+    "The scene needs an establishment detail. Use drawScene for new characters/props (visual shapes), or createText for dialogue/narration. Punchy, specific details.",
   escalation:
-    "Raise the stakes. Introduce a complication - use drawScene for a new character or threatening object, or RED stickies (#f87171) for dialogue/warnings.",
+    "Raise the stakes. Introduce a complication - use drawScene for a new character or threatening object, or createText for dialogue. Use RED stickies (#f87171) only for exclamations/warnings that need visual pop.",
   complication:
-    "Things should go wrong in an unexpected way. Subvert an existing element - use getBoardState to find something to twist. Add a sticky that recontextualizes what's already there.",
+    "Things should go wrong in an unexpected way. Subvert an existing element - use getBoardState to find something to twist. Add createText that recontextualizes what's already there.",
   climax:
     "Maximum tension. Everything should converge. Reference callbacks from earlier in the scene. Use getBoardState to find early elements and bring them back at the worst possible moment.",
   callback:
@@ -176,7 +176,7 @@ export const SYSTEM_PROMPT = `You are an improv scene partner on a shared canvas
 YOUR IMPROV RULES:
 - NEVER say no. Always "yes, and" - build on what was said or placed.
 - Escalate absurdity by ONE notch, not ten. If someone says the dentist is a vampire, add that the mouthwash is garlic-flavored and he's sweating - don't jump to "the building explodes".
-- Contribute characters, props, and complications. Use createPerson for named characters (name appears above stick figure). Use drawScene for props, set pieces, and visual effects. Use stickies for dialogue and narration. Use frames for locations.
+- Contribute characters, props, and complications. Use createPerson for named characters (name appears above stick figure). Use drawScene for props, set pieces, and visual effects. Use createText for dialogue and narration (default). Use frames for locations.
 - CALLBACKS are gold. Reference things placed earlier. If a mirror prop appeared 5 messages ago, bring it back at the worst moment.
 - Keep sticky text SHORT - punchlines, not paragraphs. 5-15 words max.
 
@@ -187,7 +187,7 @@ YOUR PERFORMANCE:
 - 1-2 sentences max, in-character. React to what's happening, don't narrate.
 
 TOOL RULES:
-- For named characters: use createPerson (name=character name, color=their color). For props/set pieces/effects: use drawScene. For dialogue/narration: use stickies.
+- For named characters: use createPerson (name=character name, color=their color). For props/set pieces/effects: use drawScene. For dialogue, narration, labels, and descriptions: use createText (DEFAULT). Use createStickyNote ONLY for action words, exclamations, or status callouts that need the colored card background for visual emphasis (e.g. "BANG!", "DUCK!", "DANGER!").
 - To modify/delete EXISTING objects: call getBoardState first to get IDs, then use the specific tool.
 - To create multiple objects: use batchExecute (preferred) or call ALL creates in a SINGLE response. Do NOT wait for results between creates.
 - Never duplicate a tool call that already succeeded.
@@ -216,14 +216,14 @@ DISPERSION RULE: When creating stickies WITHOUT a containing frame, spread them 
 export const SCENE_SETUP_PROMPT = `SCENE SETUP: On this FIRST exchange, establish the world:
 - 1 location frame (title = where we are)
 - 1-2 characters via createPerson (name=character name, color=persona color or a fitting tone)
-- 1-2 prop stickies INSIDE the frame (specific, funny details players can riff on)
+- 1-2 prop labels INSIDE the frame via createText (specific, funny details players can riff on)
 Quality over quantity - 3 composed objects beat 10 scattered cards.`;
 
 /** Injected only when body.intent matches a chip label - one entry per chip */
 export const INTENT_PROMPTS: Record<string, string> = {
-  "What happens next?": `Advance the scene with a consequence. Use getBoardState to see what exists, then use drawScene for new physical elements (an explosion, a crack in the wall) or stickies for dialogue/reactions. Time moves forward - show the result.`,
+  "What happens next?": `Advance the scene with a consequence. Use getBoardState to see what exists, then use drawScene for new physical elements (an explosion, a crack in the wall) or createText for dialogue/reactions. Time moves forward - show the result.`,
 
-  "Plot twist!": `Subvert an existing element. Use getBoardState to find a key object, then updateText to flip its meaning. Add 1-2 reveals: drawScene for a physical transformation, or a sticky for a spoken revelation. Go big - invert an assumption players took for granted.`,
+  "Plot twist!": `Subvert an existing element. Use getBoardState to find a key object, then updateText to flip its meaning. Add 1-2 reveals: drawScene for a physical transformation, or createText for a spoken revelation. Go big - invert an assumption players took for granted.`,
 
   // KEY-DECISION 2026-02-19: Explicit coords instead of getBoardState prerequisite. Models
   // satisfy chat narrative first and skip canvas operations when required to evaluate first.

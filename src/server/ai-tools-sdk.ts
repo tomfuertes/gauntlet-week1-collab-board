@@ -321,7 +321,10 @@ export function createSDKTools(stub: BoardStub, batchId?: string, ai?: Ai) {
   const baseTools = {
     // 1. createStickyNote
     createStickyNote: tool({
-      description: "Create a sticky note on the whiteboard with text content",
+      description:
+        "Create a sticky note (colored card) on the whiteboard. Use ONLY for action words, exclamations, " +
+        "or status callouts that benefit from the colored card background (e.g. 'BANG!', 'DUCK!', 'DANGER!'). " +
+        "For dialogue, narration, labels, and descriptions, use createText instead (it's the default for text content).",
       inputSchema: z.object({
         text: z.string().describe("The text content of the sticky note"),
         x: z.number().optional().describe("X position on the canvas (default: random 100-800)"),
@@ -692,7 +695,10 @@ export function createSDKTools(stub: BoardStub, batchId?: string, ai?: Ai) {
 
     // 12. createText
     createText: tool({
-      description: "Create a text label on the whiteboard - smaller than stickies, for labels, captions, and names.",
+      description:
+        "Create a text label on the whiteboard. DEFAULT for dialogue, narration, labels, descriptions, captions, " +
+        "character speech, scene text, and names. Prefer this over createStickyNote for virtually all text content. " +
+        "Only use createStickyNote when the colored card background adds visual meaning (action words, exclamations).",
       inputSchema: z.object({
         text: z.string().describe("The text content"),
         x: z.number().describe("X position on the canvas"),
