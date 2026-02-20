@@ -1,6 +1,6 @@
 # Prompt Improvement Plan
 
-*From orchestrator session 2026-02-19. Context: multi-provider models shipped, D1 tracing + Langfuse live, GPT-4o Mini as new default.*
+*From orchestrator session 2026-02-19. Context: multi-provider models shipped, D1 tracing + Langfuse live, Claude Haiku 4.5 as default.*
 
 ## Current State
 
@@ -17,7 +17,7 @@
 
 ## Phase 2: Lock the Model, Baseline the Experience
 
-- GPT-4o Mini as default (shipped) - one model, consistent behavior
+- Claude Haiku 4.5 as default (shipped) - one model, consistent behavior
 - Play 3-5 scenes. In Langfuse, tag good ones and bad ones
 - Identify patterns: when does it create random scattered objects vs. coherent scenes?
 
@@ -42,7 +42,7 @@ Current `prompts.ts` has LAYOUT RULES + persona identity + game mode block. Like
 
 ## Phase 5: Model-Specific Tuning (later)
 
-- Once GPT-4o Mini prompts are solid, test on Claude Haiku 4.5
+- Once Claude Haiku 4.5 prompts are solid, test on other models (GLM, GPT-4o Mini)
 - Different models respond differently to the same prompt
 - May need model-specific prompt variants (or just pick the best model)
 
