@@ -135,7 +135,7 @@ export function PerfOverlay({
     ["Objects", objectCount, colors.text],
     [
       "Msg age",
-      msgAge !== null ? `${msgAge}ms` : "--",
+      msgAge !== null ? (msgAge > 5000 ? ">5s" : `${msgAge}ms`) : "--",
       msgAge !== null ? statusColor(msgAge, TARGETS.msgAge, true) : colors.textDim,
     ],
     ["Users", cursorCount, colors.text],
