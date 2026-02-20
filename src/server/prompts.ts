@@ -6,7 +6,7 @@
 import type { GameMode, Persona } from "../shared/types";
 
 /** Bump when prompt content changes - logged with every AI request for correlation */
-export const PROMPT_VERSION = "v6";
+export const PROMPT_VERSION = "v7";
 
 // ---------------------------------------------------------------------------
 // Multi-agent personas - dynamic AI characters with distinct improv styles
@@ -46,21 +46,33 @@ export function buildPersonaSystemPrompt(
 export interface GameModeState {
   hatPrompt?: string;
   hatExchangeCount?: number;
+  hatPromptOffset?: number; // x-offset for new hat scene frame (avoids piling on previous scenes)
   yesAndCount?: number;
 }
 
 /** Build mode-specific system prompt block for injection into persona prompt */
 export function buildGameModePromptBlock(mode: GameMode, state: GameModeState): string {
   if (mode === "hat") {
+    const exchangeCount = state.hatExchangeCount ?? 0;
+    // KEY-DECISION 2026-02-19: Spatial offset on new hat prompts. When hatExchangeCount is 1,
+    // a new prompt just started. Offset x by 600*promptNumber so scenes don't pile on each other.
+    // Guard: only fire for 2nd+ prompt (offset > 50). First prompt already gets SCENE_SETUP_PROMPT;
+    // injecting spatialBlock there too would create conflicting instructions.
+    const isNewPrompt = exchangeCount === 1 && (state.hatPromptOffset ?? 50) > 50;
+    const spatialBlock = isNewPrompt
+      ? `\n- NEW SCENE AREA: This is a fresh prompt. Clear a new area - create a NEW frame at ` +
+        `x=${state.hatPromptOffset ?? 650} y=100 width=500 height=380. Place stickies INSIDE this new frame.`
+      : "";
     return (
       `[GAME MODE: SCENES FROM A HAT]\n` +
       `Current prompt: "${state.hatPrompt ?? ""}"\n` +
-      `Exchange ${state.hatExchangeCount ?? 0} of 5.\n` +
+      `Exchange ${exchangeCount} of 5.\n` +
       `RULES:\n` +
       `- Stay on the current prompt. Every response must relate to it.\n` +
       `- Keep scenes short and punchy - this is a quick-fire format.\n` +
       `- After 5 exchanges, the scene ends. Wrap up with a callback.\n` +
-      `- If a user sends [NEXT-HAT-PROMPT], acknowledge the prompt change and start fresh on the new prompt.`
+      `- If a user sends [NEXT-HAT-PROMPT], acknowledge the prompt change and start fresh on the new prompt.` +
+      spatialBlock
     );
   }
   if (mode === "yesand") {
@@ -181,7 +193,11 @@ LAYOUT RULES:
 - Default sizes: sticky=200x200, frame=440x280, rect=150x100. ALWAYS specify x,y for every create call.
 - Place stickies INSIDE frames: first at inset (10,40) within the frame, next at (220,40) side-by-side.
 
-COLORS: #fbbf24 yellow, #f87171 red, #4ade80 green, #60a5fa blue, #c084fc purple, #fb923c orange. Shapes: any hex fill, slightly darker stroke.`;
+COLORS: #fbbf24 yellow, #f87171 red, #4ade80 green, #60a5fa blue, #c084fc purple, #fb923c orange. Shapes: any hex fill, slightly darker stroke.
+
+PERSONA COLORS: SPARK always uses red (#f87171) for stickies. SAGE always uses green (#4ade80) for stickies.
+
+DISPERSION RULE: When creating stickies WITHOUT a containing frame, spread them across the canvas. Use varied x coordinates (50-1100) and y coordinates (60-700). Never place two stickies at the same position. Offset each new sticky by at least 200px from existing ones.`;
 
 // ---------------------------------------------------------------------------
 // Conditional prompt modules - injected per-message based on context
@@ -209,7 +225,9 @@ export const INTENT_PROMPTS: Record<string, string> = {
 
   "Plot twist!": `Subvert an existing element. Use getBoardState to find a key sticky, then updateText to flip its meaning. Add 1-2 new stickies revealing the twist. The mirror was a portal. The patient IS the dentist. Go big - invert an assumption players took for granted.`,
 
-  "Meanwhile, elsewhere...": `Create a NEW frame in empty canvas space, offset from existing content. Add 2-3 character/prop stickies inside it. This is a parallel scene happening simultaneously. Reference something from the main scene with a twist - same world, different angle.`,
+  // KEY-DECISION 2026-02-19: Explicit coords instead of getBoardState prerequisite. Models
+  // satisfy chat narrative first and skip canvas operations when required to evaluate first.
+  "Meanwhile, elsewhere...": `Create a NEW frame at x=650 y=100 width=480 height=400 (rightward parallel scene). Then create 2-3 character/prop stickies INSIDE it using absolute canvas coords: first sticky at x=660 y=150, second at x=870 y=150. This is a parallel scene happening simultaneously - same world, different angle. Do NOT call getBoardState first. Use batchExecute: frame + stickies in a single call.`,
 
   "A stranger walks in": `Create ONE character sticky with a fish-out-of-water description. Place it near the existing action. A food critic at pirate therapy. An IRS agent at the superhero HOA. Make them immediately disruptive to whatever is currently happening.`,
 

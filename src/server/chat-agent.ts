@@ -136,6 +136,7 @@ export class ChatAgent extends AIChatAgent<Bindings> {
   private _gameMode: GameMode = "freeform";
   private _hatPromptIndex = -1;
   private _hatExchangeCount = 0;
+  private _hatPromptCount = 0; // increments on each new hat prompt for spatial offset calculation
   private _yesAndCount = 0;
 
   // Per-message requested model (resets on DO hibernation - client re-sends model on each message)
@@ -546,11 +547,13 @@ export class ChatAgent extends AIChatAgent<Bindings> {
         const pick = getRandomHatPrompt(this._hatPromptIndex);
         this._hatPromptIndex = pick.index;
         this._hatExchangeCount = 0;
+        this._hatPromptCount++;
       } else if (this._hatPromptIndex === -1) {
         // First message in hat mode - pick initial prompt
         const pick = getRandomHatPrompt();
         this._hatPromptIndex = pick.index;
         this._hatExchangeCount = 0;
+        this._hatPromptCount = 0;
       }
       this._hatExchangeCount++;
     }
@@ -561,9 +564,13 @@ export class ChatAgent extends AIChatAgent<Bindings> {
     }
 
     // Build game mode prompt block
+    // Hat prompt spatial offset: each new prompt gets x+=600 so scenes don't pile up.
+    // Clamped to canvas right edge (1150 - 500 frame width = 650 max x).
+    const hatXOffset = Math.min(50 + this._hatPromptCount * 600, 650);
     const gameModeState: GameModeState = {
       hatPrompt: this._hatPromptIndex >= 0 ? HAT_PROMPTS[this._hatPromptIndex] : undefined,
       hatExchangeCount: this._hatExchangeCount,
+      hatPromptOffset: hatXOffset,
       yesAndCount: this._yesAndCount,
     };
     const gameModeBlock = buildGameModePromptBlock(this._gameMode, gameModeState);
@@ -716,6 +723,9 @@ export class ChatAgent extends AIChatAgent<Bindings> {
       // Ensure active persona's message has the [NAME] prefix (LLMs sometimes forget)
       this._ensurePersonaPrefix(activePersona.name);
 
+      // Enforce game mode rules (e.g. Yes-And prefix) after persona prefix is in place
+      this._enforceGameModeRules(activePersona.name);
+
       // Trigger reactive persona to "yes, and" the active persona's response
       this.ctx.waitUntil(
         this._triggerReactivePersona(activeIndex, personas).catch((err: unknown) => {
@@ -814,6 +824,53 @@ export class ChatAgent extends AIChatAgent<Bindings> {
         console.error(
           JSON.stringify({
             event: "persona:prefix:persist-error",
+            boardId: this.name,
+            error: String(err),
+          }),
+        );
+      }),
+    );
+  }
+
+  /** Enforce game mode rules on the last assistant message via post-processing.
+   *  For Yes-And Chain mode: prepend "Yes, and " after the persona prefix if missing.
+   *  Runs after _ensurePersonaPrefix so the prefix is already in place. */
+  private _enforceGameModeRules(personaName: string) {
+    if (this._gameMode !== "yesand") return;
+
+    const lastMsg = this.messages[this.messages.length - 1];
+    if (!lastMsg || lastMsg.role !== "assistant") return;
+
+    const firstTextPart = lastMsg.parts.find((p) => p.type === "text");
+    if (!firstTextPart) return;
+
+    // After persona prefix, check if the response starts with "Yes, and" (case-insensitive)
+    const prefix = `[${personaName}] `;
+    const textAfterPrefix = firstTextPart.text.startsWith(prefix)
+      ? firstTextPart.text.slice(prefix.length)
+      : firstTextPart.text;
+
+    if (/^yes,?\s+and/i.test(textAfterPrefix)) return; // already correct
+
+    // Prepend "Yes, and " after the persona prefix
+    const newText = firstTextPart.text.startsWith(prefix)
+      ? `${prefix}Yes, and ${textAfterPrefix}`
+      : `Yes, and ${firstTextPart.text}`;
+
+    let patched = false;
+    const newParts = lastMsg.parts.map((part) => {
+      if (!patched && part.type === "text") {
+        patched = true;
+        return { ...part, text: newText };
+      }
+      return part;
+    });
+    this.messages[this.messages.length - 1] = { ...lastMsg, parts: newParts };
+    this.ctx.waitUntil(
+      this.persistMessages(this.messages).catch((err: unknown) => {
+        console.error(
+          JSON.stringify({
+            event: "game-mode-rules:persist-error",
             boardId: this.name,
             error: String(err),
           }),
@@ -1036,6 +1093,7 @@ export class ChatAgent extends AIChatAgent<Bindings> {
     const reactiveGameModeState: GameModeState = {
       hatPrompt: this._hatPromptIndex >= 0 ? HAT_PROMPTS[this._hatPromptIndex] : undefined,
       hatExchangeCount: this._hatExchangeCount,
+      hatPromptOffset: Math.min(50 + this._hatPromptCount * 600, 650),
       yesAndCount: this._yesAndCount,
     };
     const reactiveGameModeBlock = buildGameModePromptBlock(this._gameMode, reactiveGameModeState);
@@ -1246,6 +1304,7 @@ export class ChatAgent extends AIChatAgent<Bindings> {
       const directorGameModeState: GameModeState = {
         hatPrompt: this._hatPromptIndex >= 0 ? HAT_PROMPTS[this._hatPromptIndex] : undefined,
         hatExchangeCount: this._hatExchangeCount,
+        hatPromptOffset: Math.min(50 + this._hatPromptCount * 600, 650),
         yesAndCount: this._yesAndCount,
       };
       const directorGameModeBlock = buildGameModePromptBlock(this._gameMode, directorGameModeState);
