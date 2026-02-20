@@ -534,6 +534,16 @@ export function Board({
   // Bulk drag state
   const dragStartPositionsRef = useRef<Map<string, { x: number; y: number }>>(new Map());
 
+  // --- SFX visual burst state (must be before useWebSocket which references the callback) ---
+  const [sfxBursts, setSfxBursts] = useState<Array<{ id: string; emoji: string; label: string; x: number; y: number }>>(
+    [],
+  );
+  const onSfxReceived = useCallback((effect: string, emoji: string, label: string, x: number, y: number) => {
+    const burstId = `${effect}-${Date.now()}`;
+    setSfxBursts((prev) => [...prev, { id: burstId, emoji, label, x, y }]);
+    setTimeout(() => setSfxBursts((prev) => prev.filter((b) => b.id !== burstId)), 1800);
+  }, []);
+
   const {
     connectionState,
     initialized,
@@ -551,7 +561,17 @@ export function Board({
     patchObjectLocal,
     batchUndo,
     lastServerMessageAt,
-  } = useWebSocket(boardId, onAnimatedUpdate, onEffect, onSequence, onSpotlight, onBlackout);
+  } = useWebSocket(boardId, onAnimatedUpdate, onEffect, onSequence, onSpotlight, onBlackout, onSfxReceived);
+
+  const handleSfxSend = useCallback(
+    (effectId: string) => {
+      // Send at canvas center (adjusted for pan/zoom)
+      const cx = (window.innerWidth / 2 - stagePosRef.current.x) / scaleRef.current;
+      const cy = (window.innerHeight / 2 - stagePosRef.current.y) / scaleRef.current;
+      send({ type: "sfx", effect: effectId, x: cx, y: cy });
+    },
+    [send],
+  );
   // Keep ref current so onSequence's setTimeout callbacks always use the latest patchObjectLocal
   patchObjectLocalRef.current = patchObjectLocal;
 
@@ -2741,9 +2761,27 @@ export function Board({
           }}
           onPostcard={handleOpenPostcard}
           onBlackout={onBlackout}
+          onSfx={handleSfxSend}
           isMobile={isMobile}
         />
       )}
+
+      {/* SFX visual bursts - DOM overlay positioned via canvas coordinates */}
+      {sfxBursts.map((burst) => (
+        <div
+          key={burst.id}
+          className="cb-sfx-burst"
+          style={{
+            left: burst.x * scaleRef.current + stagePosRef.current.x,
+            top: burst.y * scaleRef.current + stagePosRef.current.y,
+          }}
+        >
+          <div style={{ fontSize: "3.5rem", lineHeight: 1 }}>{burst.emoji}</div>
+          <div style={{ fontSize: "1rem", fontWeight: 700, color: "#fff", textShadow: "0 2px 8px rgba(0,0,0,0.8)" }}>
+            {burst.label}
+          </div>
+        </div>
+      ))}
 
       {/* Tap-to-create menu: shown on single-tap on empty canvas (mobile only) */}
       {isMobile && tapMenuPos && (

@@ -153,6 +153,23 @@
   z-index: 50;
 }
 
+/* Sound Board / Foley Artist - SFX burst overlay: pops in, holds, fades */
+@keyframes cb-sfx-burst {
+  0% { opacity: 1; transform: translate(-50%, -50%) scale(0); }
+  12% { opacity: 1; transform: translate(-50%, -50%) scale(1.2); }
+  20% { opacity: 1; transform: translate(-50%, -50%) scale(1.0); }
+  72% { opacity: 1; transform: translate(-50%, -50%) scale(1.0); }
+  100% { opacity: 0; transform: translate(-50%, -50%) scale(0.85); }
+}
+
+.cb-sfx-burst {
+  position: absolute;
+  pointer-events: none;
+  text-align: center;
+  animation: cb-sfx-burst 1.8s ease-out forwards;
+  z-index: 48;
+}
+
 /* Toolbar button hover - CSS replaces useState for perf (avoids re-render on hover) */
 .cb-tool-btn:hover:not([data-disabled]):not([data-active]) {
   background: rgba(99, 102, 241, 0.15) !important;

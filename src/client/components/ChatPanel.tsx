@@ -64,6 +64,7 @@ const TOOL_ICONS: Record<ToolName, string> = {
   spotlight: "\u{1F526}",
   blackout: "\u{1F319}",
   drawScene: "\u{1F3AD}",
+  play_sfx: "\u{1F3B5}",
   batchExecute: "\u{26A1}",
 };
 
@@ -88,6 +89,7 @@ const TOOL_LABELS: Record<ToolName, string> = {
   spotlight: "Activating spotlight",
   blackout: "Scene blackout",
   drawScene: "Drawing scene",
+  play_sfx: "Playing sound effect",
   batchExecute: "Executing batch",
 };
 

@@ -992,6 +992,37 @@ export function createSDKTools(stub: BoardStub, batchId?: string, ai?: Ai, stora
         };
       }),
     }),
+
+    // 20. play_sfx
+    play_sfx: tool({
+      description:
+        "Play a sound effect on the canvas for dramatic emphasis. " +
+        "rimshot: after a punchline. record-scratch: surprising reveal. thunder: incoming drama. " +
+        "sad-trombone: failure or disappointment. applause: triumph or bow. doorbell: visitor arriving. " +
+        "dramatic-sting: plot twist. crickets: awkward silence. Use sparingly - 1 per response max.",
+      inputSchema: z.object({
+        effect: z
+          .enum([
+            "rimshot",
+            "record-scratch",
+            "thunder",
+            "sad-trombone",
+            "applause",
+            "doorbell",
+            "dramatic-sting",
+            "crickets",
+          ])
+          .describe("Sound effect ID"),
+        x: z.number().optional().describe("X position for the visual burst (default: canvas center 600)"),
+        y: z.number().optional().describe("Y position for the visual burst (default: canvas center 420)"),
+      }),
+      execute: instrumentExecute("play_sfx", async ({ effect, x, y }) => {
+        const result = await stub.mutate({ type: "sfx", effect, x: x ?? 600, y: y ?? 420 });
+        if (!result.ok) return { error: result.error };
+        console.debug(JSON.stringify({ event: "ai:sfx", effect, x: x ?? 600, y: y ?? 420 }));
+        return { played: effect };
+      }),
+    }),
   };
 
   // Registry of execute functions from tools 1-13, keyed by name.
@@ -1046,6 +1077,7 @@ export function createSDKTools(stub: BoardStub, batchId?: string, ai?: Ai, stora
                   "spotlight",
                   "blackout",
                   "drawScene",
+                  "play_sfx",
                 ])
                 .describe("Tool name to execute"),
               args: z.record(z.string(), z.unknown()).describe("Arguments for the tool (same as calling it directly)"),

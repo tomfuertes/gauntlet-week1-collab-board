@@ -1,8 +1,18 @@
-import React from "react";
+import React, { useState } from "react";
 import type { BoardObject, BoardObjectProps } from "@shared/types";
+import { SFX_EFFECTS } from "@shared/types";
 import { colors } from "../theme";
 
-export type ToolMode = "select" | "sticky" | "person" | "rect" | "circle" | "connector" | "text" | "frame" | "spotlight";
+export type ToolMode =
+  | "select"
+  | "sticky"
+  | "person"
+  | "rect"
+  | "circle"
+  | "connector"
+  | "text"
+  | "frame"
+  | "spotlight";
 
 export const COLOR_PRESETS = [
   "#fbbf24", // amber (sticky default)
@@ -34,6 +44,7 @@ export interface ToolbarProps {
   onZoomReset: () => void;
   onPostcard: () => void;
   onBlackout: () => void;
+  onSfx: (effectId: string) => void;
   isMobile?: boolean;
 }
 
@@ -54,8 +65,11 @@ export function Toolbar({
   onZoomReset,
   onPostcard,
   onBlackout,
+  onSfx,
   isMobile,
 }: ToolbarProps) {
+  const [sfxOpen, setSfxOpen] = useState(false);
+
   // Color picker state
   const firstId = selectedIds.size > 0 ? [...selectedIds][0] : undefined;
   const firstObj = firstId ? objects.get(firstId) : undefined;
@@ -174,7 +188,65 @@ export function Toolbar({
           onClick={() => setToolMode((m) => (m === "spotlight" ? "select" : "spotlight"))}
         />
         <ToolIconBtn icon={<IconBlackout />} title="Blackout scene transition" active={false} onClick={onBlackout} />
+        <ToolbarSep />
+        <ToolIconBtn
+          icon={<IconSfx />}
+          title="Sound Board - Foley effects"
+          active={sfxOpen}
+          onClick={() => setSfxOpen((o) => !o)}
+        />
       </div>
+
+      {/* SFX palette - 2x4 grid above toolbar */}
+      {sfxOpen && (
+        <div
+          style={{
+            position: "absolute",
+            bottom: TOOLBAR_H + 12,
+            right: 16,
+            zIndex: 22,
+            background: colors.overlay,
+            border: `1px solid ${colors.border}`,
+            borderRadius: 12,
+            backdropFilter: "blur(12px)",
+            WebkitBackdropFilter: "blur(12px)",
+            boxShadow: "0 4px 24px rgba(0,0,0,0.5)",
+            padding: "8px",
+            display: "grid",
+            gridTemplateColumns: "repeat(4, 1fr)",
+            gap: 4,
+          }}
+        >
+          {SFX_EFFECTS.map((sfx) => (
+            <button
+              key={sfx.id}
+              title={sfx.label}
+              onClick={() => {
+                onSfx(sfx.id);
+                setSfxOpen(false);
+              }}
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: 3,
+                padding: "6px 8px",
+                background: "transparent",
+                border: `1px solid ${colors.border}`,
+                borderRadius: 8,
+                color: colors.text,
+                cursor: "pointer",
+                fontSize: "0.625rem",
+                minWidth: 60,
+              }}
+            >
+              <span style={{ fontSize: "1.5rem", lineHeight: 1 }}>{sfx.emoji}</span>
+              <span style={{ color: colors.textMuted, textAlign: "center", lineHeight: 1.2 }}>{sfx.label}</span>
+            </button>
+          ))}
+        </div>
+      )}
 
       {/* Arrow style picker - shown above toolbar when connectors are selected */}
       {showArrowPicker && (
@@ -623,6 +695,26 @@ function IconBlackout() {
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
       {/* Moon/crescent - theatrical "lights out" icon */}
       <path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z" />
+    </svg>
+  );
+}
+
+function IconSfx() {
+  return (
+    <svg
+      width="20"
+      height="20"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      {/* Musical note with sound waves */}
+      <path d="M9 18V5l12-2v13" />
+      <circle cx="6" cy="18" r="3" />
+      <circle cx="18" cy="16" r="3" />
     </svg>
   );
 }
