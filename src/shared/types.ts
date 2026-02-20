@@ -227,6 +227,14 @@ export interface ReplayEvent {
 /** Result from Board DO mutations (mutate RPC) */
 export type MutateResult = { ok: boolean; error?: string };
 
+/** Scene-scoped character relationship for narrative coherence tracking */
+export interface CharacterRelationship {
+  entityA: string;
+  entityB: string;
+  descriptor: string;
+  updatedAt: number;
+}
+
 /**
  * Minimal interface for the Board DO stub methods used by AI tools.
  * mutate() intentionally narrows to BoardMutation (vs WSClientMessage in Board DO)

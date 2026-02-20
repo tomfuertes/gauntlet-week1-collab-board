@@ -1,7 +1,14 @@
 import { tool } from "ai";
 import { z } from "zod";
 import { AI_USER_ID } from "../shared/types";
-import type { BoardObject, BoardObjectProps, BoardObjectUpdate, MutateResult, BoardStub } from "../shared/types";
+import type {
+  BoardObject,
+  BoardObjectProps,
+  BoardObjectUpdate,
+  MutateResult,
+  BoardStub,
+  CharacterRelationship,
+} from "../shared/types";
 import { computeConnectedLineGeometry, getEdgePoint, type ObjectBounds } from "../shared/connection-geometry";
 
 // ---------------------------------------------------------------------------
@@ -339,7 +346,7 @@ export async function generateImageDataUrl(ai: Ai, prompt: string): Promise<stri
 // ---------------------------------------------------------------------------
 
 /** Create the full AI SDK tool registry bound to a specific Board DO stub */
-export function createSDKTools(stub: BoardStub, batchId?: string, ai?: Ai) {
+export function createSDKTools(stub: BoardStub, batchId?: string, ai?: Ai, storage?: DurableObjectStorage) {
   // Rotate through AI_PALETTE per streamText call so multi-entity scenes get distinct colors.
   // Only used as fallback when the LLM doesn't specify an explicit color.
   let paletteIndex = 0;
@@ -761,7 +768,45 @@ export function createSDKTools(stub: BoardStub, batchId?: string, ai?: Ai) {
       }),
     }),
 
-    // 14. drawScene
+    // 14. setRelationship
+    setRelationship: tool({
+      description:
+        "Record or update a relationship between two characters or entities in the scene. " +
+        "Call when characters first meaningfully interact or when a relationship changes. " +
+        "Max 1 setRelationship call per exchange. Use character names as they appear on canvas.",
+      inputSchema: z.object({
+        entityA: z.string().describe("First character/entity name"),
+        entityB: z.string().describe("Second character/entity name"),
+        descriptor: z
+          .string()
+          .describe("Relationship descriptor (e.g. 'rivals', 'reluctant allies', 'secretly siblings')"),
+      }),
+      execute: instrumentExecute("setRelationship", async ({ entityA, entityB, descriptor }) => {
+        if (!storage) return { error: "Narrative storage unavailable" };
+
+        const existing = (await storage.get<CharacterRelationship[]>("narrative:relationships")) ?? [];
+
+        // Upsert: match on pair in either order
+        const idx = existing.findIndex(
+          (r) => (r.entityA === entityA && r.entityB === entityB) || (r.entityA === entityB && r.entityB === entityA),
+        );
+
+        const updated: CharacterRelationship = { entityA, entityB, descriptor, updatedAt: Date.now() };
+        let next: CharacterRelationship[];
+        if (idx !== -1) {
+          next = [...existing];
+          next[idx] = updated;
+        } else {
+          // Cap at 12 relationships (keep most recent)
+          next = [...existing.slice(-11), updated];
+        }
+
+        await storage.put("narrative:relationships", next);
+        return { relationship: `${entityA} & ${entityB}: ${descriptor}` };
+      }),
+    }),
+
+    // 15. drawScene
     drawScene: tool({
       description:
         "Compose a visual character or object from 2-10 shapes in a bounding box. Uses proportional " +
