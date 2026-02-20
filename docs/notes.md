@@ -84,6 +84,8 @@ Historical decisions (pre-migration, for reference):
 - Feb 19: GLM-4.7-flash over Mistral Small 3.1 - Mistral ignores tool_choice:auto in streaming, GLM native + 6x cheaper
 - Feb 19: Killed Contextual AI Actions - clustering via LLM unreliable
 - Feb 19: Killed Intent Preview - 3x cost vs batch undo, improv wants immediacy
+- Feb 19: Langfuse over LangSmith for AI observability - LangSmith `wrapAISDK` unverified on CF Workers + AIChatAgent DO; Langfuse v3 is fetch-based (confirmed edge-safe). LANGCHAIN_API_KEY (= LangSmith key) intentionally unused. D1 traces as primary, Langfuse as optional cloud UI layer.
+- Feb 19: `wrapLanguageModel` middleware over LangSmith npm or `@microlabs/otel-cf-workers` - zero new deps for D1 path, no untested AIChatAgent + instrumentDO() interaction, captures assembled system prompt (persona+gamemode+phase)
 
 ## AI Model Pricing (Workers AI, $0.011/1K neurons)
 
@@ -93,7 +95,7 @@ Historical decisions (pre-migration, for reference):
 | GPT-OSS-20B | $0.20 | $0.30 | $0.04 | Good (agentic tuning) | Cheapest output. |
 | Mistral Small 3.1 24B | $0.35 | $0.56 | $0.08 | Broken (needs shim) | Previous default. |
 | Llama 4 Scout 17B MoE | $0.27 | $0.85 | $0.06 | Supported | Most expensive output. |
-| Claude Haiku 4.5 (Anthropic) | $1.00 | $5.00 | $0.26 | Excellent | Behind ENABLE_ANTHROPIC_API toggle. |
+| Claude Haiku 4.5 (Anthropic) | $1.00 | $5.00 | $0.26 | Excellent | Requires ANTHROPIC_API_KEY secret. |
 
 *Scene estimate: ~200K input + ~12K output tokens per 20-turn scene. `stopWhen: stepCountIs(5)` caps round-trips. $5/day budget per DO.*
 

@@ -139,17 +139,57 @@ export const GAME_MODES = [
 ] as const;
 
 /** Short ID used as the client-side state value for the model selector */
-export type AIModel = "glm-4.7-flash" | "gpt-oss-20b" | "llama-4-scout" | "mistral-small-3.1";
+export type AIModel =
+  | "glm-4.7-flash"
+  | "gpt-oss-20b"
+  | "llama-4-scout"
+  | "mistral-small-3.1"
+  | "gpt-4o-mini"
+  | "gpt-4o"
+  | "claude-haiku-4.5"
+  | "claude-sonnet-4";
 
-/** All selectable Workers AI models. modelId is the full CF path used in createWorkersAI. */
+export type AIModelProvider = "workers-ai" | "openai" | "anthropic";
+
+/** All selectable AI models across providers. modelId is the provider-specific model identifier. */
 export const AI_MODELS = [
-  { id: "glm-4.7-flash" as const, label: "GLM 4.7 Flash", modelId: "@cf/zai-org/glm-4.7-flash" },
-  { id: "gpt-oss-20b" as const, label: "GPT-OSS 20B", modelId: "@cf/openai/gpt-oss-20b" },
-  { id: "llama-4-scout" as const, label: "Llama 4 Scout", modelId: "@cf/meta/llama-4-scout-17b-16e-instruct" },
+  {
+    id: "glm-4.7-flash" as const,
+    label: "GLM 4.7 Flash",
+    provider: "workers-ai" as const,
+    modelId: "@cf/zai-org/glm-4.7-flash",
+  },
+  {
+    id: "gpt-oss-20b" as const,
+    label: "GPT-OSS 20B",
+    provider: "workers-ai" as const,
+    modelId: "@cf/openai/gpt-oss-20b",
+  },
+  {
+    id: "llama-4-scout" as const,
+    label: "Llama 4 Scout",
+    provider: "workers-ai" as const,
+    modelId: "@cf/meta/llama-4-scout-17b-16e-instruct",
+  },
   {
     id: "mistral-small-3.1" as const,
     label: "Mistral Small 3.1",
+    provider: "workers-ai" as const,
     modelId: "@cf/mistralai/mistral-small-3.1-24b-instruct",
+  },
+  { id: "gpt-4o-mini" as const, label: "GPT-4o Mini", provider: "openai" as const, modelId: "gpt-4o-mini" },
+  { id: "gpt-4o" as const, label: "GPT-4o", provider: "openai" as const, modelId: "gpt-4o" },
+  {
+    id: "claude-haiku-4.5" as const,
+    label: "Claude Haiku 4.5",
+    provider: "anthropic" as const,
+    modelId: "claude-haiku-4-5-20251001",
+  },
+  {
+    id: "claude-sonnet-4" as const,
+    label: "Claude Sonnet 4",
+    provider: "anthropic" as const,
+    modelId: "claude-sonnet-4-20250514",
   },
 ] as const;
 

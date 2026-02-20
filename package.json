@@ -21,15 +21,19 @@
     "demo:e2e": "scripts/demo.sh e2e",
     "health": "node scripts/health.js",
     "prepare": "git config core.hooksPath scripts/hooks",
-    "format:check": "prettier --check \"src/**/*.{ts,tsx}\""
+    "format:check": "prettier --check \"src/**/*.{ts,tsx}\"",
+    "traces": "scripts/traces.sh",
+    "traces:remote": "TRACES_ENV=remote scripts/traces.sh"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^3.0.45",
+    "@ai-sdk/openai": "^3.0.30",
     "@cloudflare/ai-chat": "^0.1.2",
     "agents": "^0.5.0",
     "ai": "^6.0.91",
     "hono": "^4.11.10",
     "konva": "^10.2.0",
+    "langfuse": "^3.38.6",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "react-konva": "^19.2.2",

@@ -3,7 +3,9 @@ import { streamText, generateText, convertToModelMessages, stepCountIs } from "a
 import type { UIMessage } from "ai";
 import { createWorkersAI } from "workers-ai-provider";
 import { createAnthropic } from "@ai-sdk/anthropic";
+import { createOpenAI } from "@ai-sdk/openai";
 import { createSDKTools, isPlainObject, rectsOverlap } from "./ai-tools-sdk";
+import { createTracingMiddleware, wrapLanguageModel, Langfuse } from "./tracing-middleware";
 import {
   SYSTEM_PROMPT,
   DIRECTOR_PROMPTS,
@@ -112,6 +114,10 @@ export class ChatAgent extends AIChatAgent<Bindings> {
   private _dailySpendNeurons = 0;
   private _dailySpendDate = ""; // YYYY-MM-DD UTC, resets when date changes
 
+  // Langfuse client - lazily initialized on first request, null if env vars absent.
+  // undefined = not yet checked; null = env vars missing, skip; Langfuse = active.
+  private _langfuseClient: Langfuse | null | undefined = undefined;
+
   /** Check if daily AI budget is exhausted. Returns true if over budget. */
   private _isOverBudget(): boolean {
     const today = new Date().toISOString().slice(0, 10);
@@ -177,22 +183,29 @@ export class ChatAgent extends AIChatAgent<Bindings> {
     }
   }
 
-  private _useAnthropic(): boolean {
-    // Cast: wrangler types generate literal "false" but value is overridable at runtime
-    return String(this.env.ENABLE_ANTHROPIC_API) === "true" && !!this.env.ANTHROPIC_API_KEY;
+  /** Resolve the selected model entry from AI_MODELS registry */
+  private _resolveModelEntry() {
+    return this._requestedModel ? AI_MODELS.find((m) => m.id === this._requestedModel) : undefined;
   }
 
-  /** Choose model: Haiku if Anthropic enabled, else per-message requested model or env default */
+  /** Choose model based on provider routing: workers-ai, openai, or anthropic */
   private _getModel() {
-    if (this._useAnthropic()) {
-      return createAnthropic({ apiKey: this.env.ANTHROPIC_API_KEY })("claude-haiku-4-5-20251001");
+    const entry = this._resolveModelEntry();
+    const provider = entry?.provider ?? "workers-ai";
+
+    // OpenAI provider
+    if (provider === "openai" && this.env.OPENAI_API_KEY) {
+      return createOpenAI({ apiKey: this.env.OPENAI_API_KEY })(entry!.modelId);
     }
-    // Prefer the per-message requested model; fall back to env default
-    const modelId = this._requestedModel
-      ? (AI_MODELS.find((m) => m.id === this._requestedModel)?.modelId ??
-        this.env.WORKERS_AI_MODEL ??
-        "@cf/mistralai/mistral-small-3.1-24b-instruct")
-      : this.env.WORKERS_AI_MODEL || "@cf/mistralai/mistral-small-3.1-24b-instruct";
+
+    // Anthropic provider
+    if (provider === "anthropic" && this.env.ANTHROPIC_API_KEY) {
+      return createAnthropic({ apiKey: this.env.ANTHROPIC_API_KEY })(entry!.modelId);
+    }
+
+    // Workers AI provider (default fallback)
+    const modelId =
+      entry?.provider === "workers-ai" ? entry.modelId : this.env.WORKERS_AI_MODEL || "@cf/zai-org/glm-4.7-flash";
     // workers-ai-provider v3.1.1 drops tool_choice from buildRunInputs (only forwards `tools`).
     // All Workers AI models benefit from explicit tool_choice:"auto"; shim applies universally.
     const ai = this.env.AI as any;
@@ -215,17 +228,62 @@ export class ChatAgent extends AIChatAgent<Bindings> {
     return (createWorkersAI({ binding: shimmedBinding as any }) as any)(modelId);
   }
 
+  /** Lazily initialize Langfuse client. Returns null if env vars not configured.
+   *  Cached per DO instance (survives across requests until hibernation).
+   *
+   *  KEY-DECISION 2026-02-19: langfuse v3 (not @langfuse/otel) chosen for CF Workers compat.
+   *  @langfuse/otel depends on NodeTracerProvider which uses Node.js APIs blocked in Workers.
+   *  langfuse v3 is fetch-based - works in edge runtimes. flushAt:1 + flushInterval:0 ensures
+   *  traces flush immediately per request (no background timer accumulating in the DO). */
+  private _getLangfuse(): Langfuse | null {
+    if (this._langfuseClient !== undefined) return this._langfuseClient as Langfuse | null;
+    if (!this.env.LANGFUSE_PUBLIC_KEY || !this.env.LANGFUSE_SECRET_KEY) {
+      this._langfuseClient = null;
+      return null;
+    }
+    const client = new Langfuse({
+      publicKey: this.env.LANGFUSE_PUBLIC_KEY,
+      secretKey: this.env.LANGFUSE_SECRET_KEY,
+      baseUrl: this.env.LANGFUSE_BASE_URL || "https://cloud.langfuse.com",
+      flushAt: 1,
+      flushInterval: 0,
+    });
+    this._langfuseClient = client;
+    console.debug(JSON.stringify({ event: "langfuse:init", boardId: this.name }));
+    return client;
+  }
+
+  /** Return a traced model for a specific request type.
+   *  Wraps the base model with D1 + Langfuse tracing middleware that captures
+   *  system prompt, token usage, and tool calls for each request. */
+  private _getTracedModel(trigger: string, persona: string) {
+    return wrapLanguageModel({
+      model: this._getModel(),
+      middleware: createTracingMiddleware(
+        this.env.DB,
+        {
+          boardId: this.name,
+          trigger,
+          persona,
+          model: this._getModelName(),
+          promptVersion: PROMPT_VERSION,
+        },
+        this._getLangfuse(),
+      ),
+    });
+  }
+
   /** Model name for logging (avoids exposing full model object) */
   private _getModelName(): string {
-    if (this._useAnthropic()) return "claude-haiku-4.5";
-    if (this._requestedModel) {
-      return (
-        AI_MODELS.find((m) => m.id === this._requestedModel)
-          ?.modelId.split("/")
-          .pop() || this._requestedModel
-      );
-    }
+    const entry = this._resolveModelEntry();
+    if (entry) return entry.id;
     return (this.env.WORKERS_AI_MODEL || "glm-4.7-flash").split("/").pop() || "workers-ai";
+  }
+
+  /** Check if current model is a Workers AI model (for budget/neuron tracking) */
+  private _isWorkersAI(): boolean {
+    const entry = this._resolveModelEntry();
+    return !entry || entry.provider === "workers-ai";
   }
 
   /** Structured log: AI request started */
@@ -254,7 +312,7 @@ export class ChatAgent extends AIChatAgent<Bindings> {
   ) {
     // Rough neuron tracking: ~2K input + ~500 output per step (conservative estimate).
     // Actual usage varies by model/context but this prevents runaway spend.
-    if (!this._useAnthropic()) {
+    if (this._isWorkersAI()) {
       this._trackUsage(steps * 2000, steps * 500);
     }
     console.debug(
@@ -327,7 +385,7 @@ export class ChatAgent extends AIChatAgent<Bindings> {
     });
 
     // Daily spend cap: reject if over budget (Workers AI only - Anthropic has its own billing)
-    if (!this._useAnthropic() && this._isOverBudget()) {
+    if (this._isWorkersAI() && this._isOverBudget()) {
       this._isGenerating = false;
       console.warn(
         JSON.stringify({
@@ -606,7 +664,7 @@ export class ChatAgent extends AIChatAgent<Bindings> {
 
     try {
       const result = streamText({
-        model: this._getModel(),
+        model: this._getTracedModel("chat", activePersona.name),
         system: systemPrompt,
         messages: await convertToModelMessages(sanitizeMessages(this.messages)),
         tools,
@@ -891,7 +949,7 @@ export class ChatAgent extends AIChatAgent<Bindings> {
       `React in character with exactly 1 spoken sentence (required - always produce text). ` +
       `Optionally place 1 canvas object that BUILDS on theirs (same area, related content) - do NOT use batchExecute.`;
 
-    const model = this._getModel();
+    const model = this._getTracedModel("reactive", reactivePersona.name);
 
     // Show AI presence while generating
     await boardStub.setAiPresence(true).catch((err: unknown) => {
@@ -1116,7 +1174,7 @@ export class ChatAgent extends AIChatAgent<Bindings> {
       }
 
       const result = await generateText({
-        model: this._getModel(),
+        model: this._getTracedModel("director", directorPersona.name),
         system: directorSystem,
         messages: await convertToModelMessages(sanitizeMessages(this.messages)),
         tools,

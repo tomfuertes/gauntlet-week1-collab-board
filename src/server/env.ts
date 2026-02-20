@@ -3,15 +3,20 @@ import type { ChatAgent } from "./chat-agent";
 
 /**
  * Server environment - extends auto-generated Env (from wrangler types).
- * Wrangler vars (DAILY_AI_BUDGET_USD, WORKERS_AI_MODEL, ENABLE_ANTHROPIC_API)
- * come from worker-configuration.d.ts with literal types. Secrets (AUTH_SECRET,
- * ANTHROPIC_API_KEY) aren't in wrangler.toml so we declare them here.
+ * Wrangler vars (DAILY_AI_BUDGET_USD, WORKERS_AI_MODEL) come from
+ * worker-configuration.d.ts with literal types. Secrets (AUTH_SECRET,
+ * ANTHROPIC_API_KEY, OPENAI_API_KEY) aren't in wrangler.toml so we declare them here.
  */
 export type Bindings = Env & {
   BOARD: DurableObjectNamespace<Board>;
   CHAT_AGENT: DurableObjectNamespace<ChatAgent>;
   AUTH_SECRET: string;
   ANTHROPIC_API_KEY: string;
+  OPENAI_API_KEY: string;
+  // Langfuse observability (optional - set as CF secrets + plaintext vars)
+  LANGFUSE_PUBLIC_KEY?: string;
+  LANGFUSE_SECRET_KEY?: string;
+  LANGFUSE_BASE_URL?: string; // default: https://cloud.langfuse.com
 };
 
 /** Increment activity counter for a board (obj:create, obj:delete, chat message) */
