@@ -1,5 +1,5 @@
 import { useEffect, useRef, useCallback, useState } from "react";
-import type { WSClientMessage, WSServerMessage, BoardObject, BoardObjectUpdate } from "@shared/types";
+import type { WSClientMessage, WSServerMessage, BoardObject, BoardObjectUpdate, ChoreographyStep } from "@shared/types";
 
 export type ConnectionState = "connecting" | "connected" | "reconnecting" | "disconnected" | "failed";
 
@@ -62,6 +62,7 @@ export function useWebSocket(
   boardId: string,
   onAnimatedUpdate?: (id: string, toX: number, toY: number, durationMs: number) => void,
   onEffect?: (id: string, effect: string) => void,
+  onSequence?: (steps: ChoreographyStep[]) => void,
 ): UseWebSocketReturn {
   const wsRef = useRef<WebSocket | null>(null);
   // Refs so the WS closure always calls the latest callbacks without reconnecting
@@ -69,6 +70,8 @@ export function useWebSocket(
   onAnimatedUpdateRef.current = onAnimatedUpdate;
   const onEffectRef = useRef(onEffect);
   onEffectRef.current = onEffect;
+  const onSequenceRef = useRef(onSequence);
+  onSequenceRef.current = onSequence;
   const lastServerMessageAt = useRef(0);
   const [connectionState, setConnectionState] = useState<ConnectionState>("connecting");
   const [initialized, setInitialized] = useState(false);
@@ -219,6 +222,9 @@ export function useWebSocket(
             break;
           case "obj:effect":
             onEffectRef.current?.(msg.id, msg.effect);
+            break;
+          case "obj:sequence":
+            onSequenceRef.current?.(msg.steps);
             break;
           case "reaction":
             setReactions((prev) => [

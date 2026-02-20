@@ -53,6 +53,7 @@ const TOOL_ICONS: Record<ToolName, string> = {
   highlightObject: "\u{2728}",
   setRelationship: "\u{1F517}",
   advanceScenePhase: "\u{1F3AC}",
+  choreograph: "\u{1F39E}",
   drawScene: "\u{1F3AD}",
   batchExecute: "\u{26A1}",
 };
@@ -74,6 +75,7 @@ const TOOL_LABELS: Record<ToolName, string> = {
   highlightObject: "Highlighting object",
   setRelationship: "Tracking relationship",
   advanceScenePhase: "Advancing scene phase",
+  choreograph: "Choreographing sequence",
   drawScene: "Drawing scene",
   batchExecute: "Executing batch",
 };
