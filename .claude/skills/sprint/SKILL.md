@@ -41,8 +41,8 @@ The ONLY exception: a truly atomic one-shot with zero possible blockers (e.g., `
 ### On-Demand Agents (spawn when tasks need them)
 
 **Implementer Alpha/Beta** - `Task(name: "impl-alpha", team_name: "gauntlet-week-one", subagent_type: "general-purpose", model: "sonnet", mode: "bypassPermissions")`
-- Full worktree lifecycle: implement -> PR review -> fix -> UAT -> commit
-- Spawn with: `scripts/worktree.sh create <branch>`, write prompt to `$TMPDIR/prompt-<branch>.txt`
+- Full lifecycle: implement -> PR review -> fix -> UAT -> commit
+- Use `claude -w <branch>` for isolated worktree work, or `isolation: "worktree"` for team members
 - Each gets a focused prompt with the spec from architect/game-designer
 - Reports "ready to merge" via SendMessage when done
 

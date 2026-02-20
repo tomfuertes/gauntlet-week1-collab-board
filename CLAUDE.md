@@ -46,9 +46,9 @@ React + Vite + react-konva + TypeScript | Cloudflare Workers + Hono + Durable Ob
 
 ```bash
 # Dev
-npm run dev              # build once + wrangler dev (no HMR/watchers, auto-loads worktree.ports)
+npm run dev              # build once + wrangler dev (no HMR/watchers)
 npm run dev:hmr          # Vite HMR + wrangler dev (escape hatch if live editing needed)
-npm run health           # wait for dev server (polls 500ms, auto-detects port from worktree.ports) - use instead of sleep
+npm run health           # wait for dev server (polls 500ms) - use instead of sleep
 
 # Build & Deploy (CF git integration auto-deploys on push to main)
 npm run build            # Vite build
@@ -76,48 +76,20 @@ npm run typecheck        # wrangler types + tsc --noEmit (generates CF Workers b
 
 ## Git Worktrees
 
-Use the script for worktrees (handles deps/build/migrations/ports/permissions):
+Use native `claude -w <name>` for isolated feature work. It creates a worktree at `.claude/worktrees/<name>`, auto-cleans on exit if no changes.
 
-```bash
-scripts/worktree.sh create <branch>    # create worktree + prints cd/claude cmd
-scripts/worktree.sh remove <branch>    # remove worktree + delete feat/<branch>
-scripts/worktree.sh list               # list active worktrees
-scripts/merge.sh <branch>              # merge feat/<branch> --no-ff + typecheck
-scripts/worktree-prompt-suffix.md      # standard instructions - orchestrator reads and appends to worktree prompts
-```
+After worktree creation, run `npm ci` to install deps (lockfile-only, fast).
 
 When working in a worktree, use absolute paths for file tools. Run git commands directly (not `git -C`) - the working directory is already the repo/worktree.
 
-When printing worktree startup commands for the user: write the prompt to `$TMPDIR/prompt-<branch>.txt` using the Write tool, then print a short launch command. **Choose model by complexity:**
-- `--model sonnet` - Default for most worktrees: refactors, extracting components, DX fixes, well-scoped features with clear specs
-- `--model opus` - Architectural changes, novel integrations, complex multi-system features, anything requiring deep reasoning about tradeoffs
-- `--model haiku` - Mechanical tasks: bulk renames, migration boilerplate, config changes
-```bash
-cd /path/to/worktree && claude --model sonnet "$(cat /private/tmp/claude-501/prompt-<branch>.txt)"
-```
-This launches Claude with the prompt pre-loaded so the user just hits enter. Always include a specific, actionable prompt describing the feature to build. **Do NOT use "Enter plan mode first"** - it adds an approval gate that blocks the agent and the context exploration can compress away during implementation. Instead, write detailed prompts that specify the approach, and instruct the agent to read CLAUDE.md and relevant source files before implementing.
-
-### Worktree Agent Workflow
-
-When the user asks for work in a worktree (any format, rambly is fine), the orchestrator owns the full lifecycle using agent teams:
-
-1. `TeamCreate` with a session-level team name
-2. `TaskCreate` for each work item (tasks can be added dynamically)
-3. For each task: derive kebab-case branch, `scripts/worktree.sh create <branch>`, write prompt to `$TMPDIR/prompt-<branch>.txt`, spawn team member with `Task(team_name=..., name=<branch>, run_in_background=true)`
-4. Team members implement, communicate progress via `SendMessage`
-5. Orchestrator reviews, redirects, assigns new tasks as they emerge
-6. New agents can be spawned on-the-fly as tasks are added
-7. Merge each branch as it completes (orchestrator only - see merge protocol below)
-8. `SendMessage(type="shutdown_request")` to each agent when done, then `TeamDelete`
-
 **Model selection by task complexity:**
 - `model: "opus"` - Thought-heavy: architectural design, complex decisions, ambiguous debugging, multi-system reasoning
-- `model: "sonnet"` - Default workhorse: scoped implementation, plan execution, long-form exploration, digest-heavy research
-- `model: "haiku"` - Only for truly mechanical zero-reasoning tasks: bulk renames, single config value changes. If it requires any logic, decisions, or has unclear scope, use sonnet.
+- `model: "sonnet"` - Default workhorse: scoped implementation, plan execution, long-form exploration
+- `model: "haiku"` - Only for truly mechanical zero-reasoning tasks: bulk renames, single config value changes. If it requires any logic or unclear scope, use sonnet.
 
-**Why `scripts/worktree.sh` instead of `claude -w` or `isolation: "worktree"`:** This project needs deps install (APFS clone), Vite build, D1 migrations, port assignment, and `.claude/settings.local.json` seeding per worktree. The script handles all of this. Native worktree isolation doesn't run project-specific setup.
+**Check-in cadence:** Ping long-running agents every 3 minutes for status. If no response or no commits after 2 check-ins, kill and re-split smaller. Idle notifications between turns are normal - don't react unless overdue.
 
-**NEVER delegate merging to sub-agents.** Always merge worktree branches in main context (the orchestrator). Worktree branches fork from a point-in-time snapshot of main. If other branches merge first, a sub-agent's squash merge will silently revert the intervening changes (the branch diff includes deletions it never made). The orchestrator must: (1) check `git diff main..feat/<branch>` for unexpected reversions, (2) rebase onto current main if needed, (3) resolve conflicts with full project context, (4) typecheck after merge.
+**NEVER delegate merging to sub-agents.** Always merge worktree branches in main context (the orchestrator). Worktree branches fork from a point-in-time snapshot of main. If other branches merge first, a sub-agent's squash merge will silently revert the intervening changes. The orchestrator must: (1) check `git diff main..feat/<branch>` for unexpected reversions, (2) rebase onto current main if needed, (3) resolve conflicts with full project context, (4) typecheck after merge.
 
 ## Browser Testing (playwright-cli)
 
@@ -162,26 +134,22 @@ npx playwright test --reporter=dot     # minimal output (default 'list' floods c
 - **WS flakiness in local dev is expected.** First WS connection often drops with wrangler dev (DO cold start during WS handshake). The app reconnects but E2E/UAT tests must account for this. **After navigating to a board, always wait for `[data-state="connected"]` before interacting.** This selector is on the connection status dot in the header. Use `createObjectsViaWS()` helper (in `e2e/helpers.ts`) instead of UI double-click for reliable object creation. `wsRef.current` can be null after a drop even when React state shows "connected".
 - **HMR hook-order false positive:** "React has detected a change in the order of Hooks called by Board" during dev = Vite HMR artifact, not a real bug. Full page reload fixes it. Never investigate this error in a live dev session.
 
-### Worktree Agent Conventions
+### Agent Conventions
 
 **Two agent tiers by task size:**
 
-**Lightweight (single-file, <20 lines):** implement -> typecheck -> lint -> commit. No UAT, no PR review, no session notes. Trust the types. Orchestrator merges on sight.
+**Lightweight (single-file, <20 lines):** implement -> typecheck -> lint -> commit. No UAT, no PR review. Trust the types.
 
-**Standard (multi-file or behavioral):** implement -> PR review (Skill) -> fix issues -> UAT if behavioral -> commit. **The branch MUST be clean-committed when the agent finishes** so `git merge feat/<branch>` works from main.
+**Standard (multi-file or behavioral):** implement -> PR review (Skill) -> fix issues -> UAT if behavioral -> commit. **The branch MUST be clean-committed when the agent finishes.**
 
-**Task atomicity:** Pre-split complex tasks (3+ files or server+client) into atomic worktrees. Each touches one concern. Orchestrator checks in every 3 minutes on long-running agents - if stuck, redirect or break smaller. Bias toward many small agents over one big one.
+**Task atomicity:** Pre-split complex tasks (3+ files or server+client) into atomic units. Each touches one concern. Orchestrator checks in every 3 minutes on long-running agents - if stuck, redirect or break smaller.
 
-**No session notes files.** Task list + git log is the source of truth. `docs/sessions/` is deprecated. KEY-DECISION comments in code are still mandatory for non-obvious decisions.
-
-Worktree prompts must explicitly mention:
+Agent prompts must explicitly mention:
 - **Dev server startup** (only if UAT needed): `npm run dev` with `run_in_background: true` and `dangerouslyDisableSandbox: true`. Then `npm run health` to wait.
 - `scripts/localcurl.sh` instead of `curl`
-- "Read CLAUDE.md and relevant source files before implementing" (not "Enter plan mode first")
+- "Read CLAUDE.md and relevant source files before implementing"
 - "Commit all changes to the feature branch. Do not open a PR."
-- **KEY-DECISION comments**: `// KEY-DECISION <YYYY-MM-DD>: <rationale>` at the code location. Also in commit messages for `git log --grep`.
-
-**Worktree cleanup:** Always `rm -rf <worktree-dir> && git worktree prune && git branch -d feat/<branch>`. The `git worktree remove --force` pattern fails when agent processes have files locked - skip straight to rm.
+- **KEY-DECISION comments**: `// KEY-DECISION <YYYY-MM-DD>: <rationale>` at the code location.
 
 ## Architecture
 

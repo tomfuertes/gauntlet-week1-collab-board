@@ -14,10 +14,8 @@ test-results-demo/
 playwright-report/
 .playwright/
 .claude-prompt
-worktree.ports
 .dev.vars
 worker-configuration.d.ts
-.worktree-prompt-suffix.md
 scripts/eval-results/
 .claude/worktrees/
 plans/
