@@ -366,14 +366,18 @@ export class Board extends DurableObject<Bindings> {
           updatedAt: Date.now(),
         } as BoardObject;
         await this.ctx.storage.put(`obj:${updated.id}`, updated);
-        this.broadcast({ type: "obj:update", obj: updated }, excludeWs);
+        const animField = "anim" in msg && msg.anim ? { anim: msg.anim } : {};
+        this.broadcast({ type: "obj:update", obj: updated, ...animField }, excludeWs);
         const isSpatial =
           (msg.obj.x !== undefined && msg.obj.x !== existing.x) ||
           (msg.obj.y !== undefined && msg.obj.y !== existing.y) ||
           (msg.obj.width !== undefined && msg.obj.width !== existing.width) ||
           (msg.obj.height !== undefined && msg.obj.height !== existing.height) ||
           (msg.obj.rotation !== undefined && msg.obj.rotation !== existing.rotation);
-        await this.recordEvent({ type: "obj:update", ts: updated.updatedAt, obj: updated }, isSpatial ? 100 : 500);
+        await this.recordEvent(
+          { type: "obj:update", ts: updated.updatedAt, obj: updated, ...animField },
+          isSpatial ? 100 : 500,
+        );
         return { ok: true };
       }
       case "obj:delete": {
