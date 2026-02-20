@@ -9,6 +9,9 @@ interface TraceContext {
   persona: string;
   model: string;
   promptVersion: string;
+  gameMode?: string;
+  scenePhase?: string;
+  intentChip?: string;
 }
 
 /** Create a Langfuse generation span and end it with results.
@@ -40,11 +43,18 @@ function recordLangfuseGeneration(
     if (toolCalls.length > 0) output.toolCalls = toolCalls;
     const resolvedOutput = Object.keys(output).length > 0 ? output : ctx.finishReason;
 
+    const metadata = {
+      boardId: ctx.boardId,
+      promptVersion: ctx.promptVersion,
+      ...(ctx.gameMode && { gameMode: ctx.gameMode }),
+      ...(ctx.scenePhase && { scenePhase: ctx.scenePhase }),
+      ...(ctx.intentChip && { intentChip: ctx.intentChip }),
+    };
     const trace = lf.trace({
       name: ctx.trigger,
       input: ctx.prompt,
       output: resolvedOutput,
-      metadata: { boardId: ctx.boardId, promptVersion: ctx.promptVersion },
+      metadata,
       tags: [ctx.trigger, ctx.model, `persona:${ctx.persona}`],
     });
     const generation = trace.generation({
@@ -52,7 +62,7 @@ function recordLangfuseGeneration(
       model: ctx.model,
       startTime: ctx.startTime,
       input: ctx.prompt,
-      metadata: { promptVersion: ctx.promptVersion, boardId: ctx.boardId },
+      metadata,
     });
     generation.end({
       output: resolvedOutput,

@@ -322,7 +322,11 @@ export class ChatAgent extends AIChatAgent<Bindings> {
   /** Return a traced model for a specific request type.
    *  Wraps the base model with Langfuse tracing middleware that captures
    *  full conversation I/O, token usage, and tool calls for each request. */
-  private _getTracedModel(trigger: string, persona: string) {
+  private _getTracedModel(
+    trigger: string,
+    persona: string,
+    options?: { gameMode?: string; scenePhase?: string; intentChip?: string },
+  ) {
     return wrapLanguageModel({
       model: this._getModel(),
       middleware: createTracingMiddleware(
@@ -332,6 +336,9 @@ export class ChatAgent extends AIChatAgent<Bindings> {
           persona,
           model: this._getModelName(),
           promptVersion: PROMPT_VERSION,
+          ...(options?.gameMode && { gameMode: options.gameMode }),
+          ...(options?.scenePhase && { scenePhase: options.scenePhase }),
+          ...(options?.intentChip && { intentChip: options.intentChip }),
         },
         this._getLangfuse(),
       ),
@@ -623,6 +630,10 @@ export class ChatAgent extends AIChatAgent<Bindings> {
       this._requestedModel = body.model as string;
     }
 
+    // Compute scene phase for tracing context
+    const scenePhase = computeScenePhase(humanTurns);
+    const intentChip = typeof body?.intent === "string" ? (body.intent as string) : undefined;
+
     // Handle hat mode prompt lifecycle
     if (this._gameMode === "hat") {
       // Check for [NEXT-HAT-PROMPT] marker to advance prompt
@@ -863,7 +874,11 @@ export class ChatAgent extends AIChatAgent<Bindings> {
 
     try {
       const result = streamText({
-        model: this._getTracedModel("chat", activePersona.name),
+        model: this._getTracedModel("chat", activePersona.name, {
+          gameMode: this._gameMode,
+          scenePhase,
+          intentChip,
+        }),
         system: systemPrompt,
         messages: await convertToModelMessages(sanitizeMessages(this.messages)),
         tools,
@@ -1376,7 +1391,11 @@ export class ChatAgent extends AIChatAgent<Bindings> {
       `React in character with exactly 1 spoken sentence (required - always produce text). ` +
       `Optionally place 1 canvas object that BUILDS on theirs (same area, related content) - do NOT use batchExecute.`;
 
-    const model = this._getTracedModel("reactive", reactivePersona.name);
+    const reactiveScenePhase = computeScenePhase(this.messages.filter((m) => m.role === "user").length);
+    const model = this._getTracedModel("reactive", reactivePersona.name, {
+      gameMode: this._gameMode,
+      scenePhase: reactiveScenePhase,
+    });
 
     // Show AI presence while generating
     await boardStub.setAiPresence(true).catch((err: unknown) => {
@@ -1602,7 +1621,10 @@ export class ChatAgent extends AIChatAgent<Bindings> {
       }
 
       const result = await generateText({
-        model: this._getTracedModel("director", directorPersona.name),
+        model: this._getTracedModel("director", directorPersona.name, {
+          gameMode: this._gameMode,
+          scenePhase: phase,
+        }),
         system: directorSystem,
         messages: await convertToModelMessages(sanitizeMessages(this.messages)),
         tools,
