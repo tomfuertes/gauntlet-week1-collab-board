@@ -37,6 +37,8 @@ interface BoardObjectBase {
   createdBy: string;
   updatedAt: number;
   batchId?: string;
+  startObjectId?: string; // line only: source object for connected lines
+  endObjectId?: string; // line only: target object for connected lines
 }
 
 export type BoardObject = BoardObjectBase & BoardObjectVariant;

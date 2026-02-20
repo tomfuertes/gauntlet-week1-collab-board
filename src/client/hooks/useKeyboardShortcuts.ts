@@ -73,8 +73,7 @@ export function useKeyboardShortcuts({
       if (e.key === "s" || e.key === "S") setToolMode("sticky");
       if (e.key === "r" || e.key === "R") setToolMode("rect");
       if (e.key === "c" || e.key === "C") setToolMode("circle");
-      if (e.key === "l" || e.key === "L") setToolMode("line");
-      if (e.key === "a" || e.key === "A") setToolMode("arrow");
+      if (e.key === "l" || e.key === "L") setToolMode("connector");
       if (e.key === "t" || e.key === "T") setToolMode("text");
       if (e.key === "f" || e.key === "F") setToolMode("frame");
       if (e.key === "/") {

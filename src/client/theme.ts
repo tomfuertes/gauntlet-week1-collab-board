@@ -60,8 +60,7 @@ export const toolCursors: Record<string, string> = {
   sticky: "crosshair",
   rect: "crosshair",
   circle: "crosshair",
-  line: "crosshair",
-  arrow: "crosshair",
+  connector: "crosshair",
   text: "text",
   frame: "crosshair",
 };
