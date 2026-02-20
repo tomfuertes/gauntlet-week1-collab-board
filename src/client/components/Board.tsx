@@ -327,16 +327,43 @@ export function Board({
   const lineEndpointDragRef = useRef<{ fixedX: number; fixedY: number } | null>(null);
   const shapeRefs = useRef<Map<string, Konva.Group>>(new Map());
 
-  // Pending position tweens from animated obj:update messages (id -> positions + duration)
+  // Pending tweens from animated obj:update messages (id -> from/to positions+dimensions + duration)
   const pendingAnimRef = useRef<
-    Map<string, { fromX: number; fromY: number; toX: number; toY: number; durationMs: number }>
+    Map<
+      string,
+      {
+        fromX: number;
+        fromY: number;
+        toX: number;
+        toY: number;
+        fromWidth: number;
+        fromHeight: number;
+        toWidth: number;
+        toHeight: number;
+        durationMs: number;
+      }
+    >
   >(new Map());
-  const onAnimatedUpdate = useCallback((id: string, toX: number, toY: number, durationMs: number) => {
-    const node = shapeRefs.current.get(id);
-    // Skip if node missing or user is actively dragging this object
-    if (!node || node.isDragging()) return;
-    pendingAnimRef.current.set(id, { fromX: node.x(), fromY: node.y(), toX, toY, durationMs });
-  }, []);
+  const onAnimatedUpdate = useCallback(
+    (id: string, toX: number, toY: number, toWidth: number, toHeight: number, durationMs: number) => {
+      const node = shapeRefs.current.get(id);
+      // Skip if node missing or user is actively dragging this object
+      if (!node || node.isDragging()) return;
+      pendingAnimRef.current.set(id, {
+        fromX: node.x(),
+        fromY: node.y(),
+        // node.width()/height() reflects pre-update React state at callback time (before setObjects)
+        fromWidth: node.width(),
+        fromHeight: node.height(),
+        toX,
+        toY,
+        toWidth,
+        toHeight,
+        durationMs,
+      });
+    },
+    [],
+  );
 
   const onEffect = useCallback((id: string, effect: string) => {
     const node = shapeRefs.current.get(id);
@@ -576,8 +603,8 @@ export function Board({
   patchObjectLocalRef.current = patchObjectLocal;
 
   // Apply pending tweens after each React commit (before browser paint) to avoid visual snap.
-  // Sequence: WS fires callback (captures fromX/Y) -> state update snaps Konva node ->
-  // useLayoutEffect resets to fromX/Y and starts tween -> browser paints at fromX/Y smoothly.
+  // Sequence: WS fires callback (captures fromX/Y/W/H) -> state update snaps Konva node ->
+  // useLayoutEffect resets to from values and starts tween -> browser paints at old pos smoothly.
   useLayoutEffect(() => {
     if (pendingAnimRef.current.size === 0) return;
     for (const [id, anim] of pendingAnimRef.current) {
@@ -585,7 +612,16 @@ export function Board({
       if (node && !node.isDragging()) {
         node.x(anim.fromX);
         node.y(anim.fromY);
-        node.to({ x: anim.toX, y: anim.toY, duration: anim.durationMs / 1000, easing: Konva.Easings.EaseInOut });
+        node.width(anim.fromWidth);
+        node.height(anim.fromHeight);
+        node.to({
+          x: anim.toX,
+          y: anim.toY,
+          width: anim.toWidth,
+          height: anim.toHeight,
+          duration: anim.durationMs / 1000,
+          easing: Konva.Easings.EaseInOut,
+        });
       }
     }
     pendingAnimRef.current.clear();

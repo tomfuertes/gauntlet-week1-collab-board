@@ -63,7 +63,14 @@ function isNonRetryableCode(code: number): boolean {
 
 export function useWebSocket(
   boardId: string,
-  onAnimatedUpdate?: (id: string, toX: number, toY: number, durationMs: number) => void,
+  onAnimatedUpdate?: (
+    id: string,
+    toX: number,
+    toY: number,
+    toWidth: number,
+    toHeight: number,
+    durationMs: number,
+  ) => void,
   onEffect?: (id: string, effect: string) => void,
   onSequence?: (steps: ChoreographyStep[]) => void,
   onSpotlight?: (objectId?: string, x?: number, y?: number) => void,
@@ -212,7 +219,14 @@ export function useWebSocket(
           case "obj:update":
             // Fire animation callback before state update so caller can capture current Konva node position
             if (msg.anim) {
-              onAnimatedUpdateRef.current?.(msg.obj.id, msg.obj.x, msg.obj.y, msg.anim.duration);
+              onAnimatedUpdateRef.current?.(
+                msg.obj.id,
+                msg.obj.x,
+                msg.obj.y,
+                msg.obj.width,
+                msg.obj.height,
+                msg.anim.duration,
+              );
             }
             setObjects((prev) => {
               const next = new Map(prev);
