@@ -20,31 +20,37 @@ You are starting a sprint session. A sprint is a ~1 hour focused work block with
 
 Create team `gauntlet-week-one` via `TeamCreate`. Then spawn **warm advisory agents**:
 
+### CRITICAL: All agents MUST be team members
+
+**NEVER use `run_in_background: true` for sprint work.** Every agent spawned during a sprint MUST include `team_name: "gauntlet-week-one"` and a `name` parameter. This makes them team members who communicate via `SendMessage`. Background agents are opaque - they can't report blockers, can't be redirected, and haiku ones spin forever on failures.
+
+The ONLY exception: a truly atomic one-shot with zero possible blockers (e.g., `npm run typecheck`).
+
 ### Warm Agents (spawn immediately)
 
-**Architect** (`name: "architect"`, `subagent_type: "general-purpose"`, `model: "sonnet"`, `mode: "bypassPermissions"`)
+**Architect** - `Task(name: "architect", team_name: "gauntlet-week-one", subagent_type: "general-purpose", model: "sonnet", mode: "bypassPermissions")`
 - Reads code, designs solutions, stress-tests approaches
 - Never writes code directly - produces specs and design docs
 - Prompt: "You are the Architect for CollabBoard. Read CLAUDE.md and docs/notes.md. Your role: design solutions, review approaches, stress-test ideas. You produce specs, not code. When assigned a task via TaskGet, analyze it and produce a design spec as a SendMessage to the team lead. Always consider: existing patterns, DO hibernation constraints, WS protocol compatibility, and canvas bounds. Wait for task assignment."
 
-**Game Designer** (`name: "game-designer"`, `subagent_type: "general-purpose"`, `model: "sonnet"`, `mode: "bypassPermissions"`)
+**Game Designer** - `Task(name: "game-designer", team_name: "gauntlet-week-one", subagent_type: "general-purpose", model: "sonnet", mode: "bypassPermissions")`
 - Owns improv mechanics, persona behavior, scene lifecycle
 - Translates creative ideas into acceptance criteria
 - Prompt: "You are the Game Designer for CollabBoard. Read CLAUDE.md, docs/notes.md, and docs/new-north-star.md. Your role: translate creative ideas into actionable specs with acceptance criteria. You understand improv games, persona dynamics, scene phases, and audience experience. When assigned a task, produce a spec with: user story, acceptance criteria, edge cases, and how it fits the improv canvas vision. SendMessage results to team lead. Wait for task assignment."
 
 ### On-Demand Agents (spawn when tasks need them)
 
-**Implementer Alpha/Beta** (`subagent_type: "general-purpose"`, `model: "sonnet"`, `mode: "bypassPermissions"`)
+**Implementer Alpha/Beta** - `Task(name: "impl-alpha", team_name: "gauntlet-week-one", subagent_type: "general-purpose", model: "sonnet", mode: "bypassPermissions")`
 - Full worktree lifecycle: implement -> PR review -> fix -> UAT -> commit
 - Spawn with: `scripts/worktree.sh create <branch>`, write prompt to `$TMPDIR/prompt-<branch>.txt`
 - Each gets a focused prompt with the spec from architect/game-designer
 - Reports "ready to merge" via SendMessage when done
 
-**UAT Local** (`subagent_type: "uat"`, `model: "haiku"`, `mode: "bypassPermissions"`)
+**UAT Local** - `Task(name: "uat-local", team_name: "gauntlet-week-one", subagent_type: "uat", model: "haiku", mode: "bypassPermissions")`
 - Post-merge smoke tests against localhost
 - Namespace playwright sessions: `-s=uat-local`
 
-**UAT Prod** (`subagent_type: "uat"`, `model: "haiku"`, `mode: "bypassPermissions"`)
+**UAT Prod** - `Task(name: "uat-prod", team_name: "gauntlet-week-one", subagent_type: "uat", model: "haiku", mode: "bypassPermissions")`
 - Post-deploy validation against `https://collabboard.thomas-fuertes.workers.dev`
 - Namespace playwright sessions: `-s=uat-prod`
 

@@ -812,6 +812,21 @@ export class ChatAgent extends AIChatAgent<Bindings> {
       // Enforce game mode rules (e.g. Yes-And prefix) after persona prefix is in place
       this._enforceGameModeRules(activePersona.name);
 
+      // Auto-name the board from scene content on 3rd human turn
+      if (humanTurns === 3) {
+        this.ctx.waitUntil(
+          this._generateBoardName(boardStub as unknown as BoardStub).catch((err: unknown) => {
+            console.error(
+              JSON.stringify({
+                event: "board:name:unhandled",
+                boardId: this.name,
+                error: String(err),
+              }),
+            );
+          }),
+        );
+      }
+
       // Trigger reactive persona to "yes, and" the active persona's response
       this.ctx.waitUntil(
         this._triggerReactivePersona(activeIndex, personas).catch((err: unknown) => {
@@ -909,6 +924,118 @@ export class ChatAgent extends AIChatAgent<Bindings> {
         promptLen: imagePrompt.length,
       }),
     );
+  }
+
+  // ---------------------------------------------------------------------------
+  // Auto board naming (fires once on 3rd human turn via ctx.waitUntil)
+  // ---------------------------------------------------------------------------
+
+  /** Generate a creative board name from scene content and update D1.
+   *  Fires once via ctx.waitUntil - never blocks the AI response stream.
+   *
+   *  KEY-DECISION 2026-02-20: meta:autoNamed DO Storage flag prevents re-run after DO hibernation.
+   *  WHERE name = 'Untitled Board' guard means user-renamed boards are never overwritten.
+   *  Claude Haiku used for naming quality; Workers AI fallback when ANTHROPIC_API_KEY absent. */
+  private async _generateBoardName(boardStub: BoardStub): Promise<void> {
+    // Guard: only name once per board lifetime
+    const alreadyNamed = await this.ctx.storage.get<boolean>("meta:autoNamed");
+    if (alreadyNamed) return;
+    // Set flag immediately to prevent concurrent runs from a second message arriving
+    await this.ctx.storage.put("meta:autoNamed", true);
+
+    // Gather first 3 human messages with [username] prefixes stripped
+    const humanTexts = this.messages
+      .filter((m) => m.role === "user")
+      .slice(0, 3)
+      .map((m) => {
+        const text =
+          m.parts
+            ?.filter((p) => p.type === "text")
+            .map((p) => (p as { type: "text"; text: string }).text)
+            .join("") ?? "";
+        return text.replace(/^\[[^\]]+\]\s*/, ""); // strip [username] prefix
+      })
+      .filter((t) => t.length > 0);
+
+    if (humanTexts.length === 0) return;
+
+    // Canvas text: sticky notes and frame titles for scene context
+    let canvasTexts: string[] = [];
+    try {
+      const objects = await boardStub.readObjects();
+      canvasTexts = objects
+        .filter((o) => (o.type === "sticky" || o.type === "frame") && !o.isBackground)
+        .map((o) => (o.props as BoardObjectProps).text || "")
+        .filter((t) => t.length > 0)
+        .slice(0, 10);
+    } catch {
+      // canvas read failure - proceed without canvas context
+    }
+
+    const sceneLines = [
+      `Game mode: ${this._gameMode}`,
+      `Players said:\n${humanTexts.map((t, i) => `${i + 1}. ${t}`).join("\n")}`,
+      canvasTexts.length > 0 ? `Canvas: ${canvasTexts.join(", ")}` : "",
+    ]
+      .filter(Boolean)
+      .join("\n");
+
+    // Cap context at 600 chars to keep naming cheap
+    const namingPrompt =
+      `You name improv comedy scenes. Given this scene:\n${sceneLines.slice(0, 600)}\n\n` +
+      `Write ONE title (max 5 words) that:\n` +
+      `- Captures THIS scene's specific absurd collision\n` +
+      `- Sounds like an improv episode: "The Dentist's Garlic Problem", "Vampires Need Therapy Too"\n` +
+      `- Never uses: Board, Session, Untitled, Collaborative, Improv, Scene\n` +
+      `- Is funny or intriguing\n\n` +
+      `Title only. No quotes. No explanation.`;
+
+    let rawName = "";
+    try {
+      if (this.env.ANTHROPIC_API_KEY) {
+        // Claude Haiku: cheap, much better at creative naming than Workers AI
+        const anthropic = createAnthropic({ apiKey: this.env.ANTHROPIC_API_KEY });
+        const result = await generateText({
+          model: anthropic("claude-haiku-4-5-20251001"),
+          messages: [{ role: "user" as const, content: namingPrompt }],
+        });
+        rawName = result.text;
+      } else {
+        // Workers AI fallback - quality varies by model
+        const modelId = (this.env as unknown as Record<string, string>).WORKERS_AI_MODEL || "@cf/zai-org/glm-4.7-flash";
+        const workerAi = createWorkersAI({ binding: this.env.AI as any });
+        const result = await generateText({
+          model: (workerAi as any)(modelId),
+          messages: [{ role: "user" as const, content: namingPrompt }],
+        });
+        rawName = result.text;
+      }
+    } catch (err) {
+      console.error(JSON.stringify({ event: "board:name:gen-error", boardId: this.name, error: String(err) }));
+      return;
+    }
+
+    // Sanitize: strip wrapping quotes, enforce max 8 words
+    const boardName = rawName
+      .trim()
+      .replace(/^["']|["']$/g, "")
+      .split(/\s+/)
+      .slice(0, 8)
+      .join(" ")
+      .trim();
+
+    if (!boardName) return;
+
+    try {
+      await this.env.DB.prepare(
+        "UPDATE boards SET name = ?, updated_at = datetime('now') WHERE id = ? AND name = 'Untitled Board'",
+      )
+        .bind(boardName, this.name)
+        .run();
+      console.debug(JSON.stringify({ event: "board:named", boardId: this.name, name: boardName }));
+    } catch (err) {
+      console.error(JSON.stringify({ event: "board:name:db-error", boardId: this.name, error: String(err) }));
+    }
   }
 
   // ---------------------------------------------------------------------------
