@@ -5,7 +5,7 @@
  *
  * Env vars:
  *   EVAL_USERNAME   login username (default: "eval")
- *   EVAL_PASSWORD   login password (default: "eval123")
+ *   EVAL_PASSWORD   login password (default: "eval1234")
  *   EVAL_MODEL      AI model ID (default: "glm-4.7-flash")
  *   EVAL_PORT       override server port (default: auto-detected from worktree.ports)
  */
@@ -38,7 +38,7 @@ const PORT = process.env.EVAL_PORT ? Number(process.env.EVAL_PORT) : detectPort(
 const BASE_URL = `http://localhost:${PORT}`;
 const WS_BASE = `ws://localhost:${PORT}`;
 const USERNAME = process.env.EVAL_USERNAME ?? "eval";
-const PASSWORD = process.env.EVAL_PASSWORD ?? "eval123";
+const PASSWORD = process.env.EVAL_PASSWORD ?? "eval1234";
 const MODEL = process.env.EVAL_MODEL ?? "glm-4.7-flash";
 const SCENARIO_TIMEOUT_MS = 30_000;
 

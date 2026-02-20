@@ -120,9 +120,11 @@ When the user asks for work in a worktree (any format, rambly is fine), the orch
 
 The `playwright-cli` skill is available for automated browser testing. **Use it proactively** for UAT, smoke tests, and verifying features - don't stop to ask, just run it.
 
+**UAT and quality exploration swarms should target production** (`https://collabboard.thomas-fuertes.workers.dev`), not localhost. Prod is what real users see and avoids wrangler dev quirks (DO cold starts, WS flakiness, single-IP rate limit buckets). Only use localhost for testing uncommitted code changes.
+
 ```bash
 # Basic flow
-playwright-cli open http://localhost:5173    # open app
+playwright-cli open http://localhost:5173    # open app (localhost for dev)
 playwright-cli snapshot                       # get element refs (e.g., e3, e15)
 playwright-cli fill e5 "username"             # interact by ref
 playwright-cli click e3                       # click by ref
@@ -270,17 +272,22 @@ Hooks enforce the bookends: `SessionStart` reminds to read context, `PreCompact`
 
 ## Custom Agents (Delegation)
 
-Main context is the orchestrator. Delegate aggressively - keep main context for decisions, not execution. **Default to agent teams** (`TeamCreate`) for all multi-agent work. Background tasks (`run_in_background: true`) only for single atomic operations (one build, one test suite).
+Main context is the orchestrator. Delegate aggressively - keep main context for decisions, not execution. **Default to agent teams** (`TeamCreate`) for all multi-agent work. In a swarm/team context, even "atomic" tasks (eval harness, test suite) should be team members so they can report via `SendMessage` and cross-reference findings. Background tasks (`run_in_background: true`) only for truly independent one-shots outside a team context (e.g. a single build while the user waits).
 
-| Task | Agent | Model | How |
-|------|-------|-------|-----|
-| Feature worktree | `general-purpose` | sonnet | team member |
-| UAT / smoke test | `uat` | haiku | team member |
-| PR review | `pr-review-toolkit:*` | sonnet | invoked by worktree agent via Skill |
-| E2E test suite | background Bash | - | `run_in_background: true` (atomic) |
-| Codebase exploration | `Explore` (built-in) | sonnet | team member or background (atomic) |
+| Task | Agent | Model | Mode | How |
+|------|-------|-------|------|-----|
+| Feature worktree | `general-purpose` | sonnet | `bypassPermissions` | team member |
+| UAT / smoke test | `uat` | haiku | `bypassPermissions` | team member |
+| Quality exploration | `general-purpose` | sonnet | `bypassPermissions` | team member |
+| PR review | `pr-review-toolkit:*` | sonnet | default | invoked by worktree agent via Skill |
+| E2E / eval harness | `general-purpose` | haiku | `bypassPermissions` | team member (reports via SendMessage) |
+| Codebase exploration | `Explore` (built-in) | sonnet | default | team member or background (atomic) |
+
+**Always spawn agents with `mode: "bypassPermissions"`** unless they need user approval for destructive actions. The OS sandbox (`sandbox.enabled: true`) is the safety boundary - it blocks writes outside allowed paths and network outside allowed domains. Permission prompts inside sandboxed agents are redundant friction.
 
 **UAT uses teams, not background tasks.** Each test scenario gets a teammate that reports failures immediately via `SendMessage`. The lead triages and fixes while other flows still run. Before spawning UAT, enumerate scenarios as a numbered list for the user.
+
+**Agent bash rules:** Agents must keep shell commands simple and direct. No clever variable capture patterns (`LATEST=$(ls -t ... | head -1)`), no chained subshells, no heredoc gymnastics. If a command needs more than one pipe, break it into separate tool calls. Simple commands are readable, debuggable, and don't trigger unnecessary permission prompts.
 
 Never run playwright-cli sessions or full test suites in main Opus context. Always delegate.
 
@@ -297,3 +304,4 @@ Never run playwright-cli sessions or full test suites in main Opus context. Alwa
 - Use `scripts/localcurl.sh` instead of `curl` for local API testing (localhost-only wrapper, whitelisted in worktrees)
 - Start dev servers with `run_in_background: true` on the Bash tool, not `&` or `2>&1 &`. The background task mechanism handles this cleanly without needing shell backgrounding.
 - Never leave sprint/task codes (A1, B2, etc.) in code comments - they're meaningless without the plan doc
+- **`gh issue create` with long bodies:** Write body to `$TMPDIR/issue-<name>.md` first, then `gh issue create --title "..." --body-file $TMPDIR/issue-<name>.md --label <label>`. Never pipe/heredoc into `gh` (blocked by `no-gh-stdin.sh` hook). Never use `<` or `<<<` angle brackets in titles (confuses shell). Create issues one at a time (parallel `gh` calls race on hook stdin).
