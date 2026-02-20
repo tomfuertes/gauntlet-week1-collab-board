@@ -311,6 +311,7 @@ export function Board({
   const [chatInitialTemplateId, setChatInitialTemplateId] = useState<string | undefined>();
   const [boardGenStarted, setBoardGenStarted] = useState(false);
   const [gameMode, setGameMode] = useState<GameMode>("freeform");
+  const [boardName, setBoardName] = useState<string>("");
   // Claude Haiku 4.5 default; sent on every message so server knows which provider to use
   const [aiModel, setAIModel] = useState<AIModel>("claude-haiku-4.5");
   // Per-player persona claim - set via OnboardModal or ChatPanel inline picker
@@ -339,12 +340,13 @@ export function Board({
           onLogout();
           return null;
         } // session expired
-        return r.ok ? (r.json() as Promise<{ game_mode?: string }>) : null;
+        return r.ok ? (r.json() as Promise<{ game_mode?: string; name?: string }>) : null;
       })
       .then((data) => {
         if (data?.game_mode && ["hat", "yesand"].includes(data.game_mode)) {
           setGameMode(data.game_mode as GameMode);
         }
+        if (data?.name) setBoardName(data.name);
       })
       .catch((err) => {
         // Non-critical: board still usable at freeform default; log for debugging
@@ -1950,7 +1952,26 @@ export function Board({
             >
               &larr; Boards
             </Button>
-            <span style={{ fontWeight: 600, fontSize: "0.875rem", color: colors.text }}>YesAInd</span>
+            <div style={{ display: "flex", flexDirection: "column", lineHeight: 1.2 }}>
+              <span
+                style={{ fontSize: "0.625rem", color: colors.textSubtle, fontWeight: 400, letterSpacing: "0.05em" }}
+              >
+                YesAInd
+              </span>
+              <span
+                style={{
+                  fontWeight: 600,
+                  fontSize: "0.875rem",
+                  color: colors.text,
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  whiteSpace: "nowrap",
+                  maxWidth: 200,
+                }}
+              >
+                {boardName || "Untitled"}
+              </span>
+            </div>
             <span
               data-testid="connection-state"
               data-state={connectionState}
@@ -2073,13 +2094,13 @@ export function Board({
           right: 0,
           height: 48,
           zIndex: 10,
-          background: "rgba(22, 33, 62, 0.9)",
-          borderBottom: "1px solid #334155",
+          background: colors.overlayHeader,
+          borderBottom: `1px solid ${colors.border}`,
           display: "flex",
           alignItems: "center",
           justifyContent: "space-between",
           padding: "0 1rem",
-          color: "#eee",
+          color: colors.text,
           fontSize: "0.875rem",
         }}
       >
@@ -2108,12 +2129,29 @@ export function Board({
             <Button
               variant="link"
               onClick={onBack}
-              style={{ color: "#94a3b8", fontSize: "0.875rem", minHeight: 44, minWidth: 44 }}
+              style={{ color: colors.textMuted, fontSize: "0.875rem", minHeight: 44, minWidth: 44 }}
             >
               &larr; Boards
             </Button>
           )}
-          <span style={{ fontWeight: 600 }}>YesAInd</span>
+          <div style={{ display: "flex", flexDirection: "column", lineHeight: 1.2 }}>
+            <span style={{ fontSize: "0.625rem", color: colors.textSubtle, fontWeight: 400, letterSpacing: "0.05em" }}>
+              YesAInd
+            </span>
+            <span
+              style={{
+                fontWeight: 600,
+                fontSize: "0.875rem",
+                color: colors.text,
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+                maxWidth: 200,
+              }}
+            >
+              {boardName || "Untitled"}
+            </span>
+          </div>
           <span
             data-testid="connection-state"
             data-state={connectionState}
@@ -2171,16 +2209,16 @@ export function Board({
                 </span>
               )}
             </div>
-            <span style={{ color: "#888" }}>{Math.round(scale * 100)}%</span>
+            <span style={{ color: colors.textDim }}>{Math.round(scale * 100)}%</span>
             <span>{user.displayName}</span>
             <select
               value={aiModel}
               onChange={(e) => setAIModel(e.target.value as AIModel)}
               style={{
-                background: "rgba(22, 33, 62, 0.8)",
-                border: "1px solid #334155",
+                background: colors.overlayHeader,
+                border: `1px solid ${colors.border}`,
                 borderRadius: 6,
-                color: "#e2e8f0",
+                color: colors.text,
                 fontSize: "0.75rem",
                 padding: "2px 8px",
                 cursor: "pointer",
