@@ -946,6 +946,25 @@ export function Board({
           updatedAt: Date.now(),
         });
         setEditingId(id);
+      } else if (ds.toolMode === "person") {
+        // KEY-DECISION 2026-02-20: window.prompt for name entry - synchronous, no extra state,
+        // Cancel (null) aborts creation so user can reposition before naming.
+        const name = window.prompt("Character name:");
+        if (name !== null) {
+          createObject({
+            id: crypto.randomUUID(),
+            type: "person",
+            x: cx - 30,
+            y: cy - 60,
+            width: 60,
+            height: 120,
+            rotation: 0,
+            props: { text: name || "Character", color: getUserColor(user.id) },
+            createdBy: user.id,
+            updatedAt: Date.now(),
+          });
+          setToolMode("select");
+        }
       }
     }
   }, [finishMarquee, createObject, user.id]);
