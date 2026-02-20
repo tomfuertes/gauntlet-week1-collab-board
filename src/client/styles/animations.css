@@ -163,6 +163,12 @@
   transform: scale(1.1);
 }
 
+/* Mobile toolbar: 44px touch targets (iOS HIG minimum), edge-flush with safe area */
+.cb-toolbar-float[data-mobile] .cb-tool-btn {
+  width: 44px !important;
+  height: 44px !important;
+}
+
 /* Mobile canvas overlay - slides up from bottom (applied to .cb-canvas-overlay) */
 @keyframes cb-canvas-overlay-in {
   from {

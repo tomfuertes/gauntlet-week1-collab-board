@@ -32,6 +32,7 @@ export interface ToolbarProps {
   onZoomIn: () => void;
   onZoomOut: () => void;
   onZoomReset: () => void;
+  isMobile?: boolean;
 }
 
 export function Toolbar({
@@ -49,6 +50,7 @@ export function Toolbar({
   onZoomIn,
   onZoomOut,
   onZoomReset,
+  isMobile,
 }: ToolbarProps) {
   // Color picker state
   const firstId = selectedIds.size > 0 ? [...selectedIds][0] : undefined;
@@ -72,9 +74,11 @@ export function Toolbar({
     <>
       {/* Floating Toolbar - Bottom Center */}
       <div
+        className="cb-toolbar-float"
+        data-mobile={isMobile || undefined}
         style={{
           position: "absolute",
-          bottom: 16,
+          bottom: isMobile ? 0 : 16,
           left: "50%",
           transform: "translateX(-50%)",
           zIndex: 20,
@@ -82,12 +86,13 @@ export function Toolbar({
           border: `1px solid ${colors.border}`,
           backdropFilter: "blur(12px)",
           WebkitBackdropFilter: "blur(12px)",
-          borderRadius: 999,
+          borderRadius: isMobile ? "16px 16px 0 0" : 999,
           boxShadow: "0 4px 24px rgba(0,0,0,0.4)",
           display: "flex",
           alignItems: "center",
-          padding: "4px 8px",
-          gap: 2,
+          padding: isMobile ? "8px 12px" : "4px 8px",
+          paddingBottom: isMobile ? "calc(8px + env(safe-area-inset-bottom))" : undefined,
+          gap: isMobile ? 4 : 2,
           maxWidth: "calc(100vw - 32px)",
         }}
       >
