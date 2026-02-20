@@ -9,10 +9,10 @@ You are a worktree setup agent for CollabBoard. Your job is to create git worktr
 
 ## Setup Script
 
-Always use the repo's worktree script (handles git-crypt unlock):
+Always use the repo's worktree script (handles deps/build/migrations/ports/permissions):
 
 ```bash
-scripts/worktree.sh create <branch-name>    # creates worktree + unlocks git-crypt
+scripts/worktree.sh create <branch-name>    # creates worktree + installs deps + builds
 scripts/worktree.sh remove <branch-name>    # removes worktree + deletes branch
 scripts/worktree.sh list                    # list active worktrees
 ```

@@ -73,10 +73,10 @@ npx tsc --noEmit         # direct tsc (use if wrangler types swallows output)
 
 ## Git Worktrees
 
-This repo uses git-crypt for `docs/`, which breaks raw `git worktree add`. Use the script:
+Use the script for worktrees (handles deps/build/migrations/ports/permissions):
 
 ```bash
-scripts/worktree.sh create <branch>    # create + git-crypt unlock + prints cd/claude cmd
+scripts/worktree.sh create <branch>    # create worktree + prints cd/claude cmd
 scripts/worktree.sh remove <branch>    # remove worktree + delete feat/<branch>
 scripts/worktree.sh list               # list active worktrees
 scripts/merge.sh <branch>              # merge feat/<branch> --no-ff + typecheck
@@ -100,7 +100,7 @@ When the user says **"venom"** followed by task descriptions (any format, rambly
 
 **Single task:**
 1. Derive a kebab-case branch name from the task
-2. `scripts/worktree.sh create <branch>` - required (handles git-crypt, deps, build, migrations, ports, permissions)
+2. `scripts/worktree.sh create <branch>` - required (handles deps, build, migrations, ports, permissions)
 3. Write detailed prompt to `$TMPDIR/prompt-<branch>.txt` (include worktree checklist items from below)
 4. Launch background `general-purpose` agent with CWD set to the worktree absolute path
 5. Monitor via task notifications in main context
@@ -124,10 +124,10 @@ When the user says **"venom"** followed by task descriptions (any format, rambly
 - `model: "haiku"` - Mechanical tasks: bulk renames, migration boilerplate, config changes
 
 **Claude Code 2.1.49+ features** (available but not yet integrated into our workflow):
-- `isolation: "worktree"` in agent definitions - Claude Code creates temporary worktrees automatically. Does NOT handle git-crypt/deps/build, so we still use `scripts/worktree.sh` for this project.
+- `isolation: "worktree"` in agent definitions - Claude Code creates temporary worktrees automatically. Does NOT handle deps/build/migrations, so we still use `scripts/worktree.sh` for this project.
 - `background: true` in `.claude/agents/` frontmatter - agent always runs in background without needing `run_in_background: true` at call site.
 - `Ctrl+F` kills background agents (2-press confirm) - use when agents go sideways instead of `TaskStop`.
-- `SubagentStart`/`SubagentStop` hooks - can trigger setup/cleanup scripts when agents spawn. Future: could replace `scripts/worktree.sh` if hooks can handle git-crypt + full setup.
+- `SubagentStart`/`SubagentStop` hooks - can trigger setup/cleanup scripts when agents spawn. Future: could replace `scripts/worktree.sh` if hooks can handle full deps/build/migrations setup.
 
 **NEVER delegate merging to sub-agents.** Always merge worktree branches in main context (the orchestrator). Worktree branches fork from a point-in-time snapshot of main. If other branches merge first, a sub-agent's squash merge will silently revert the intervening changes (the branch diff includes deletions it never made). The orchestrator must: (1) check `git diff main..feat/<branch>` for unexpected reversions, (2) rebase onto current main if needed, (3) resolve conflicts with full project context, (4) typecheck after merge.
 
@@ -260,7 +260,6 @@ Each object stored as separate DO Storage key (`obj:{uuid}`, ~200 bytes). LWW vi
 
 ## Key Constraints
 
-- `docs/encrypted/` is git-crypt encrypted. Everything else in `docs/` is plaintext.
 - Deploy via `git push` to main (CF git integration). Never `wrangler deploy` manually.
 - Rate check must happen BEFORE claiming `_isGenerating` mutex - see comment in `onChatMessage`.
 - Never expose API keys to client bundle - all AI calls server-side.
