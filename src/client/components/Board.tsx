@@ -1,4 +1,4 @@
-import React, { useState, useRef, useCallback, useEffect, useMemo } from "react";
+import React, { useState, useRef, useCallback, useEffect, useLayoutEffect, useMemo } from "react";
 import { Stage, Layer, Rect, Text, Transformer, Arrow as KonvaArrow, Circle as KonvaCircle } from "react-konva";
 import type { KonvaEventObject } from "konva/lib/Node";
 import Konva from "konva";
@@ -189,6 +189,17 @@ export function Board({
   const trRef = useRef<Konva.Transformer>(null);
   const shapeRefs = useRef<Map<string, Konva.Group>>(new Map());
 
+  // Pending position tweens from animated obj:update messages (id -> positions + duration)
+  const pendingAnimRef = useRef<
+    Map<string, { fromX: number; fromY: number; toX: number; toY: number; durationMs: number }>
+  >(new Map());
+  const onAnimatedUpdate = useCallback((id: string, toX: number, toY: number, durationMs: number) => {
+    const node = shapeRefs.current.get(id);
+    // Skip if node missing or user is actively dragging this object
+    if (!node || node.isDragging()) return;
+    pendingAnimRef.current.set(id, { fromX: node.x(), fromY: node.y(), toX, toY, durationMs });
+  }, []);
+
   // Object fade-in animation tracking
   const wasInitializedRef = useRef(false);
   useEffect(() => {
@@ -251,7 +262,23 @@ export function Board({
     patchObjectLocal,
     batchUndo,
     lastServerMessageAt,
-  } = useWebSocket(boardId);
+  } = useWebSocket(boardId, onAnimatedUpdate);
+
+  // Apply pending tweens after each React commit (before browser paint) to avoid visual snap.
+  // Sequence: WS fires callback (captures fromX/Y) -> state update snaps Konva node ->
+  // useLayoutEffect resets to fromX/Y and starts tween -> browser paints at fromX/Y smoothly.
+  useLayoutEffect(() => {
+    if (pendingAnimRef.current.size === 0) return;
+    for (const [id, anim] of pendingAnimRef.current) {
+      const node = shapeRefs.current.get(id);
+      if (node && !node.isDragging()) {
+        node.x(anim.fromX);
+        node.y(anim.fromY);
+        node.to({ x: anim.toX, y: anim.toY, duration: anim.durationMs / 1000, easing: Konva.Easings.EaseInOut });
+      }
+    }
+    pendingAnimRef.current.clear();
+  });
 
   const connectionIndex = useConnectionIndex(objects);
   const connectionIndexRef = useRef(connectionIndex);
