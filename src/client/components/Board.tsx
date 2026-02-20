@@ -157,6 +157,8 @@ export function Board({
   const [gameMode, setGameMode] = useState<GameMode>("freeform");
   // GPT-4o Mini default; sent on every message so server knows which provider to use
   const [aiModel, setAIModel] = useState<AIModel>("gpt-4o-mini");
+  // Per-player persona claim - set via OnboardModal or ChatPanel inline picker
+  const [claimedPersonaId, setClaimedPersonaId] = useState<string | null>(null);
 
   // Hydrate game mode from D1 on mount (so returning users get the right mode)
   useEffect(() => {
@@ -995,6 +997,8 @@ export function Board({
             selectedIds={selectedIds}
             onAIComplete={handleAIComplete}
             mobileMode={true}
+            claimedPersonaId={claimedPersonaId}
+            onClaimChange={setClaimedPersonaId}
           />
         </div>
 
@@ -1192,8 +1196,10 @@ export function Board({
       {/* Onboard modal - shown on empty boards until user starts a scene or dismisses */}
       {initialized && objects.size === 0 && !boardGenStarted && !chatOpen && (
         <OnboardModal
-          onSubmit={(prompt, mode) => {
+          onSubmit={(prompt, mode, model, personaId) => {
             setGameMode(mode);
+            setAIModel(model);
+            setClaimedPersonaId(personaId);
             setBoardGenStarted(true);
             setChatInitialPrompt(prompt);
             setChatOpen(true);
@@ -1590,6 +1596,8 @@ export function Board({
           initialPrompt={chatInitialPrompt}
           selectedIds={selectedIds}
           onAIComplete={handleAIComplete}
+          claimedPersonaId={claimedPersonaId}
+          onClaimChange={setClaimedPersonaId}
         />
       )}
 

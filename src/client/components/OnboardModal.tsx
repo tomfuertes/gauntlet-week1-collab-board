@@ -4,18 +4,21 @@ import { Button } from "./Button";
 import { Modal } from "./Modal";
 import { TextInput } from "./TextInput";
 import { BOARD_TEMPLATES } from "../../shared/board-templates";
-import { GAME_MODES } from "../../shared/types";
-import type { GameMode } from "../../shared/types";
+import { GAME_MODES, AI_MODELS, DEFAULT_PERSONAS } from "../../shared/types";
+import type { GameMode, AIModel, Persona } from "../../shared/types";
 import "../styles/animations.css";
 
 interface OnboardModalProps {
-  onSubmit: (prompt: string, gameMode: GameMode) => void;
+  onSubmit: (prompt: string, gameMode: GameMode, aiModel: AIModel, personaId: string | null) => void;
   onDismiss: () => void;
+  personas?: Persona[];
 }
 
-export function OnboardModal({ onSubmit, onDismiss }: OnboardModalProps) {
+export function OnboardModal({ onSubmit, onDismiss, personas = [...DEFAULT_PERSONAS] }: OnboardModalProps) {
   const [value, setValue] = useState("");
   const [selectedMode, setSelectedMode] = useState<GameMode>("freeform");
+  const [selectedModel, setSelectedModel] = useState<AIModel>("gpt-4o-mini");
+  const [selectedPersonaId, setSelectedPersonaId] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const hasValue = value.trim().length > 0;
   const isHat = selectedMode === "hat";
@@ -29,11 +32,16 @@ export function OnboardModal({ onSubmit, onDismiss }: OnboardModalProps) {
 
   function submit(): void {
     if (isHat) {
-      onSubmit("Start a Scenes From a Hat game. Draw the first prompt and set the scene.", "hat");
+      onSubmit(
+        "Start a Scenes From a Hat game. Draw the first prompt and set the scene.",
+        "hat",
+        selectedModel,
+        selectedPersonaId,
+      );
       return;
     }
     const trimmed = value.trim();
-    if (trimmed) onSubmit(trimmed, selectedMode);
+    if (trimmed) onSubmit(trimmed, selectedMode, selectedModel, selectedPersonaId);
   }
 
   return (
@@ -116,6 +124,124 @@ export function OnboardModal({ onSubmit, onDismiss }: OnboardModalProps) {
         })}
       </div>
 
+      {/* Character picker - "Pick your improv partner" */}
+      <div style={{ marginBottom: 16 }}>
+        <div
+          style={{
+            fontSize: "0.75rem",
+            color: colors.textMuted,
+            marginBottom: 8,
+            textAlign: "center",
+          }}
+        >
+          Pick your improv partner
+        </div>
+        <div
+          style={{
+            display: "flex",
+            gap: 8,
+            flexWrap: "wrap",
+            justifyContent: "center",
+          }}
+        >
+          {/* "Anyone" pill - null claim */}
+          <button
+            onClick={() => setSelectedPersonaId(null)}
+            style={{
+              background: selectedPersonaId === null ? colors.accentSubtle : "rgba(30, 41, 59, 0.6)",
+              border: `2px solid ${selectedPersonaId === null ? colors.accent : colors.border}`,
+              borderRadius: 20,
+              padding: "6px 14px",
+              color: selectedPersonaId === null ? colors.text : colors.textMuted,
+              fontSize: "0.8125rem",
+              cursor: "pointer",
+              transition: "border-color 0.2s, color 0.2s, background 0.2s",
+            }}
+            onMouseEnter={(e) => {
+              if (selectedPersonaId !== null) {
+                e.currentTarget.style.borderColor = colors.accentLight;
+                e.currentTarget.style.color = colors.text;
+              }
+            }}
+            onMouseLeave={(e) => {
+              if (selectedPersonaId !== null) {
+                e.currentTarget.style.borderColor = colors.border;
+                e.currentTarget.style.color = colors.textMuted;
+              }
+            }}
+          >
+            Anyone
+          </button>
+          {/* One pill per persona with colored border */}
+          {personas.map((persona) => {
+            const active = selectedPersonaId === persona.id;
+            return (
+              <button
+                key={persona.id}
+                onClick={() => setSelectedPersonaId(active ? null : persona.id)}
+                style={{
+                  background: active ? `${persona.color}18` : "rgba(30, 41, 59, 0.6)",
+                  border: `2px solid ${active ? persona.color : colors.border}`,
+                  borderRadius: 20,
+                  padding: "6px 14px",
+                  color: active ? colors.text : colors.textMuted,
+                  fontSize: "0.8125rem",
+                  cursor: "pointer",
+                  transition: "border-color 0.2s, color 0.2s, background 0.2s",
+                }}
+                onMouseEnter={(e) => {
+                  if (!active) {
+                    e.currentTarget.style.borderColor = persona.color;
+                    e.currentTarget.style.color = colors.text;
+                  }
+                }}
+                onMouseLeave={(e) => {
+                  if (!active) {
+                    e.currentTarget.style.borderColor = colors.border;
+                    e.currentTarget.style.color = colors.textMuted;
+                  }
+                }}
+              >
+                <span style={{ color: persona.color }}>&#9679;</span> {persona.name}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Model selector */}
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          gap: 8,
+          marginBottom: 16,
+        }}
+      >
+        <span style={{ fontSize: "0.75rem", color: colors.textMuted }}>AI Model</span>
+        <select
+          value={selectedModel}
+          onChange={(e) => setSelectedModel(e.target.value as AIModel)}
+          style={{
+            background: "rgba(22, 33, 62, 0.8)",
+            border: `1px solid ${colors.border}`,
+            borderRadius: 6,
+            color: colors.text,
+            fontSize: "0.75rem",
+            padding: "2px 8px",
+            cursor: "pointer",
+            outline: "none",
+          }}
+        >
+          {AI_MODELS.map((m) => (
+            <option key={m.id} value={m.id}>
+              {m.label}
+            </option>
+          ))}
+        </select>
+      </div>
+
       {/* Input row - hidden for hat mode (auto-submits with default prompt) */}
       {isHat ? (
         <div style={{ textAlign: "center", marginBottom: 20 }}>
@@ -189,7 +315,7 @@ export function OnboardModal({ onSubmit, onDismiss }: OnboardModalProps) {
               <button
                 key={chip.label}
                 onClick={() => {
-                  if (chip.prompt.trim()) onSubmit(chip.prompt, selectedMode);
+                  if (chip.prompt.trim()) onSubmit(chip.prompt, selectedMode, selectedModel, selectedPersonaId);
                 }}
                 style={{
                   background: "rgba(30, 41, 59, 0.6)",
