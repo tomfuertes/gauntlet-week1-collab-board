@@ -150,6 +150,7 @@ export function SpectatorView({ boardId, onBack }: SpectatorViewProps) {
                 reconnecting: colors.warning,
                 connecting: colors.info,
                 disconnected: colors.error,
+                failed: colors.error,
               }[connectionState],
             }}
             title={connectionState}
