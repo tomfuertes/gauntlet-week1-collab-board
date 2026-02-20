@@ -187,6 +187,8 @@ export function Board({
   const [showShortcuts, setShowShortcuts] = useState(false);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; objId: string } | null>(null);
   const trRef = useRef<Konva.Transformer>(null);
+  // Captures the fixed endpoint (the one NOT being dragged) at drag start to avoid moving-reference issues
+  const lineEndpointDragRef = useRef<{ fixedX: number; fixedY: number } | null>(null);
   const shapeRefs = useRef<Map<string, Konva.Group>>(new Map());
 
   // Pending position tweens from animated obj:update messages (id -> positions + duration)
@@ -381,6 +383,14 @@ export function Board({
     [selectedIds, objects],
   );
 
+  // Single selected line: drives endpoint-handle UX instead of Transformer bounding box
+  const selectedLineObj = useMemo(() => {
+    if (selectedIds.size !== 1) return null;
+    const [id] = selectedIds;
+    const obj = objects.get(id);
+    return obj?.type === "line" ? obj : null;
+  }, [selectedIds, objects]);
+
   // Marquee selection (extracted to useDragSelection)
   const { marquee, justFinishedMarqueeRef, startMarquee, updateMarquee, finishMarquee } = useDragSelection({
     objectsRef,
@@ -545,7 +555,12 @@ export function Board({
     const tr = trRef.current;
     if (!tr) return;
     if (selectedIds.size > 0 && !editingId) {
-      const nodes = [...selectedIds].map((id) => shapeRefs.current.get(id)).filter((n): n is Konva.Group => !!n);
+      // KEY-DECISION 2026-02-20: Lines use endpoint-handle UX, not Transformer bounding box.
+      // Exclude all lines so the Transformer doesn't show rotation/scale anchors on line selections.
+      const nodes = [...selectedIds]
+        .filter((id) => objectsRef.current.get(id)?.type !== "line")
+        .map((id) => shapeRefs.current.get(id))
+        .filter((n): n is Konva.Group => !!n);
       if (nodes.length > 0) {
         tr.nodes(nodes);
         tr.getLayer()?.batchDraw();
@@ -1822,6 +1837,88 @@ export function Board({
             borderStroke={colors.accent}
             anchorStroke={colors.accent}
           />
+
+          {/* Line endpoint handles: two draggable circles at start/end instead of Transformer */}
+          {selectedLineObj && (
+            <>
+              <KonvaCircle
+                x={selectedLineObj.x}
+                y={selectedLineObj.y}
+                radius={7 / scale}
+                fill={colors.accent}
+                stroke="#fff"
+                strokeWidth={2 / scale}
+                draggable
+                onClick={(e: KonvaEventObject<MouseEvent>) => {
+                  e.cancelBubble = true;
+                }}
+                onDragStart={() => {
+                  lineEndpointDragRef.current = {
+                    fixedX: selectedLineObj.x + selectedLineObj.width,
+                    fixedY: selectedLineObj.y + selectedLineObj.height,
+                  };
+                }}
+                onDragMove={(e) => {
+                  const fixed = lineEndpointDragRef.current;
+                  if (!fixed) return;
+                  patchObjectLocal(selectedLineObj.id, {
+                    x: e.target.x(),
+                    y: e.target.y(),
+                    width: fixed.fixedX - e.target.x(),
+                    height: fixed.fixedY - e.target.y(),
+                  });
+                }}
+                onDragEnd={(e) => {
+                  const fixed = lineEndpointDragRef.current;
+                  if (!fixed) return;
+                  updateObject({
+                    id: selectedLineObj.id,
+                    x: e.target.x(),
+                    y: e.target.y(),
+                    width: fixed.fixedX - e.target.x(),
+                    height: fixed.fixedY - e.target.y(),
+                  });
+                  lineEndpointDragRef.current = null;
+                }}
+              />
+              <KonvaCircle
+                x={selectedLineObj.x + selectedLineObj.width}
+                y={selectedLineObj.y + selectedLineObj.height}
+                radius={7 / scale}
+                fill={colors.accent}
+                stroke="#fff"
+                strokeWidth={2 / scale}
+                draggable
+                onClick={(e: KonvaEventObject<MouseEvent>) => {
+                  e.cancelBubble = true;
+                }}
+                onDragStart={() => {
+                  lineEndpointDragRef.current = {
+                    fixedX: selectedLineObj.x,
+                    fixedY: selectedLineObj.y,
+                  };
+                }}
+                onDragMove={(e) => {
+                  const fixed = lineEndpointDragRef.current;
+                  if (!fixed) return;
+                  patchObjectLocal(selectedLineObj.id, {
+                    width: e.target.x() - fixed.fixedX,
+                    height: e.target.y() - fixed.fixedY,
+                  });
+                }}
+                onDragEnd={(e) => {
+                  const fixed = lineEndpointDragRef.current;
+                  if (!fixed) return;
+                  updateObject({
+                    id: selectedLineObj.id,
+                    width: e.target.x() - fixed.fixedX,
+                    height: e.target.y() - fixed.fixedY,
+                  });
+                  lineEndpointDragRef.current = null;
+                }}
+              />
+            </>
+          )}
         </Layer>
 
         {/* Cursor layer on top - AI cursor below human cursors */}
