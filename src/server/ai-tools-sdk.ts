@@ -580,11 +580,19 @@ export function createSDKTools(stub: BoardStub, batchId?: string, ai?: Ai, stora
         id: z.string().describe("The ID of the object to resize"),
         width: z.number().describe("New width"),
         height: z.number().describe("New height"),
+        duration: z.number().optional().describe("Animation duration in ms, default 500"),
       }),
-      execute: instrumentExecute("resizeObject", async ({ id, width, height }) => {
+      execute: instrumentExecute("resizeObject", async ({ id, width, height, duration }) => {
         const existing = await readAndCenter(stub, id);
         if (existing) cursorToCenter(stub, { x: existing.x, y: existing.y, width, height });
-        const result = await updateAndMutate(stub, id, { width, height }, "resized", { width, height });
+        const result = await updateAndMutate(
+          stub,
+          id,
+          { width, height },
+          "resized",
+          { width, height },
+          { duration: duration ?? 500 },
+        );
         if ("error" in result) return result;
 
         // Cascade: update connected lines
