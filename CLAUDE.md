@@ -193,66 +193,46 @@ Worktree prompts must explicitly mention:
 ```
 src/
   client/               # React SPA
-    index.html          # Vite entry
-    main.tsx            # React root
-    App.tsx             # App shell + hash routing (#board/{id}, #replay/{id}, #watch/{id})
-    theme.ts            # Shared color constants (accent, surfaces, borders, cursors)
+    App.tsx             # Hash routing (#board/{id}, #replay/{id}, #watch/{id}, #gallery)
+    theme.ts            # Color constants (accent, surfaces, cursors)
     components/
-      Board.tsx         # Canvas + chat panel integration. Mobile-first layout (<=768px): CanvasPreview strip (30vh) + full-width ChatPanel; canvasExpanded state for full-screen canvas overlay. Desktop: unchanged side-by-side.
-      Toolbar.tsx       # Floating toolbar - tool buttons, mode switching (extracted from Board)
-      BoardObjectRenderer.tsx # Shared Konva shape renderer (sticky, rect, circle, line, text, image)
-      ConnectionToast.tsx     # WS connection status toast (extracted from Board)
-      Button.tsx        # Shared button component (primary, secondary, icon, danger variants)
-      Modal.tsx         # Shared modal overlay component
-      TextInput.tsx     # Shared text input component
-      BoardList.tsx     # Board grid (CRUD) - landing page after login
-      ChatPanel.tsx     # AI chat sidebar (dynamic intent chips, improv scene interaction). mobileMode prop: full-width flow layout, 44px touch targets, safe-area-inset bottom padding. Inline persona claim pill row (Player B mid-scene join). `claimedPersonaId`/`onClaimChange` props thread to `body.personaId` in useAgentChat.
-      CanvasPreview.tsx # Read-only scaled-down Konva Stage for mobile preview strip (listening={false}, auto-fits bounding box)
-      ReplayViewer.tsx  # Read-only scene replay player (public, no auth)
-      SpectatorView.tsx # Live read-only board view with emoji reactions (public, no auth)
-      SceneGallery.tsx  # Public gallery grid of replayable scenes (#gallery route)
-      PerfOverlay.tsx   # Performance overlay (FPS, msg age, nodes, connection state) - always on, Shift+P toggle
-      AiCursor.tsx      # Purple canvas cursor (#a855f7) that lerps to each AI object creation point (RAF loop + Konva Tween fade). activeTweenRef owns in-flight animation; any cleanup destroys it.
-      ConfettiBurst.tsx # Confetti particle burst animation (extracted from Board)
-      BoardGrid.tsx     # Dot grid + radial glow background (extracted from Board)
+      Board.tsx         # Canvas + chat + mobile layout (<=768px responsive)
+      Toolbar.tsx       # Floating tool buttons, mode switching
+      BoardObjectRenderer.tsx  # Konva shape renderer (all object types)
+      BoardList.tsx     # Board grid (CRUD) - landing page
+      ChatPanel.tsx     # AI chat sidebar, persona claim pills, intent chips
+      CanvasPreview.tsx # Mobile read-only canvas strip
+      ReplayViewer.tsx  # Public scene replay (no auth)
+      SpectatorView.tsx # Public live view + emoji reactions (no auth)
+      SceneGallery.tsx  # Public gallery grid (#gallery)
+      PerfOverlay.tsx   # FPS/connection overlay (Shift+P)
+      AiCursor.tsx      # Purple dot animating to AI creation points
+      # Also: Button, Modal, TextInput, ConnectionToast, ConfettiBurst, BoardGrid
     hooks/
-      useWebSocket.ts   # WebSocket state management (Board DO, player connections)
-      useSpectatorSocket.ts # WebSocket for spectators (read-only, cursor + reactions only)
-      useUndoRedo.ts    # Local undo/redo stack (max 50, Cmd+Z/Cmd+Shift+Z)
-      useThrottledCallback.ts  # Generic throttle hook (drag, cursor sends)
-      useAiObjectEffects.ts  # AI glow + confetti trigger logic (extracted from Board)
-      useKeyboardShortcuts.ts  # Keyboard handlers: Cmd+Z, Cmd+C, Delete, Escape (extracted from Board)
-      useDragSelection.ts      # Marquee/rubber-band selection logic (extracted from Board)
-      useIsMobile.ts           # Responsive breakpoint hook (matchMedia <=768px, SSR-safe)
+      useWebSocket.ts        # Board DO WebSocket state
+      useSpectatorSocket.ts  # Spectator WebSocket (read-only)
+      useUndoRedo.ts         # Local undo/redo (max 50)
+      # Also: useThrottledCallback, useAiObjectEffects, useKeyboardShortcuts,
+      #       useDragSelection, useIsMobile
     styles/
-      animations.css    # Shared CSS keyframes (cb-pulse, cb-confetti, cb-reaction-float)
-  server/               # CF Worker
-    index.ts            # Hono app - routes, board CRUD, DO exports, agent routing, WS upgrade (player + spectator), public replay + gallery API
-    auth.ts             # Auth routes + PBKDF2 hashing + session helpers
-    env.ts              # Bindings type, D1 helpers (recordBoardActivity, markBoardSeen)
-    prompts.ts          # All LLM prompt content + scene phases + game mode blocks + PROMPT_VERSION constant
-    hat-prompts.ts      # 30+ curated "Scenes From a Hat" prompts + getRandomHatPrompt()
-    chat-agent.ts       # AIChatAgent DO - WebSocket AI chat, model selection, game mode state, per-player persona claims, request metrics
-    tracing-middleware.ts  # LanguageModelMiddleware -> D1 ai_traces table + optional Langfuse (system prompt, tool calls, usage)
-    ai-tools-sdk.ts     # 12 tools as AI SDK tool() with Zod schemas + instrumentExecute wrapper + DRY helpers (tool #12: batchExecute)
-  shared/               # Types shared between client and server
-    types.ts            # BoardObject, WSMessage, BoardMutation, ReplayEvent, etc.
-migrations/             # D1 SQL migrations (tracked via d1_migrations table, npm run migrate)
+      animations.css    # Shared keyframes
+  server/               # (see Stack tables above for server files)
+  shared/types.ts       # BoardObject, WSMessage, Persona, GameMode, AIModel
+migrations/             # D1 SQL (npm run migrate)
 ```
 
 ### Data Flow
 
-1. Client authenticates via POST /auth/signup or /auth/login (session cookie set)
-2. Client shows BoardList (fetches `GET /api/boards`), user selects/creates a board -> hash route `#board/{id}`
-3. Client opens WebSocket to `wss://host/board/:id` (cookie validated before upgrade)
-4. Worker routes WebSocket to Board Durable Object
-5. DO manages all board state: objects in DO Storage (`obj:{uuid}`), cursors in memory
-6. Mutations flow: client applies optimistically -> sends to DO -> DO persists + broadcasts to other clients
-7. AI commands: client connects to ChatAgent DO via WebSocket (`/agents/ChatAgent/<boardId>`) -> `useAgentChat` sends messages with `body: { username, gameMode, model, personaId, selectedIds }` -> ChatAgent resolves persona via `_resolveActivePersona` (claim lookup -> round-robin fallback) -> runs `streamText()` with tools -> tool callbacks via Board DO RPC (`readObject`/`mutate`) -> Board DO persists + broadcasts to all board WebSocket clients. After response, reactive persona fires via `ctx.waitUntil`.
-8. Scene replay: Board DO records mutations as `evt:{ts}:{rand}` keys in storage (debounced 500ms for updates, 2000 cap). Public `GET /api/boards/:id/replay` returns sorted events. `#replay/{id}` route renders read-only ReplayViewer (no auth required).
-9. Scene gallery: Public `GET /api/boards/public` returns boards with activity (D1 join: boards + users + board_activity). `#gallery` route renders SceneGallery grid (no auth). Cards link to `#replay/{id}`.
-10. Live spectator: Public `GET /ws/watch/:boardId` upgrades to spectator WebSocket (no auth). DO tags connection as `role: "spectator"` via `ConnectionMeta` discriminated union. Spectators receive all broadcasts but can only send cursor + reaction messages. `#watch/{id}` route renders read-only SpectatorView with emoji reaction bar.
-11. Prompt eval API: Auth-protected `GET /api/boards/:boardId/objects` returns all board objects + metrics (`total`, `overlapScore`, `outOfBounds`). Used by `scripts/prompt-eval.ts` to score AI layout quality without needing a WS connection. Canvas bounds match LAYOUT RULES in `prompts.ts`.
+1. Auth via POST /auth/signup or /auth/login (session cookie)
+2. BoardList (`GET /api/boards`) -> select/create board -> `#board/{id}`
+3. WebSocket to `wss://host/board/:id` (cookie validated before upgrade)
+4. Board DO manages state: objects in DO Storage (`obj:{uuid}`), cursors in memory
+5. Mutations: client optimistic -> DO persists + broadcasts to others
+6. AI: client WS to ChatAgent DO (`/agents/ChatAgent/<boardId>`) -> `streamText()` with tools -> Board DO RPC for canvas mutations
+7. Replay: DO records mutations as `evt:{ts}:{rand}` keys (max 2000). Public `GET /api/boards/:id/replay`
+8. Gallery: Public `GET /api/boards/public` (D1 join). `#gallery` -> `#replay/{id}`
+9. Spectator: `GET /ws/watch/:boardId` (no auth). Read-only + cursor/reactions only
+10. Eval API: `GET /api/boards/:boardId/objects` returns objects + quality metrics
 
 ### WebSocket Protocol
 
@@ -280,23 +260,12 @@ Each object stored as separate DO Storage key (`obj:{uuid}`, ~200 bytes). LWW vi
 
 ## Key Constraints
 
-- `docs/encrypted/` is git-crypt encrypted (spec, pre-search). Everything else in `docs/` is plaintext and merges normally across worktrees.
-- `private/` is .gitignore'd - contains original PDF, never committed
-- Auth is custom (no Better Auth) - PBKDF2 hashing (Web Crypto, zero deps), D1 sessions, cookie-based. No email, no OAuth, no password reset.
-- Rate limiting: auth routes (login 10/min, signup 5/min) via IP-based in-memory Map in `auth.ts` (resets per isolate - OK for first pass). AI chat (30 msg/min per user) via DO class-level Map in `ChatAgent`. Zero external deps. Rate check must happen BEFORE claiming `_isGenerating` mutex - see comment in `onChatMessage`.
-- Deploy via `git push` to main (CF git integration). Do NOT run `wrangler deploy` manually.
-- All AI calls are server-side in Worker - never expose API keys to client bundle
-- AI uses Cloudflare Agents SDK (`AIChatAgent` DO) + Vercel AI SDK v6 (`streamText` with `stopWhen: stepCountIs(5)`). Tool definitions in `src/server/ai-tools-sdk.ts` (Zod schemas, AI SDK `tool()`), display metadata in `src/client/components/ChatPanel.tsx`. Chat history persisted server-side in DO SQLite.
-- D1 migrations tracked via `d1_migrations` table. Use `npm run migrate` (not raw `wrangler d1 execute`). Create new: `wrangler d1 migrations create collabboard-db "name"`
-- WebSocket reconnect with exponential backoff (1s-10s cap), `disconnected` after 5 initial failures
-- Performance targets: 60fps canvas, <100ms object sync, <50ms cursor sync, 500+ objects, 5+ users
-- Build: Vite `manualChunks` splits vendor-react, vendor-canvas, vendor-ai. All chunks <500KB. Vendor chunks are long-term cacheable.
-- Dev: `scripts/dev.sh` raises `ulimit -n 10240` for multi-worktree setups (macOS default 256 causes EMFILE). Vite uses chokidar + FSEvents on macOS (NOT watchman - chokidar has no watchman support). `server.watch.ignored` excludes dist/.wrangler/.playwright-cli to reduce FD usage.
-- Two-browser test is the primary validation method throughout development
-- Hash-based routing (`#board/{id}`, `#replay/{id}`, `#watch/{id}`, `#gallery`, `#privacy`) - no React Router, no server-side routing needed
-- Board list shows user's own boards + system boards; any auth'd user can access any board via URL
-- AI tool helpers: `randomPos()`, `makeObject()`, `createAndMutate()` in `ai-tools-sdk.ts` - all create tools use these. `createAndMutate` handles error logging and returns `{x, y, width, height}` for LLM chaining.
-- Cursor colors: `getUserColor(userId)` uses hash-based assignment (same palette in Board.tsx and Cursors.tsx). Never use array-index-based color assignment - it produces inconsistent colors across components.
+- `docs/encrypted/` is git-crypt encrypted. Everything else in `docs/` is plaintext.
+- Deploy via `git push` to main (CF git integration). Never `wrangler deploy` manually.
+- Rate check must happen BEFORE claiming `_isGenerating` mutex - see comment in `onChatMessage`.
+- Never expose API keys to client bundle - all AI calls server-side.
+- `getUserColor(userId)` is hash-based (not array-index). Same palette in Board.tsx and Cursors.tsx.
+- Dev: `scripts/dev.sh` raises `ulimit -n 10240` (macOS default 256 causes EMFILE in multi-worktree).
 
 ## Doc Sync Workflow
 
