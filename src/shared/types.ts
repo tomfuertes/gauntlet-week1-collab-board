@@ -262,3 +262,16 @@ export interface BoardStub {
   mutate(msg: BoardMutation): Promise<MutateResult>;
   injectCursor(x: number, y: number): Promise<void>;
 }
+
+/** Canvas mutation notification sent from Board DO to ChatAgent after each player action */
+export interface CanvasAction {
+  type: "obj:create" | "obj:update" | "obj:delete";
+  userId: string;
+  username: string;
+  objectType?: BoardObject["type"];
+  objectId: string;
+  text?: string;
+  /** true for creates/deletes/text-edits; false for position/size drags */
+  significant: boolean;
+  ts: number;
+}
