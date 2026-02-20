@@ -20,6 +20,8 @@ interface SceneMeta {
   creator: string;
   last_activity_at: string;
   eventCount: number;
+  critic_score?: number | null;
+  critic_review?: string | null;
 }
 
 const MODE_BADGES: Record<string, { icon: string; label: string }> = {
@@ -32,6 +34,16 @@ function thumbnailGradient(name: string): string {
   const hue1 = Math.abs(hash) % 360;
   const hue2 = (hue1 + 40) % 360;
   return `linear-gradient(135deg, hsl(${hue1}, 40%, 20%) 0%, hsl(${hue2}, 50%, 15%) 100%)`;
+}
+
+function StarRating({ score }: { score: number }) {
+  return (
+    <div style={{ display: "flex", gap: 1, color: "#fbbf24", fontSize: "0.75rem", letterSpacing: "-1px" }}>
+      {[1, 2, 3, 4, 5].map((i) => (
+        <span key={i}>{i <= score ? "\u2605" : "\u2606"}</span>
+      ))}
+    </div>
+  );
 }
 
 function SceneCard({ scene }: { scene: SceneMeta }) {
@@ -75,6 +87,21 @@ function SceneCard({ scene }: { scene: SceneMeta }) {
         >
           {scene.eventCount} events
         </div>
+        {/* Star rating badge - top left */}
+        {scene.critic_score != null && (
+          <div
+            style={{
+              position: "absolute",
+              top: 8,
+              left: 8,
+              background: "rgba(0,0,0,0.65)",
+              borderRadius: 6,
+              padding: "2px 6px",
+            }}
+          >
+            <StarRating score={scene.critic_score} />
+          </div>
+        )}
         {scene.game_mode && MODE_BADGES[scene.game_mode] && (
           <div
             style={{
@@ -140,6 +167,24 @@ function SceneCard({ scene }: { scene: SceneMeta }) {
         >
           {scene.name}
         </div>
+        {/* Critic review text */}
+        {scene.critic_review && (
+          <div
+            title={scene.critic_review}
+            style={{
+              fontSize: "0.75rem",
+              color: colors.textDim,
+              fontStyle: "italic",
+              marginBottom: 6,
+              display: "-webkit-box",
+              WebkitLineClamp: 2,
+              WebkitBoxOrient: "vertical",
+              overflow: "hidden",
+            }}
+          >
+            &ldquo;{scene.critic_review}&rdquo;
+          </div>
+        )}
         <div
           style={{
             display: "flex",
@@ -181,6 +226,7 @@ export function BoardList({
   const [scenes, setScenes] = useState<SceneMeta[]>([]);
   const [scenesLoading, setScenesLoading] = useState(true);
   const [scenesError, setScenesError] = useState(false);
+  const [sceneSort, setSceneSort] = useState<"recent" | "top" | "low">("recent");
 
   const fetchBoards = useCallback((signal?: AbortSignal) => {
     return fetch("/api/boards", { signal })
@@ -227,12 +273,26 @@ export function BoardList({
 
   useEffect(() => {
     const ac = new AbortController();
-    fetch("/api/boards/public", { signal: ac.signal })
+    setScenesLoading(true);
+    setScenesError(false);
+    const url = sceneSort === "top" ? "/api/boards/public?sort=score" : "/api/boards/public";
+    fetch(url, { signal: ac.signal })
       .then((r) => {
         if (!r.ok) throw new Error(`${r.status}`);
         return r.json() as Promise<SceneMeta[]>;
       })
-      .then(setScenes)
+      .then((data) => {
+        // Client-side sort for "Lowest Rated" (ascending score, scored scenes first)
+        if (sceneSort === "low") {
+          data = [...data].sort((a, b) => {
+            if (a.critic_score == null && b.critic_score == null) return 0;
+            if (a.critic_score == null) return 1;
+            if (b.critic_score == null) return -1;
+            return a.critic_score - b.critic_score;
+          });
+        }
+        setScenes(data);
+      })
       .catch((err: unknown) => {
         if (ac.signal.aborted) return;
         console.error(JSON.stringify({ event: "community:scenes:fetch:error", error: String(err) }));
@@ -242,7 +302,7 @@ export function BoardList({
         if (!ac.signal.aborted) setScenesLoading(false);
       });
     return () => ac.abort();
-  }, []);
+  }, [sceneSort]);
 
   const handleAcceptChallenge = async () => {
     if (!challenge) return;
@@ -485,7 +545,35 @@ export function BoardList({
         )}
 
         {/* Community Scenes section */}
-        <h2 style={{ fontSize: "1.25rem", fontWeight: 600, marginBottom: "0.5rem" }}>Community Scenes</h2>
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            marginBottom: "0.5rem",
+            flexWrap: "wrap",
+            gap: "0.5rem",
+          }}
+        >
+          <h2 style={{ fontSize: "1.25rem", fontWeight: 600, margin: 0 }}>Community Scenes</h2>
+          <select
+            value={sceneSort}
+            onChange={(e) => setSceneSort(e.target.value as "recent" | "top" | "low")}
+            style={{
+              background: colors.surface,
+              color: colors.text,
+              border: `1px solid ${colors.border}`,
+              borderRadius: 6,
+              padding: "0.25rem 0.5rem",
+              fontSize: "0.8125rem",
+              cursor: "pointer",
+            }}
+          >
+            <option value="recent">Recent</option>
+            <option value="top">Top Rated</option>
+            <option value="low">Lowest Rated</option>
+          </select>
+        </div>
         <p style={{ color: colors.textMuted, marginBottom: "1rem", fontSize: "0.875rem" }}>
           Watch replays of collaborative improv sessions
         </p>

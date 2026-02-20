@@ -89,17 +89,23 @@ app.post("/api/boards", async (c) => {
 });
 
 // Public gallery endpoint - no auth, must be above :boardId routes (Hono matches in order)
+// Supports ?sort=score (by critic rating) or default (recent activity)
 app.get("/api/boards/public", async (c) => {
   try {
+    const sortByScore = c.req.query("sort") === "score";
+    const orderClause = sortByScore
+      ? "ORDER BY b.critic_score DESC NULLS LAST, COALESCE(a.last_activity_at, b.created_at) DESC"
+      : "ORDER BY COALESCE(a.last_activity_at, b.created_at) DESC";
     const { results } = await c.env.DB.prepare(
       `SELECT b.id, b.name, b.game_mode, u.display_name AS creator,
               COALESCE(a.last_activity_at, b.created_at) AS last_activity_at,
-              COALESCE(a.activity_count, 0) AS eventCount
+              COALESCE(a.activity_count, 0) AS eventCount,
+              b.critic_review, b.critic_score
        FROM boards b
        JOIN users u ON u.id = b.created_by
        LEFT JOIN board_activity a ON a.board_id = b.id
-       WHERE b.created_by != 'system'
-       ORDER BY COALESCE(a.last_activity_at, b.created_at) DESC
+       WHERE b.is_public = 1
+       ${orderClause}
        LIMIT 50`,
     ).all<{
       id: string;
@@ -108,6 +114,8 @@ app.get("/api/boards/public", async (c) => {
       creator: string;
       last_activity_at: string;
       eventCount: number;
+      critic_review: string | null;
+      critic_score: number | null;
     }>();
     return c.json(results);
   } catch (err) {
