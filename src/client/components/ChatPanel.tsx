@@ -326,6 +326,11 @@ export function ChatPanel({
   // Uses state (not ref) so useAgentChat's body ref updates before the send effect fires.
   const [pendingIntent, setPendingIntent] = useState<string | undefined>();
 
+  // Tag-out state: local chat announcements when player switches persona mid-scene
+  const [tagOutEvents, setTagOutEvents] = useState<{ id: string; text: string }[]>([]);
+  const [showTagOutPicker, setShowTagOutPicker] = useState(false);
+  const prevClaimedPersonaIdRef = useRef<string | null | undefined>(claimedPersonaId);
+
   // One-shot template ID - sent in body.templateId for template seeding, then cleared.
   const [pendingTemplateId, setPendingTemplateId] = useState<string | undefined>();
 
@@ -351,6 +356,29 @@ export function ChatPanel({
     refreshPersonas();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [boardId]);
+
+  // Detect mid-scene persona switch and add a local tag-out announcement to chat.
+  // Only fires when switching FROM an active claim (prevId non-null) TO another persona.
+  // Initial claim from OnboardModal (null -> personaId) does not generate an announcement.
+  useEffect(() => {
+    const prevId = prevClaimedPersonaIdRef.current;
+    if (prevId !== undefined && prevId !== null && prevId !== claimedPersonaId && claimedPersonaId !== null) {
+      const oldPersona = personas.find((p) => p.id === prevId);
+      const newPersona = personas.find((p) => p.id === claimedPersonaId);
+      if (oldPersona && newPersona) {
+        const displayName = username || "You";
+        setTagOutEvents((prev) => [
+          ...prev,
+          {
+            id: crypto.randomUUID(),
+            text: `${displayName} tagged out as ${oldPersona.name}, now playing as ${newPersona.name}`,
+          },
+        ]);
+        setShowTagOutPicker(false);
+      }
+    }
+    prevClaimedPersonaIdRef.current = claimedPersonaId;
+  }, [claimedPersonaId, personas, username]);
 
   const refreshPersonas = useCallback(() => {
     fetch(`/api/boards/${boardId}/personas`, { credentials: "include" })
@@ -709,65 +737,159 @@ export function ChatPanel({
         )}
       </div>
 
-      {/* Inline persona claim picker - shown for Player B who joins mid-scene without OnboardModal */}
+      {/* Inline persona claim picker - shown when onClaimChange is provided (Player B or tag-out) */}
       {onClaimChange && personas.length >= 2 && (
         <div
           style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 6,
-            padding: "6px 12px",
+            padding: "4px 12px 0",
             borderBottom: `1px solid ${colors.border}`,
             flexShrink: 0,
-            flexWrap: "wrap",
           }}
         >
-          <span style={{ fontSize: "0.6875rem", color: colors.textMuted, flexShrink: 0 }}>Partner:</span>
-          {/* "Anyone" pill - 44px min touch target (Apple HIG) */}
-          <button
-            onClick={() => onClaimChange(null)}
-            style={{
-              background: claimedPersonaId === null ? colors.accentSubtle : "transparent",
-              border: `1px solid ${claimedPersonaId === null ? colors.accent : colors.border}`,
-              borderRadius: 20,
-              padding: "2px 10px",
-              minHeight: 44,
-              minWidth: 44,
-              color: claimedPersonaId === null ? colors.text : colors.textMuted,
-              fontSize: "0.6875rem",
-              cursor: "pointer",
-              transition: "border-color 0.15s, color 0.15s, background 0.15s",
-            }}
-          >
-            Anyone
-          </button>
-          {personas.map((persona) => {
-            const active = claimedPersonaId === persona.id;
-            return (
+          {/* Main row: label + current claim or Anyone pill + tag-out button */}
+          <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", paddingBottom: 4 }}>
+            <span style={{ fontSize: "0.6875rem", color: colors.textMuted, flexShrink: 0 }}>
+              {claimedPersonaId ? "Playing as:" : "Partner:"}
+            </span>
+            {/* "Anyone" pill - only show when no active claim */}
+            {!claimedPersonaId && (
               <button
-                key={persona.id}
-                onClick={() => onClaimChange(active ? null : persona.id)}
+                onClick={() => onClaimChange(null)}
                 style={{
-                  background: active ? `${persona.color}18` : "transparent",
-                  border: `1px solid ${active ? persona.color : colors.border}`,
+                  background: colors.accentSubtle,
+                  border: `1px solid ${colors.accent}`,
                   borderRadius: 20,
                   padding: "2px 10px",
                   minHeight: 44,
                   minWidth: 44,
-                  color: active ? colors.text : colors.textMuted,
+                  color: colors.text,
                   fontSize: "0.6875rem",
                   cursor: "pointer",
                   transition: "border-color 0.15s, color 0.15s, background 0.15s",
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 4,
                 }}
               >
-                <span style={{ color: persona.color, fontSize: "0.5rem" }}>&#9679;</span>
-                {persona.name}
+                Anyone
               </button>
-            );
-          })}
+            )}
+            {claimedPersonaId
+              ? // Show active claim + "Switch Character" button
+                (() => {
+                  const activePer = personas.find((p) => p.id === claimedPersonaId);
+                  return activePer ? (
+                    <>
+                      <span
+                        style={{
+                          background: `${activePer.color}18`,
+                          border: `1px solid ${activePer.color}`,
+                          borderRadius: 20,
+                          padding: "2px 10px",
+                          color: activePer.color,
+                          fontSize: "0.6875rem",
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: 4,
+                        }}
+                      >
+                        <span style={{ fontSize: "0.5rem" }}>&#9679;</span>
+                        {activePer.name}
+                      </span>
+                      <button
+                        onClick={() => setShowTagOutPicker((s) => !s)}
+                        title="Switch character (tag out)"
+                        style={{
+                          background: showTagOutPicker ? `${colors.accent}22` : "none",
+                          border: `1px solid ${showTagOutPicker ? colors.accent : colors.border}`,
+                          borderRadius: 8,
+                          padding: "2px 8px",
+                          minHeight: 28,
+                          color: showTagOutPicker ? colors.accent : colors.textMuted,
+                          fontSize: "0.625rem",
+                          cursor: "pointer",
+                          transition: "border-color 0.15s, color 0.15s, background 0.15s",
+                          flexShrink: 0,
+                        }}
+                      >
+                        Switch Character ↔
+                      </button>
+                    </>
+                  ) : null;
+                })()
+              : // No claim: show all persona pills
+                personas.map((persona) => {
+                  const active = claimedPersonaId === persona.id;
+                  return (
+                    <button
+                      key={persona.id}
+                      onClick={() => onClaimChange(active ? null : persona.id)}
+                      style={{
+                        background: active ? `${persona.color}18` : "transparent",
+                        border: `1px solid ${active ? persona.color : colors.border}`,
+                        borderRadius: 20,
+                        padding: "2px 10px",
+                        minHeight: 44,
+                        minWidth: 44,
+                        color: active ? colors.text : colors.textMuted,
+                        fontSize: "0.6875rem",
+                        cursor: "pointer",
+                        transition: "border-color 0.15s, color 0.15s, background 0.15s",
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 4,
+                      }}
+                    >
+                      <span style={{ color: persona.color, fontSize: "0.5rem" }}>&#9679;</span>
+                      {persona.name}
+                    </button>
+                  );
+                })}
+          </div>
+          {/* Tag-out picker: shown when "Switch Character" is clicked */}
+          {showTagOutPicker && claimedPersonaId && (
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 6,
+                paddingBottom: 6,
+                flexWrap: "wrap",
+              }}
+            >
+              <span style={{ fontSize: "0.625rem", color: colors.textMuted, flexShrink: 0 }}>Switch to:</span>
+              {personas
+                .filter((p) => p.id !== claimedPersonaId)
+                .map((persona) => (
+                  <button
+                    key={persona.id}
+                    onClick={() => onClaimChange(persona.id)}
+                    style={{
+                      background: "transparent",
+                      border: `1px solid ${persona.color}88`,
+                      borderRadius: 20,
+                      padding: "2px 10px",
+                      minHeight: 36,
+                      color: persona.color,
+                      fontSize: "0.6875rem",
+                      cursor: "pointer",
+                      transition: "border-color 0.15s, background 0.15s",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 4,
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.borderColor = persona.color;
+                      e.currentTarget.style.background = `${persona.color}18`;
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.borderColor = `${persona.color}88`;
+                      e.currentTarget.style.background = "transparent";
+                    }}
+                  >
+                    <span style={{ fontSize: "0.5rem" }}>&#9679;</span>
+                    {persona.name}
+                  </button>
+                ))}
+            </div>
+          )}
         </div>
       )}
 
@@ -886,6 +1008,25 @@ export function ChatPanel({
             </div>
           );
         })}
+        {/* Tag-out announcements: local system messages shown when player switches persona */}
+        {tagOutEvents.map((event) => (
+          <div
+            key={event.id}
+            style={{
+              alignSelf: "center",
+              padding: "3px 10px",
+              borderRadius: 20,
+              background: "rgba(96, 165, 250, 0.08)",
+              border: "1px solid rgba(96, 165, 250, 0.2)",
+              color: "#60a5fa",
+              fontSize: "0.6875rem",
+              fontStyle: "italic",
+              textAlign: "center",
+            }}
+          >
+            {event.text}
+          </div>
+        ))}
         {loading && (
           <div
             style={{

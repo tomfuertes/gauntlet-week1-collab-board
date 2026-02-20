@@ -26,6 +26,7 @@ import {
   buildLifecycleBlock,
   CRITIC_PROMPT,
   buildCanvasReactionPrompt,
+  buildTagOutPrompt,
 } from "./prompts";
 import type { GameModeState } from "./prompts";
 import { HAT_PROMPTS, getRandomHatPrompt } from "./hat-prompts";
@@ -607,6 +608,10 @@ export class ChatAgent extends AIChatAgent<Bindings> {
       }
     }
 
+    // Capture previous claim before update to detect tag-out (persona switch mid-scene)
+    const previousClaimId =
+      body?.personaId && body?.username ? this._personaClaims.get(body.username as string) : undefined;
+
     // Update persona claim from client (re-sent on every message for hibernation resilience)
     if (body?.personaId && body?.username) {
       this._personaClaims.set(body.username as string, body.personaId as string);
@@ -614,6 +619,19 @@ export class ChatAgent extends AIChatAgent<Bindings> {
 
     const personas = await this._getPersonas();
     const { activeIndex, activePersona, otherPersona } = this._resolveActivePersona(personas, body?.username);
+
+    // Detect tag-out: player switched from one claimed persona to another mid-scene.
+    // previousClaimId undefined = initial claim (first message with personaId), not a switch.
+    const tagOutEvent =
+      previousClaimId && body?.personaId && previousClaimId !== (body.personaId as string)
+        ? (() => {
+            const oldPersona = personas.find((p) => p.id === previousClaimId);
+            const newPersona = personas.find((p) => p.id === (body.personaId as string));
+            return oldPersona && newPersona
+              ? { oldPersonaName: oldPersona.name, newPersonaName: newPersona.name }
+              : null;
+          })()
+        : null;
     // Budget enforcement: count human turns (the message just added is already in this.messages)
     const humanTurns = this.messages.filter((m) => m.role === "user").length;
     const budgetPhase = computeBudgetPhase(humanTurns, SCENE_TURN_BUDGET);
@@ -856,6 +874,21 @@ export class ChatAgent extends AIChatAgent<Bindings> {
       systemPrompt += `\n\nSCENE ALREADY SET: The canvas has been populated with the scene. Here's what's there:\n${templateDescription}\nReact to what's on the canvas. Do NOT recreate these objects - they already exist. Riff on the scene in character.`;
     } else if (humanTurns <= 1) {
       systemPrompt += `\n\n${SCENE_SETUP_PROMPT}`;
+    }
+
+    // Tag-out: inject theatrical handoff prompt when player switches persona mid-scene
+    if (tagOutEvent) {
+      const playerName = (body?.username as string | undefined) || "A player";
+      systemPrompt += `\n\n${buildTagOutPrompt(tagOutEvent.oldPersonaName, tagOutEvent.newPersonaName, playerName)}`;
+      console.debug(
+        JSON.stringify({
+          event: "chat:tag-out",
+          boardId: this.name,
+          player: playerName,
+          from: tagOutEvent.oldPersonaName,
+          to: tagOutEvent.newPersonaName,
+        }),
+      );
     }
 
     // Intent-specific guidance: injected only when player clicked a dramatic chip.
