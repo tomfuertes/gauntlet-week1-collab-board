@@ -9,7 +9,13 @@ import type { GameMode, AIModel, Persona } from "../../shared/types";
 import "../styles/animations.css";
 
 interface OnboardModalProps {
-  onSubmit: (prompt: string, gameMode: GameMode, aiModel: AIModel, personaId: string | null) => void;
+  onSubmit: (
+    prompt: string,
+    gameMode: GameMode,
+    aiModel: AIModel,
+    personaId: string | null,
+    templateId?: string,
+  ) => void;
   onDismiss: () => void;
   personas?: Persona[];
 }
@@ -313,9 +319,9 @@ export function OnboardModal({ onSubmit, onDismiss, personas = [...DEFAULT_PERSO
           >
             {BOARD_TEMPLATES.map((chip, i) => (
               <button
-                key={chip.label}
+                key={chip.id}
                 onClick={() => {
-                  if (chip.prompt.trim()) onSubmit(chip.prompt, selectedMode, selectedModel, selectedPersonaId);
+                  onSubmit(chip.displayText, selectedMode, selectedModel, selectedPersonaId, chip.id);
                 }}
                 style={{
                   background: "rgba(30, 41, 59, 0.6)",
