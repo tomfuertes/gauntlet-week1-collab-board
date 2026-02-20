@@ -48,6 +48,8 @@ const TOOL_ICONS: Record<ToolName, string> = {
   getBoardState: "\u{1F440}",
   deleteObject: "\u{1F5D1}",
   generateImage: "\u{2728}",
+  createText: "\u{1F524}",
+  drawScene: "\u{1F3AD}",
   batchExecute: "\u{26A1}",
 };
 
@@ -63,6 +65,8 @@ const TOOL_LABELS: Record<ToolName, string> = {
   getBoardState: "Reading board",
   deleteObject: "Deleting object",
   generateImage: "Generating image",
+  createText: "Creating text",
+  drawScene: "Drawing scene",
   batchExecute: "Executing batch",
 };
 

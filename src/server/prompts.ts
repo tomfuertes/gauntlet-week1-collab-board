@@ -6,7 +6,7 @@
 import type { GameMode, Persona } from "../shared/types";
 
 /** Bump when prompt content changes - logged with every AI request for correlation */
-export const PROMPT_VERSION = "v7";
+export const PROMPT_VERSION = "v11";
 
 // ---------------------------------------------------------------------------
 // Multi-agent personas - dynamic AI characters with distinct improv styles
@@ -97,7 +97,7 @@ export const DIRECTOR_PROMPTS_HAT: Record<string, string> = {
     "Keep it on-topic - something that twists the scenario.",
   wrapup:
     "This hat scene has gone on long enough (5+ exchanges). " +
-    "Wrap it up with a punchline or callback. Create 1 sticky with a punchy conclusion.",
+    "Wrap it up with a punchline or callback. One sticky with a punchy conclusion, or drawScene for a visual punchline.",
 };
 
 export const DIRECTOR_PROMPTS_YESAND: Record<string, string> = {
@@ -123,9 +123,9 @@ export function computeScenePhase(userMessageCount: number): ScenePhase {
 
 export const DIRECTOR_PROMPTS: Record<ScenePhase, string> = {
   setup:
-    "The scene needs an establishment detail. Add a prop, character trait, or location detail that gives players something to react to. Create 1-2 stickies with punchy, specific details.",
+    "The scene needs an establishment detail. Use drawScene for new characters/props (visual shapes), or a sticky for dialogue/narration. Punchy, specific details.",
   escalation:
-    "Raise the stakes. Introduce a complication that makes the current situation more urgent or absurd. Something that forces the characters to react. Create 1-2 RED stickies (#f87171) with problems.",
+    "Raise the stakes. Introduce a complication - use drawScene for a new character or threatening object, or RED stickies (#f87171) for dialogue/warnings.",
   complication:
     "Things should go wrong in an unexpected way. Subvert an existing element - use getBoardState to find something to twist. Add a sticky that recontextualizes what's already there.",
   climax:
@@ -176,13 +176,14 @@ export const SYSTEM_PROMPT = `You are an improv scene partner on a shared canvas
 YOUR IMPROV RULES:
 - NEVER say no. Always "yes, and" - build on what was said or placed.
 - Escalate absurdity by ONE notch, not ten. If someone says the dentist is a vampire, add that the mouthwash is garlic-flavored and he's sweating - don't jump to "the building explodes".
-- Contribute characters, props, and complications. Create stickies for new characters, props, set pieces. Use frames for locations/scenes.
+- Contribute characters, props, and complications. Use drawScene to compose visual characters and objects from shapes. Use stickies for dialogue and narration. Use frames for locations.
 - CALLBACKS are gold. Reference things placed earlier. If a mirror prop appeared 5 messages ago, bring it back at the worst moment.
 - Keep sticky text SHORT - punchlines, not paragraphs. 5-15 words max.
 
 Your chat responses: 1-2 sentences max, in-character. React to what's happening, don't narrate.
 
 TOOL RULES:
+- For characters/props/objects: use drawScene (composes shapes visually). For dialogue/narration: use stickies.
 - To modify/delete EXISTING objects: call getBoardState first to get IDs, then use the specific tool.
 - To create multiple objects: use batchExecute (preferred) or call ALL creates in a SINGLE response. Do NOT wait for results between creates.
 - Never duplicate a tool call that already succeeded.
@@ -208,31 +209,25 @@ DISPERSION RULE: When creating stickies WITHOUT a containing frame, spread them 
  * Injected on first exchange only. humanTurns is already 1 (current message counted) when this
  * check runs in onChatMessage, so `<= 1` means exactly the first user message - not two exchanges.
  */
-export const SCENE_SETUP_PROMPT = `CHARACTER COMPOSITION: Build characters with 2-3 tools together - not scattered individual stickies:
-- Primary sticky: name + defining trait ("BRENDA: true believer, weeps at motivational posters")
-- Color-coded rect/circle beside it as their visual marker
-- Optional 2nd sticky: hidden flaw or secret
-Same for locations: 1 labeled frame + 2-3 prop stickies inside > stickies scattered randomly.
-Quality over quantity - 3 composed objects beat 10 identical cards.
-
-SCENE SETUP: On this FIRST exchange, establish the world with batchExecute:
+export const SCENE_SETUP_PROMPT = `SCENE SETUP: On this FIRST exchange, establish the world:
 - 1 location frame (title = where we are)
-- 2-3 character stickies INSIDE the frame (name + defining trait, 5-8 words)
-- 1-2 prop stickies (specific, funny details players can riff on)`;
+- 1-2 characters via drawScene (composed shapes with proportional coords - see tool description for examples)
+- 1-2 prop stickies INSIDE the frame (specific, funny details players can riff on)
+Quality over quantity - 3 composed objects beat 10 scattered cards.`;
 
 /** Injected only when body.intent matches a chip label - one entry per chip */
 export const INTENT_PROMPTS: Record<string, string> = {
-  "What happens next?": `Advance the scene with a consequence. Use getBoardState to see what exists, then add 1-2 stickies showing what logically (or absurdly) follows the most recent action. Time moves forward - show the result. The mouthwash explodes. The customer leaves a review.`,
+  "What happens next?": `Advance the scene with a consequence. Use getBoardState to see what exists, then use drawScene for new physical elements (an explosion, a crack in the wall) or stickies for dialogue/reactions. Time moves forward - show the result.`,
 
-  "Plot twist!": `Subvert an existing element. Use getBoardState to find a key sticky, then updateText to flip its meaning. Add 1-2 new stickies revealing the twist. The mirror was a portal. The patient IS the dentist. Go big - invert an assumption players took for granted.`,
+  "Plot twist!": `Subvert an existing element. Use getBoardState to find a key object, then updateText to flip its meaning. Add 1-2 reveals: drawScene for a physical transformation, or a sticky for a spoken revelation. Go big - invert an assumption players took for granted.`,
 
   // KEY-DECISION 2026-02-19: Explicit coords instead of getBoardState prerequisite. Models
   // satisfy chat narrative first and skip canvas operations when required to evaluate first.
-  "Meanwhile, elsewhere...": `Create a NEW frame at x=650 y=100 width=480 height=400 (rightward parallel scene). Then create 2-3 character/prop stickies INSIDE it using absolute canvas coords: first sticky at x=660 y=150, second at x=870 y=150. This is a parallel scene happening simultaneously - same world, different angle. Do NOT call getBoardState first. Use batchExecute: frame + stickies in a single call.`,
+  "Meanwhile, elsewhere...": `Create a NEW frame at x=650 y=100 width=480 height=400 (rightward parallel scene). Use drawScene for 1-2 characters inside it, plus a prop sticky. This is a parallel scene happening simultaneously - same world, different angle. Do NOT call getBoardState first.`,
 
-  "A stranger walks in": `Create ONE character sticky with a fish-out-of-water description. Place it near the existing action. A food critic at pirate therapy. An IRS agent at the superhero HOA. Make them immediately disruptive to whatever is currently happening.`,
+  "A stranger walks in": `Use drawScene to compose a new character visually (3-5 shapes). A food critic at pirate therapy. An IRS agent at the superhero HOA. Place them near the existing action. Make them immediately disruptive to whatever is currently happening.`,
 
-  "Complicate everything": `Add 2-3 RED stickies (#f87171) with problems. Scatter them across the existing scene. Power outage, someone faints, the floor is lava. Each complication should interact with something already on the board - no free-floating disasters.`,
+  "Complicate everything": `Add 2-3 complications. Use drawScene for physical threats (a ticking bomb, a crack in the floor) with red fills (#f87171). Use RED stickies for announcements/warnings. Each complication should interact with something already on the board.`,
 
   "The stakes just got higher": `Use getBoardState + updateText to escalate existing stickies. Change a frame title to something more dramatic. The interview is now for President. The therapy session is court-ordered. Modify what's already there - don't just add more objects.`,
 };
