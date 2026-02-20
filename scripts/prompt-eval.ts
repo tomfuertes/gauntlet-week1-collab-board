@@ -15,6 +15,8 @@ import { join, dirname } from "path";
 import { fileURLToPath } from "url";
 // ws is a transitive dep (playwright, wrangler) - no new dependency added
 import { WebSocket } from "ws";
+// langfuse is a direct dependency (already in package.json)
+import { Langfuse } from "langfuse";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -348,6 +350,19 @@ async function main() {
 
   console.log(`[eval] Prompt eval harness (PROMPT_VERSION=${promptVersion}, model=${MODEL}, port=${PORT})`);
 
+  // Initialize Langfuse for pushing eval scores to traces (optional - skipped if env vars absent)
+  const langfuse =
+    process.env.LANGFUSE_PUBLIC_KEY && process.env.LANGFUSE_SECRET_KEY
+      ? new Langfuse({
+          publicKey: process.env.LANGFUSE_PUBLIC_KEY,
+          secretKey: process.env.LANGFUSE_SECRET_KEY,
+          baseUrl: process.env.LANGFUSE_BASE_URL ?? "https://cloud.langfuse.com",
+        })
+      : null;
+  if (langfuse) {
+    console.log("[eval] Langfuse enabled - scores will be pushed to traces");
+  }
+
   // Auth
   let cookie: string;
   try {
@@ -397,6 +412,29 @@ async function main() {
     }
     const result = await runScenario(cookie, boardId, scenario);
     results.push(result);
+
+    // Push scores to Langfuse if configured. Each scenario gets its own trace so metrics
+    // are queryable per-scenario, per-model, and per-promptVersion in the Langfuse dashboard.
+    if (langfuse) {
+      const trace = langfuse.trace({
+        name: "eval:scenario",
+        metadata: { scenarioId: result.id, description: result.description, promptVersion, model: MODEL },
+        tags: ["eval", `scenario:${result.id}`, `model:${MODEL}`, `promptVersion:${promptVersion}`],
+      });
+      const scoreEntries: { name: string; value: number }[] = [
+        { name: "pass", value: result.pass ? 1 : 0 },
+        { name: "overlapScore", value: result.overlapScore },
+        { name: "outOfBounds", value: result.outOfBounds },
+        { name: "objectCount", value: result.objectCount },
+        { name: "latencyMs", value: result.latencyMs },
+      ];
+      if (result.typesMatch !== null) {
+        scoreEntries.push({ name: "typesMatch", value: result.typesMatch ? 1 : 0 });
+      }
+      for (const { name, value } of scoreEntries) {
+        langfuse.score({ traceId: trace.id, name, value });
+      }
+    }
 
     const status = result.pass ? "PASS" : "FAIL";
     const typeStr = result.typesMatch === null ? "" : ` types=${result.typesMatch ? "ok" : "mismatch"}`;
@@ -448,6 +486,11 @@ async function main() {
     ),
   );
   console.log(`\n[eval] Full report: ${reportPath}`);
+
+  if (langfuse) {
+    await langfuse.flushAsync();
+    console.log("[eval] Langfuse scores flushed");
+  }
 }
 
 main().catch((err) => {
