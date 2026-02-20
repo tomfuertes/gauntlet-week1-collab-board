@@ -136,7 +136,8 @@ export type WSServerMessage =
   | { type: "obj:sequence"; steps: ChoreographyStep[] }
   | { type: "spotlight"; objectId?: string; x?: number; y?: number }
   | { type: "blackout" }
-  | { type: "sfx"; userId: string; effect: string; x: number; y: number };
+  | { type: "sfx"; userId: string; effect: string; x: number; y: number }
+  | { type: "curtain_call"; characters: { id: string; name: string }[]; sceneTitle: string };
 
 export const AI_USER_ID = "ai-agent" as const;
 export const AI_USERNAME = "AI Assistant" as const;

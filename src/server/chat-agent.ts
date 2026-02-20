@@ -1004,6 +1004,19 @@ export class ChatAgent extends AIChatAgent<Bindings> {
           );
         }),
       );
+      // Broadcast curtain call with all scene characters so the client can show the applause overlay.
+      const curtainCharacters = personas.map((p) => ({ id: p.id, name: p.name }));
+      this.ctx.waitUntil(
+        boardStub.broadcastCurtainCall(curtainCharacters).catch((err: unknown) => {
+          console.error(
+            JSON.stringify({
+              event: "curtain-call:unhandled",
+              boardId: this.name,
+              error: String(err),
+            }),
+          );
+        }),
+      );
     }
 
     // Scene setup: inject template description (if template was seeded) or generic scene structure

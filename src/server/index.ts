@@ -101,10 +101,15 @@ app.get("/api/boards/public", async (c) => {
       `SELECT b.id, b.name, b.game_mode, u.display_name AS creator,
               COALESCE(a.last_activity_at, b.created_at) AS last_activity_at,
               COALESCE(a.activity_count, 0) AS eventCount,
-              b.critic_review, b.critic_score
+              b.critic_review, b.critic_score,
+              r.avg_rating, r.rating_count
        FROM boards b
        JOIN users u ON u.id = b.created_by
        LEFT JOIN board_activity a ON a.board_id = b.id
+       LEFT JOIN (
+         SELECT board_id, ROUND(AVG(rating), 1) AS avg_rating, COUNT(*) AS rating_count
+         FROM scene_ratings GROUP BY board_id
+       ) r ON r.board_id = b.id
        WHERE b.is_public = 1
        ${orderClause}
        LIMIT 50`,
@@ -117,6 +122,8 @@ app.get("/api/boards/public", async (c) => {
       eventCount: number;
       critic_review: string | null;
       critic_score: number | null;
+      avg_rating: number | null;
+      rating_count: number | null;
     }>();
     // KEY-DECISION 2026-02-20: Filter flagged board names at the gallery layer.
     // Board still works for its creator; it just won't appear in the public listing.
@@ -199,6 +206,29 @@ app.patch("/api/boards/:boardId", async (c) => {
   const body = await c.req.json<{ game_mode?: string }>();
   const gameMode = ["hat", "yesand", "freeform"].includes(body.game_mode ?? "") ? body.game_mode : "freeform";
   await c.env.DB.prepare("UPDATE boards SET game_mode = ? WHERE id = ?").bind(gameMode, boardId).run();
+  return c.json({ ok: true });
+});
+
+// Scene rating (auth-protected, any user can rate a public board; upserts on conflict)
+app.post("/api/boards/:boardId/rate", async (c) => {
+  const user = await requireAuth(c);
+  if (!user) return c.text("Unauthorized", 401);
+
+  const boardId = c.req.param("boardId");
+  const body = await c.req.json<{ rating?: unknown }>();
+  const rating = body.rating;
+  if (!Number.isInteger(rating) || (rating as number) < 1 || (rating as number) > 5) {
+    return c.json({ error: "rating must be an integer between 1 and 5" }, 400);
+  }
+
+  await c.env.DB.prepare(
+    `INSERT INTO scene_ratings (board_id, user_id, rating, created_at)
+     VALUES (?, ?, ?, datetime('now'))
+     ON CONFLICT(board_id, user_id) DO UPDATE SET rating = excluded.rating, created_at = excluded.created_at`,
+  )
+    .bind(boardId, user.id, rating)
+    .run();
+
   return c.json({ ok: true });
 });
 

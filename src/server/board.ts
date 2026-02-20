@@ -157,6 +157,28 @@ export class Board extends DurableObject<Bindings> {
     }
   }
 
+  /** Broadcast theatrical curtain call to all WS clients (called from ChatAgent at scene end).
+   *  Fetches board name from D1 to populate sceneTitle for the client applause overlay.
+   *  KEY-DECISION 2026-02-20: Board DO owns the D1 read (same pattern as archiveScene/saveCriticReview). */
+  async broadcastCurtainCall(characters: { id: string; name: string }[]): Promise<void> {
+    const boardId = await this.getBoardId();
+    let sceneTitle = "Untitled Scene";
+    if (boardId) {
+      try {
+        const row = await this.env.DB.prepare("SELECT name FROM boards WHERE id = ?")
+          .bind(boardId)
+          .first<{ name: string }>();
+        if (row?.name) sceneTitle = row.name;
+      } catch {
+        // Non-fatal: broadcast with default title
+      }
+    }
+    this.broadcast({ type: "curtain_call", characters, sceneTitle });
+    console.debug(
+      JSON.stringify({ event: "curtain-call:broadcast", boardId, sceneTitle, characterCount: characters.length }),
+    );
+  }
+
   /** Set AI presence visibility in the presence list */
   async setAiPresence(active: boolean): Promise<void> {
     this.aiActiveUntil = active ? Date.now() + 60_000 : 0;
