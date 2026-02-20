@@ -91,6 +91,7 @@ export function useWebSocket(
   onBlackout?: () => void,
   onSfx?: (effect: string, emoji: string, label: string, x: number, y: number) => void,
   onTransient?: (effect: TransientEffect) => void,
+  onMood?: (mood: string, intensity: number) => void,
 ): UseWebSocketReturn {
   const wsRef = useRef<WebSocket | null>(null);
   // Refs so the WS closure always calls the latest callbacks without reconnecting
@@ -108,6 +109,8 @@ export function useWebSocket(
   onSfxRef.current = onSfx;
   const onTransientRef = useRef(onTransient);
   onTransientRef.current = onTransient;
+  const onMoodRef = useRef(onMood);
+  onMoodRef.current = onMood;
   const lastServerMessageAt = useRef(0);
   const [connectionState, setConnectionState] = useState<ConnectionState>("connecting");
   const [initialized, setInitialized] = useState(false);
@@ -301,6 +304,9 @@ export function useWebSocket(
             break;
           case "curtain_call":
             setCurtainCall({ characters: msg.characters, sceneTitle: msg.sceneTitle });
+            break;
+          case "mood":
+            onMoodRef.current?.(msg.mood, msg.intensity);
             break;
           case "board:deleted":
             // Board was deleted by owner - navigate away

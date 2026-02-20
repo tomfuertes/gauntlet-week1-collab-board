@@ -47,6 +47,17 @@ const MIN_ZOOM = 0.1;
 const MAX_ZOOM = 5;
 const CURSOR_THROTTLE_MS = 33; // ~30fps
 
+// Subtle gradient backgrounds per mood - opacity controlled by intensity (max 0.5)
+const MOOD_GRADIENTS: Record<string, string> = {
+  comedy: "linear-gradient(135deg, #FFF8E1 0%, #FFE082 100%)",
+  noir: "linear-gradient(135deg, #1A1A2E 0%, #16213E 100%)",
+  horror: "linear-gradient(135deg, #0D1B0E 0%, #1B3A1B 100%)",
+  romance: "linear-gradient(135deg, #FFF0F5 0%, #FFE4E1 100%)",
+  tension: "linear-gradient(135deg, #2D0000 0%, #4A1010 100%)",
+  triumph: "linear-gradient(135deg, #FFD700 0%, #FFA500 100%)",
+  chaos: "linear-gradient(135deg, #2E003E 0%, #4A0072 100%)",
+};
+
 // Mirror-div technique: find pixel coords of character at `position` inside a textarea
 function getCaretPixelPos(textarea: HTMLTextAreaElement, position: number): { x: number; y: number } {
   const div = document.createElement("div");
@@ -313,6 +324,12 @@ export function Board({
   const [curtainRating, setCurtainRating] = useState(0);
   const [curtainRatingHover, setCurtainRatingHover] = useState(0);
   const [curtainRatingSubmitted, setCurtainRatingSubmitted] = useState(false);
+
+  // --- Ambient mood lighting state ---
+  const [canvasMood, setCanvasMood] = useState<{ mood: string; intensity: number }>({ mood: "neutral", intensity: 0 });
+  const onMoodReceived = useCallback((mood: string, intensity: number) => {
+    setCanvasMood({ mood, intensity });
+  }, []);
 
   // Hydrate game mode from D1 on mount (so returning users get the right mode)
   useEffect(() => {
@@ -626,6 +643,7 @@ export function Board({
     onBlackout,
     onSfxReceived,
     onTransientEffect,
+    onMoodReceived,
   );
 
   const handleSfxSend = useCallback(
@@ -2248,6 +2266,19 @@ export function Board({
           onDismiss={() => setBoardGenStarted(true)}
         />
       )}
+
+      {/* Ambient mood lighting - full-canvas gradient behind Konva Stage */}
+      <div
+        style={{
+          position: "absolute",
+          inset: 0,
+          pointerEvents: "none",
+          zIndex: 0,
+          background: MOOD_GRADIENTS[canvasMood.mood] ?? "transparent",
+          opacity: canvasMood.mood === "neutral" ? 0 : canvasMood.intensity * 0.5,
+          transition: "background 2s ease, opacity 2s ease",
+        }}
+      />
 
       {/* Canvas */}
       <Stage
