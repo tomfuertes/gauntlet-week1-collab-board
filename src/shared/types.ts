@@ -225,9 +225,9 @@ export interface DailyChallenge {
   gameMode: string;
   /** null when user has not entered; always present in authenticated responses */
   userBoardId: string | null;
-  /** Current daily challenge streak for authenticated user */
+  /** User's current consecutive-day challenge streak (0 or absent = no streak) */
   streak?: number;
-  /** Best streak ever for authenticated user */
+  /** User's personal best critic_score (1-5) across all prior challenge attempts */
   bestScore?: number | null;
 }
 
@@ -236,11 +236,14 @@ export interface LeaderboardEntry {
   /** Used for current-user highlighting; compare to AuthUser.id, not displayName */
   userId: string;
   username: string;
+  /** Kept for backward compat; leaderboard now primarily sorts by criticScore when present */
   reactionCount: number;
-  criticScore?: number | null;
-  criticReview?: string | null;
+  /** Board name for this entry (shown as scene subtitle) */
   sceneName?: string | null;
-  // Ordered by criticScore DESC NULLS LAST, reactionCount DESC server-side; rank = array index - do not re-sort
+  /** AI critic star rating 1-5; absent until scene is reviewed at dramatic conclusion */
+  criticScore?: number | null;
+  /** AI critic review snippet; absent until scene is reviewed */
+  criticReview?: string | null;
 }
 
 export interface ReplayEvent {
