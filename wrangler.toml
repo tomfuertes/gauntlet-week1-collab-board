@@ -41,9 +41,16 @@ binding = "AI"
 # Tracked per ChatAgent DO instance, resets at midnight UTC.
 DAILY_AI_BUDGET_USD = "5.00"
 # Workers AI model. Override to test different models without redeploying.
+# KEY-DECISION 2026-02-19: GPT-4o Mini default over GLM-4.7-flash - GLM tool calling
+# broken in prod, GPT-4o Mini is same cost tier with proven tool reliability.
 WORKERS_AI_MODEL = "@cf/zai-org/glm-4.7-flash"
+DEFAULT_AI_MODEL = "gpt-4o-mini"
+# Langfuse observability (public key + base URL are safe as plaintext vars)
+LANGFUSE_PUBLIC_KEY = "pk-lf-683e2ebc-6e3d-4f02-bd85-9d7d67d06a94"
+LANGFUSE_BASE_URL = "https://us.cloud.langfuse.com"
 
 # AUTH_SECRET set via: wrangler secret put AUTH_SECRET
 # ANTHROPIC_API_KEY set via: wrangler secret put ANTHROPIC_API_KEY
 # OPENAI_API_KEY set via: wrangler secret put OPENAI_API_KEY
+# LANGFUSE_SECRET_KEY set via: wrangler secret put LANGFUSE_SECRET_KEY
 #   For local dev: add to .dev.vars file

@@ -80,6 +80,23 @@ cd /path/to/worktree && claude --model sonnet "$(cat /private/tmp/claude-501/pro
 ```
 This launches Claude with the prompt pre-loaded so the user just hits enter. Always include a specific, actionable prompt describing the feature to build. **Do NOT use "Enter plan mode first"** - it adds an approval gate that blocks the agent and the context exploration can compress away during implementation. Instead, write detailed prompts that specify the approach, and instruct the agent to read CLAUDE.md and relevant source files before implementing.
 
+### "venom" - Orchestrator-owned worktree agents (experimental)
+
+When the user says **"venom"** followed by a task description (any format, rambly is fine), the orchestrator owns the full lifecycle:
+1. Derive a kebab-case branch name from the task (user won't provide one)
+2. `scripts/worktree.sh create <branch>` - required (handles git-crypt, deps, build, migrations, ports, permissions)
+3. Write detailed prompt to `$TMPDIR/prompt-<branch>.txt` (include worktree checklist items from below)
+4. Launch background `general-purpose` agent with CWD set to the worktree absolute path
+5. Monitor via task notifications in main context
+6. Merge when agent finishes (same merge protocol below)
+
+**Model selection by task complexity** (not hardcoded):
+- `model: "sonnet"` - Default for most: refactors, well-scoped features, DX fixes
+- `model: "opus"` - Architectural changes, novel integrations, complex multi-system work
+- `model: "haiku"` - Mechanical tasks: bulk renames, migration boilerplate, config changes
+
+This replaces the "print a command for the user to run" flow. The old flow still works for cases where the user wants manual control. "venom" is experimental - if it works, consolidate into the default flow.
+
 **NEVER delegate merging to sub-agents.** Always merge worktree branches in main context (the orchestrator). Worktree branches fork from a point-in-time snapshot of main. If other branches merge first, a sub-agent's squash merge will silently revert the intervening changes (the branch diff includes deletions it never made). The orchestrator must: (1) check `git diff main..feat/<branch>` for unexpected reversions, (2) rebase onto current main if needed, (3) resolve conflicts with full project context, (4) typecheck after merge.
 
 ## Browser Testing (playwright-cli)

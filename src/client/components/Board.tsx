@@ -155,8 +155,8 @@ export function Board({
   const [chatInitialPrompt, setChatInitialPrompt] = useState<string | undefined>();
   const [boardGenStarted, setBoardGenStarted] = useState(false);
   const [gameMode, setGameMode] = useState<GameMode>("freeform");
-  // GLM 4.7 Flash is the UI default; sent on every message so it overrides WORKERS_AI_MODEL env var
-  const [aiModel, setAIModel] = useState<AIModel>("glm-4.7-flash");
+  // GPT-4o Mini default; sent on every message so server knows which provider to use
+  const [aiModel, setAIModel] = useState<AIModel>("gpt-4o-mini");
 
   // Hydrate game mode from D1 on mount (so returning users get the right mode)
   useEffect(() => {

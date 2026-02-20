@@ -183,9 +183,11 @@ export class ChatAgent extends AIChatAgent<Bindings> {
     }
   }
 
-  /** Resolve the selected model entry from AI_MODELS registry */
+  /** Resolve the selected model entry from AI_MODELS registry.
+   *  Priority: per-message requested model > DEFAULT_AI_MODEL env var > undefined (Workers AI fallback) */
   private _resolveModelEntry() {
-    return this._requestedModel ? AI_MODELS.find((m) => m.id === this._requestedModel) : undefined;
+    const modelId = this._requestedModel || (this.env as unknown as Record<string, string>).DEFAULT_AI_MODEL || "";
+    return modelId ? AI_MODELS.find((m) => m.id === modelId) : undefined;
   }
 
   /** Choose model based on provider routing: workers-ai, openai, or anthropic */
