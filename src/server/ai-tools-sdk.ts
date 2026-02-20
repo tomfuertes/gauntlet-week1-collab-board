@@ -242,11 +242,14 @@ function instrumentExecute<TArgs, TResult>(
 }
 
 /** Board object with LLM-irrelevant fields stripped for token savings */
-type LLMBoardObject = Omit<BoardObject, "updatedAt" | "createdBy" | "batchId" | "rotation"> & { rotation?: number };
+type LLMBoardObject = Omit<BoardObject, "updatedAt" | "createdBy" | "batchId" | "rotation" | "isBackground"> & {
+  rotation?: number;
+};
 
-/** Strip LLM-irrelevant fields from board objects to reduce token usage */
+/** Strip LLM-irrelevant fields from board objects to reduce token usage.
+ *  Background objects should be filtered before calling this (see getBoardState). */
 function stripForLLM(obj: BoardObject): LLMBoardObject {
-  const { updatedAt: _updatedAt, createdBy: _createdBy, batchId: _batchId, rotation, ...rest } = obj;
+  const { updatedAt: _updatedAt, createdBy: _createdBy, batchId: _batchId, isBackground: _bg, rotation, ...rest } = obj;
   // Strip base64 src from images (massive, useless for LLM) - keep prompt for context
   if (rest.type === "image" && rest.props.src) {
     rest.props = { ...rest.props, src: "[base64 image]" };
@@ -254,6 +257,58 @@ function stripForLLM(obj: BoardObject): LLMBoardObject {
   // Only include rotation when non-zero (meaningful)
   if (rotation) return { ...rest, rotation };
   return rest;
+}
+
+// ---------------------------------------------------------------------------
+// Image generation helper (shared by generateImage tool + stage backgrounds)
+// ---------------------------------------------------------------------------
+
+/** Generate an image via CF Workers AI SDXL and return a data URL.
+ *  Throws on failure - callers must handle errors. */
+export async function generateImageDataUrl(ai: Ai, prompt: string): Promise<string> {
+  const MAX_IMAGE_BYTES = 2 * 1024 * 1024; // 2MB raw - keeps base64 under DO SQLite 2MB value limit
+
+  const response = await ai.run(
+    "@cf/stabilityai/stable-diffusion-xl-base-1.0" as Parameters<Ai["run"]>[0],
+    { prompt, width: 512, height: 512 } as Record<string, unknown>,
+  );
+
+  if (!response || typeof (response as ReadableStream).getReader !== "function") {
+    const responseType = response === null ? "null" : typeof response;
+    throw new Error(`Image generation returned unexpected response type: ${responseType}`);
+  }
+
+  const stream = response as ReadableStream<Uint8Array>;
+  const reader = stream.getReader();
+  const chunks: Uint8Array[] = [];
+  let totalLen = 0;
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    chunks.push(value);
+    totalLen += value.byteLength;
+  }
+
+  if (totalLen === 0) {
+    throw new Error("Image generation returned empty response (0 bytes)");
+  }
+  if (totalLen > MAX_IMAGE_BYTES) {
+    throw new Error(`Generated image too large (${(totalLen / 1024).toFixed(0)}KB)`);
+  }
+
+  const imageBytes = new Uint8Array(totalLen);
+  let offset = 0;
+  for (const chunk of chunks) {
+    imageBytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+
+  // btoa works on latin1 strings; build from byte array
+  let binary = "";
+  for (let i = 0; i < imageBytes.length; i++) {
+    binary += String.fromCharCode(imageBytes[i]);
+  }
+  return `data:image/png;base64,${btoa(binary)}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -508,7 +563,9 @@ export function createSDKTools(stub: BoardStub, batchId?: string, ai?: Ai) {
         ids: z.array(z.string()).optional().describe("Array of specific object IDs to return"),
       }),
       execute: instrumentExecute("getBoardState", async ({ filter, ids }) => {
-        const objects = await stub.readObjects();
+        const allObjects = await stub.readObjects();
+        // Exclude background images from AI context (decorative, huge base64)
+        const objects = allObjects.filter((o: BoardObject) => !o.isBackground);
 
         if (ids && ids.length > 0) {
           return objects.filter((o: BoardObject) => ids.includes(o.id)).map(stripForLLM);
@@ -581,48 +638,9 @@ export function createSDKTools(stub: BoardStub, batchId?: string, ai?: Ai) {
           return { error: "Image generation unavailable (AI binding not configured)" };
         }
 
-        // Call CF Workers AI Stable Diffusion XL
-        const MAX_IMAGE_BYTES = 2 * 1024 * 1024; // 2MB raw - keeps base64 under DO SQLite 2MB value limit
-        let imageBytes: Uint8Array;
+        let src: string;
         try {
-          const response = await ai.run(
-            "@cf/stabilityai/stable-diffusion-xl-base-1.0" as Parameters<Ai["run"]>[0],
-            { prompt, width: 512, height: 512 } as Record<string, unknown>,
-          );
-          // Validate response is a ReadableStream
-          if (!response || typeof (response as ReadableStream).getReader !== "function") {
-            const responseType = response === null ? "null" : typeof response;
-            console.error(
-              JSON.stringify({ event: "ai:image:unexpected-response", prompt: prompt.slice(0, 100), responseType }),
-            );
-            return { error: `Image generation returned unexpected response type: ${responseType}` };
-          }
-          const stream = response as ReadableStream<Uint8Array>;
-          const reader = stream.getReader();
-          const chunks: Uint8Array[] = [];
-          let totalLen = 0;
-          while (true) {
-            const { done, value } = await reader.read();
-            if (done) break;
-            chunks.push(value);
-            totalLen += value.byteLength;
-          }
-          if (totalLen === 0) {
-            console.error(JSON.stringify({ event: "ai:image:empty-response", prompt: prompt.slice(0, 100) }));
-            return { error: "Image generation returned empty response (0 bytes)" };
-          }
-          if (totalLen > MAX_IMAGE_BYTES) {
-            console.error(
-              JSON.stringify({ event: "ai:image:too-large", prompt: prompt.slice(0, 100), bytes: totalLen }),
-            );
-            return { error: `Generated image too large (${(totalLen / 1024).toFixed(0)}KB)` };
-          }
-          imageBytes = new Uint8Array(totalLen);
-          let offset = 0;
-          for (const chunk of chunks) {
-            imageBytes.set(chunk, offset);
-            offset += chunk.byteLength;
-          }
+          src = await generateImageDataUrl(ai, prompt);
         } catch (err) {
           console.error(
             JSON.stringify({ event: "ai:image:generate-error", prompt: prompt.slice(0, 100), error: String(err) }),
@@ -630,28 +648,6 @@ export function createSDKTools(stub: BoardStub, batchId?: string, ai?: Ai) {
           return { error: `Image generation failed: ${err instanceof Error ? err.message : String(err)}` };
         }
 
-        // Convert to base64 data URL
-        let base64: string;
-        try {
-          // btoa works on latin1 strings; build from byte array
-          let binary = "";
-          for (let i = 0; i < imageBytes.length; i++) {
-            binary += String.fromCharCode(imageBytes[i]);
-          }
-          base64 = btoa(binary);
-        } catch (err) {
-          console.error(
-            JSON.stringify({
-              event: "ai:image:base64-error",
-              prompt: prompt.slice(0, 100),
-              bytesLen: imageBytes.length,
-              error: String(err),
-            }),
-          );
-          return { error: `Base64 encoding failed: ${err instanceof Error ? err.message : String(err)}` };
-        }
-
-        const src = `data:image/png;base64,${base64}`;
         const displayW = width ?? TOOL_DEFAULTS.image.width;
         const displayH = height ?? TOOL_DEFAULTS.image.height;
         const obj = makeObject("image", randomPos(x, y), displayW, displayH, { src, prompt }, batchId);

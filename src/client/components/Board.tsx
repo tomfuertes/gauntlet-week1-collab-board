@@ -1543,9 +1543,15 @@ export function Board({
         <Layer>
           <BoardGrid stagePos={stagePos} scale={scale} size={size} />
 
-          {/* Pass 1: frames (behind everything) */}
+          {/* Pass 0: stage backgrounds (behind everything, non-interactive) */}
           {[...objects.values()]
-            .filter((o) => o.type === "frame")
+            .filter((o) => o.isBackground)
+            .map((obj) => (
+              <BoardObjectRenderer key={obj.id} obj={obj} isBackground />
+            ))}
+          {/* Pass 1: frames (behind foreground objects) */}
+          {[...objects.values()]
+            .filter((o) => o.type === "frame" && !o.isBackground)
             .map((obj) => (
               <InteractiveBoardObject
                 key={obj.id}
@@ -1658,9 +1664,9 @@ export function Board({
               />
             ) : null)}
 
-          {/* Pass 2: non-frame objects */}
+          {/* Pass 2: non-frame, non-background objects */}
           {[...objects.values()]
-            .filter((o) => o.type !== "frame")
+            .filter((o) => o.type !== "frame" && !o.isBackground)
             .map((obj) => (
               <InteractiveBoardObject
                 key={obj.id}
