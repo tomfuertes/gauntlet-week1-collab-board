@@ -118,6 +118,11 @@ function sanitizeMessages(messages: UIMessage[]): UIMessage[] {
 export class ChatAgent extends AIChatAgent<Bindings> {
   /* eslint-disable @typescript-eslint/no-explicit-any */
 
+  // KEY-DECISION 2026-02-20: Cap at 100 messages. Each scene = 1 user msg + 1 AI + 1 reactive
+  // per turn. SCENE_TURN_BUDGET caps human turns, so max ~3x turns msgs + overhead fits well
+  // under 100. This prevents unbounded DO Storage growth across scenes on the same board.
+  maxPersistedMessages = 100;
+
   // Lightweight mutex: prevents concurrent AI generation (chat + director).
   // Do NOT replace with _activeStreamId - it's unreliable after DO hibernation.
   // (ResumableStream.restore() picks up stale stream metadata with a 5-min threshold,
