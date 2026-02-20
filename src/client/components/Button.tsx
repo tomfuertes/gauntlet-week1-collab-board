@@ -3,6 +3,23 @@ import { colors } from "../theme";
 type Variant = "primary" | "secondary" | "danger" | "link";
 type Size = "sm" | "md";
 
+// Inject hover/active CSS once at module load - inline styles can't do :hover
+const HOVER_STYLES = `
+.cb-btn-primary:not(:disabled):hover { background: ${colors.accentLight} !important; }
+.cb-btn-primary:not(:disabled):active { background: ${colors.accentDark} !important; }
+.cb-btn-secondary:not(:disabled):hover { background: ${colors.accentSubtle} !important; border-color: ${colors.accentLight} !important; color: ${colors.text} !important; }
+.cb-btn-secondary:not(:disabled):active { background: rgba(99, 102, 241, 0.2) !important; }
+.cb-btn-danger:not(:disabled):hover { background: rgba(248, 113, 113, 0.1) !important; border-color: ${colors.error} !important; }
+.cb-btn-link:not(:disabled):hover { color: ${colors.text} !important; }
+`;
+
+if (typeof document !== "undefined" && !document.getElementById("cb-btn-styles")) {
+  const style = document.createElement("style");
+  style.id = "cb-btn-styles";
+  style.textContent = HOVER_STYLES;
+  document.head.appendChild(style);
+}
+
 const VARIANT_STYLES: Record<Variant, React.CSSProperties> = {
   primary: { background: colors.accent, color: "#fff", border: "none", borderRadius: 4 },
   secondary: {
@@ -32,12 +49,14 @@ export function Button({ variant = "secondary", size = "sm", style, disabled, ..
   return (
     <button
       disabled={disabled}
+      className={`cb-btn-${variant}`}
       style={{
         ...variantStyle,
         padding,
         cursor: disabled ? "not-allowed" : "pointer",
         fontSize: "0.75rem",
         opacity: disabled ? 0.5 : 1,
+        transition: "all 0.15s ease",
         ...style,
       }}
       {...rest}

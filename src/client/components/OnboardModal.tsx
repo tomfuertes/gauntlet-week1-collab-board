@@ -230,7 +230,7 @@ export function OnboardModal({ onSubmit, onDismiss, personas = [...DEFAULT_PERSO
           value={selectedModel}
           onChange={(e) => setSelectedModel(e.target.value as AIModel)}
           style={{
-            background: "rgba(22, 33, 62, 0.8)",
+            background: colors.overlayHeader,
             border: `1px solid ${colors.border}`,
             borderRadius: 6,
             color: colors.text,

@@ -382,7 +382,7 @@ const ToolIconBtn = React.memo(function ToolIconBtn({
         background: active ? colors.accent : "transparent",
         border: active ? `1px solid ${colors.accentLight}` : "1px solid transparent",
         borderRadius: 6,
-        color: disabled ? "#475569" : active ? "#fff" : colors.textMuted,
+        color: disabled ? colors.borderLight : active ? "#fff" : colors.textMuted,
         cursor: disabled ? "default" : "pointer",
         padding: 0,
         transition: "transform 0.15s ease, background 0.15s ease, color 0.15s ease",
@@ -404,10 +404,10 @@ function ZoomBtn({ label, onClick }: { label: string; onClick: () => void }) {
       style={{
         width: label === "Reset" ? 52 : 32,
         height: 32,
-        background: "rgba(22, 33, 62, 0.9)",
-        border: "1px solid #334155",
+        background: colors.overlayHeader,
+        border: `1px solid ${colors.border}`,
         borderRadius: 4,
-        color: "#eee",
+        color: colors.text,
         cursor: "pointer",
         fontSize: "0.875rem",
       }}
