@@ -11,6 +11,7 @@ import type { Bindings } from "./env";
 import { recordBoardActivity, markBoardSeen } from "./env";
 export { Board } from "./board";
 export { ChatAgent } from "./chat-agent";
+import { containsFlaggedContent } from "./chat-agent";
 
 const app = new Hono<{ Bindings: Bindings }>();
 
@@ -117,7 +118,16 @@ app.get("/api/boards/public", async (c) => {
       critic_review: string | null;
       critic_score: number | null;
     }>();
-    return c.json(results);
+    // KEY-DECISION 2026-02-20: Filter flagged board names at the gallery layer.
+    // Board still works for its creator; it just won't appear in the public listing.
+    const safe = results.filter((r) => {
+      if (containsFlaggedContent(r.name)) {
+        console.warn(JSON.stringify({ event: "gallery:content-gate", boardId: r.id }));
+        return false;
+      }
+      return true;
+    });
+    return c.json(safe);
   } catch (err) {
     console.error(JSON.stringify({ event: "gallery:public:error", error: String(err) }));
     return c.json([], 500);

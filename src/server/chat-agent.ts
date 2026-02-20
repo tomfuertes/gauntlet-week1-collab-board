@@ -72,6 +72,59 @@ function cleanModelOutput(text: string): string {
 }
 
 /**
+ * Blocklist for output moderation. Covers slurs, explicit sexual content, and harmful instructions.
+ * Not a general profanity filter - mild improv language (damn, hell, ass) is fine.
+ *
+ * KEY-DECISION 2026-02-20: Simple regex blocklist over external moderation API.
+ * No added latency, no cost, no external dependency. ~20 patterns cover the obvious
+ * harm vectors (slurs, explicit sexual, hate speech, harmful instructions) for a public
+ * improv gallery. Word-boundary anchors + leet-speak variants prevent easy circumvention.
+ */
+const CONTENT_BLOCKLIST: RegExp[] = [
+  // Racial and ethnic slurs
+  /\bn[i!1][gq]{2}[ae3]r\b/i,
+  /\bf[a@4][gq]{2}[o0]t\b/i,
+  /\bk[i!1]k[e3]\b/i,
+  /\bsp[i!1][ck]\b/i,
+  /\bch[i!1]nk\b/i,
+  /\bwetback\b/i,
+  // Explicit sexual content (not mild innuendo)
+  /\bpornograph/i,
+  /\bsex(?:ual)?\s+(?:explicit|assault|traffic)/i,
+  /\bchild\s+(?:sex|porn|nude)/i,
+  /\bminor\s+(?:sex|porn|nude)/i,
+  // Hate speech
+  /\bheil\s+hitler\b/i,
+  /\bwhite\s+(?:power|supremac)/i,
+  /\bgas\s+the\s+\w+s\b/i,
+  // Harmful real-world instructions
+  /\b(?:make|build)\s+(?:a\s+)?(?:bomb|explosive)\b/i,
+  /\bhow\s+to\s+(?:make|synthesize)\s+\w*(?:drug|meth|fentanyl)/i,
+  /\bhow\s+to\s+(?:kill|murder|poison)\s+(?:a\s+)?(?:person|someone|people)\b/i,
+  /\bkill\s+(?:your|ur)self\b/i,
+];
+
+/**
+ * Sanitize AI output text against the content blocklist.
+ * Returns a safe replacement string if flagged; original text otherwise.
+ * Applied at all AI response output points before persisting to message history.
+ */
+function moderateOutput(boardId: string, text: string): string {
+  for (const pattern of CONTENT_BLOCKLIST) {
+    if (pattern.test(text)) {
+      console.warn(JSON.stringify({ event: "moderation:flagged", boardId, pattern: pattern.source }));
+      return "[scene paused for content review]";
+    }
+  }
+  return text;
+}
+
+/** Check if text contains flagged content (exported for gallery gate in index.ts). */
+export function containsFlaggedContent(text: string): boolean {
+  return CONTENT_BLOCKLIST.some((p) => p.test(text));
+}
+
+/**
  * Sanitize UIMessages to ensure all tool invocation inputs are valid objects.
  * Some LLMs (especially smaller ones) sometimes emit tool calls with string,
  * null, or array inputs instead of JSON objects. This causes API validation
@@ -1006,6 +1059,9 @@ export class ChatAgent extends AIChatAgent<Bindings> {
       // Enforce game mode rules (e.g. Yes-And prefix) after persona prefix is in place
       this._enforceGameModeRules(activePersona.name);
 
+      // Sanitize AI output against content blocklist before persisting
+      this._moderateLastMessage();
+
       // Auto-name the board from scene content on 3rd human turn
       if (humanTurns === 3) {
         this.ctx.waitUntil(
@@ -1429,6 +1485,27 @@ export class ChatAgent extends AIChatAgent<Bindings> {
     );
   }
 
+  /** Moderate the last assistant message against the content blocklist (streaming/chat path).
+   *  Runs after _ensurePersonaPrefix and _enforceGameModeRules - mutates in-place and persists. */
+  private _moderateLastMessage() {
+    const lastMsg = this.messages[this.messages.length - 1];
+    if (!lastMsg || lastMsg.role !== "assistant") return;
+
+    const firstTextPart = lastMsg.parts.find((p) => p.type === "text");
+    if (!firstTextPart) return;
+
+    const moderated = moderateOutput(this.name, firstTextPart.text);
+    if (moderated === firstTextPart.text) return; // no change - skip persist
+
+    const newParts = lastMsg.parts.map((part) => (part === firstTextPart ? { ...part, text: moderated } : part));
+    this.messages[this.messages.length - 1] = { ...lastMsg, parts: newParts };
+    this.ctx.waitUntil(
+      this.persistMessages(this.messages).catch((err: unknown) => {
+        console.error(JSON.stringify({ event: "moderation:persist-error", boardId: this.name, error: String(err) }));
+      }),
+    );
+  }
+
   /** Build a UIMessage from a generateText result with tool-call parts and persona-prefixed text.
    *  Returns null if the result produced no parts (no tools called, no text). */
   private _buildGenerateTextMessage(
@@ -1489,7 +1566,7 @@ export class ChatAgent extends AIChatAgent<Bindings> {
       }
     }
     if (text) {
-      parts.push({ type: "text" as const, text });
+      parts.push({ type: "text" as const, text: moderateOutput(this.name, text) });
     }
 
     if (parts.length === 0) return null;
