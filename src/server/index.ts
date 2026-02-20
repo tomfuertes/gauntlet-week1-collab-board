@@ -432,6 +432,14 @@ app.get("/api/boards/:boardId/replay", async (c) => {
 app.all("/agents/*", async (c) => {
   const user = await requireAuth(c);
   if (!user) return c.text("Unauthorized", 401);
+
+  // Guard against phantom DO creation: /agents/ChatAgent/<boardId>[/...]
+  const boardId = c.req.path.split("/")[3];
+  if (boardId) {
+    const board = await c.env.DB.prepare("SELECT 1 FROM boards WHERE id = ? LIMIT 1").bind(boardId).first();
+    if (!board) return c.text("Not found", 404);
+  }
+
   return (await routeAgentRequest(c.req.raw, c.env)) || c.text("Not found", 404);
 });
 
@@ -443,6 +451,9 @@ app.get("/ws/watch/:boardId", async (c) => {
   }
 
   const boardId = c.req.param("boardId");
+  const board = await c.env.DB.prepare("SELECT 1 FROM boards WHERE id = ? LIMIT 1").bind(boardId).first();
+  if (!board) return c.text("Not found", 404);
+
   const doId = c.env.BOARD.idFromName(boardId);
   const stub = c.env.BOARD.get(doId);
 
@@ -473,6 +484,9 @@ app.get("/ws/board/:boardId", async (c) => {
   if (!user) return c.text("Unauthorized", 401);
 
   const boardId = c.req.param("boardId");
+  const board = await c.env.DB.prepare("SELECT 1 FROM boards WHERE id = ? LIMIT 1").bind(boardId).first();
+  if (!board) return c.text("Not found", 404);
+
   const stub = getBoardStub(c.env, boardId);
 
   // Forward with user info + boardId as query params (DO reads these)
