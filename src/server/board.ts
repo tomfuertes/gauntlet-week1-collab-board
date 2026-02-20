@@ -10,10 +10,14 @@ import type {
 } from "../shared/types";
 import type { Bindings } from "./env";
 import { recordBoardActivity, markBoardSeen } from "./env";
+import { containsFlaggedContent } from "./chat-agent";
 
+// KEY-DECISION 2026-02-20: Spectator attachment tracks reactionCount and lastHeckleAt
+// so that heckle budget and rate-limit survive DO hibernation (unlike class properties).
+// Cost: 5 reactions; rate limit: 1 heckle per 2 minutes per spectator.
 type ConnectionMeta =
   | { role: "player"; userId: string; username: string; editingObjectId?: string }
-  | { role: "spectator"; userId: string; username: string };
+  | { role: "spectator"; userId: string; username: string; reactionCount: number; lastHeckleAt: number };
 
 // Allowed emoji set for spectator reactions (must match client REACTION_EMOJIS)
 const ALLOWED_REACTION_EMOJIS = new Set([
@@ -196,7 +200,11 @@ export class Board extends DurableObject<Bindings> {
     const [client, server] = [pair[0], pair[1]];
 
     this.ctx.acceptWebSocket(server);
-    server.serializeAttachment({ userId, username, role } satisfies ConnectionMeta);
+    const initialMeta: ConnectionMeta =
+      role === "spectator"
+        ? { role: "spectator", userId, username, reactionCount: 0, lastHeckleAt: 0 }
+        : { role: "player", userId, username };
+    server.serializeAttachment(initialMeta);
 
     const objects = await this.getAllObjects();
     const { users, spectatorCount } = this.getPresenceList();
@@ -231,8 +239,8 @@ export class Board extends DurableObject<Bindings> {
       return;
     }
 
-    // Spectators can only send cursor updates and reactions
-    if (meta.role === "spectator" && msg.type !== "cursor" && msg.type !== "reaction") {
+    // Spectators can only send cursor updates, reactions, and heckles
+    if (meta.role === "spectator" && msg.type !== "cursor" && msg.type !== "reaction" && msg.type !== "heckle") {
       console.warn(JSON.stringify({ event: "spectator:blocked", type: msg.type, userId: meta.userId }));
       return;
     }
@@ -250,8 +258,40 @@ export class Board extends DurableObject<Bindings> {
       if (now - last < 1000) return;
       this.lastReactionAt.set(meta.userId, now);
       this.broadcast({ type: "reaction", userId: meta.userId, emoji: msg.emoji, x: msg.x, y: msg.y });
-      // Only spectator reactions count toward the challenge leaderboard
-      if (meta.role === "spectator") this.trackReaction();
+      // Only spectator reactions count toward the challenge leaderboard and heckle budget
+      if (meta.role === "spectator") {
+        this.trackReaction();
+        // Increment per-connection reaction count (persisted in attachment for heckle budget)
+        const updated: ConnectionMeta = { ...meta, reactionCount: meta.reactionCount + 1 };
+        ws.serializeAttachment(updated);
+      }
+      return;
+    }
+
+    if (msg.type === "heckle" && meta.role === "spectator") {
+      const now = Date.now();
+      const text = typeof msg.text === "string" ? msg.text.trim().slice(0, 100) : "";
+      // Validate: must have content, enough reactions, and not be on cooldown
+      if (!text) return;
+      if (meta.reactionCount < 5) {
+        console.warn(JSON.stringify({ event: "heckle:rejected", reason: "insufficient-reactions", userId: meta.userId, reactionCount: meta.reactionCount }));
+        return;
+      }
+      if (now - meta.lastHeckleAt < 120_000) {
+        console.warn(JSON.stringify({ event: "heckle:rejected", reason: "rate-limit", userId: meta.userId }));
+        return;
+      }
+      if (containsFlaggedContent(text)) {
+        console.warn(JSON.stringify({ event: "heckle:rejected", reason: "content-flagged", userId: meta.userId }));
+        return;
+      }
+      // Deduct 5 reactions and update cooldown in attachment
+      const updated: ConnectionMeta = { ...meta, reactionCount: meta.reactionCount - 5, lastHeckleAt: now };
+      ws.serializeAttachment(updated);
+      // Broadcast to ALL clients (players + spectators)
+      this.broadcast({ type: "heckle", userId: meta.userId, text });
+      // Forward to ChatAgent so AI can react in next response
+      this.notifyHeckle(meta.userId, text);
       return;
     }
 
@@ -499,6 +539,17 @@ export class Board extends DurableObject<Bindings> {
         this.broadcast({ type: "obj:sequence", steps: msg.steps });
         return { ok: true };
       }
+      case "spotlight": {
+        // KEY-DECISION 2026-02-20: Broadcast to ALL clients including sender (no excludeWs).
+        // Spotlight is a pure ephemeral visual effect - no storage, no replay, all clients sync.
+        this.broadcast({ type: "spotlight", objectId: msg.objectId, x: msg.x, y: msg.y });
+        return { ok: true };
+      }
+      case "blackout": {
+        // Same pattern as spotlight: ephemeral, broadcast-all, no persistence.
+        this.broadcast({ type: "blackout" });
+        return { ok: true };
+      }
     }
     return { ok: false, error: `Unknown message type` };
   }
@@ -529,6 +580,15 @@ export class Board extends DurableObject<Bindings> {
       const id = this.env.CHAT_AGENT.idFromName(boardId);
       const chatAgent = this.env.CHAT_AGENT.get(id);
       await chatAgent.onCanvasAction(action);
+    });
+  }
+
+  /** Fire-and-forget heckle notification to ChatAgent - AI incorporates on next response. */
+  private notifyHeckle(userId: string, text: string): void {
+    this.withBoardId("heckle:notify", async (boardId) => {
+      const id = this.env.CHAT_AGENT.idFromName(boardId);
+      const chatAgent = this.env.CHAT_AGENT.get(id);
+      await chatAgent.onHeckle(userId, text);
     });
   }
 

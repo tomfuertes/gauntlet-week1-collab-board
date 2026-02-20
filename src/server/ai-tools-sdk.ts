@@ -860,7 +860,49 @@ export function createSDKTools(stub: BoardStub, batchId?: string, ai?: Ai, stora
       }),
     }),
 
-    // 17. drawScene
+    // 17. spotlight
+    spotlight: tool({
+      description:
+        "Dim the entire canvas and shine a spotlight on a specific object or canvas position. " +
+        "Use for dramatic reveals - it draws focus to one element by darkening everything else. " +
+        "Use sparingly for maximum theatrical impact. Auto-clears after 5 seconds.",
+      inputSchema: z.object({
+        objectId: z.string().optional().describe("ID of object to spotlight (centers the light on it)"),
+        x: z.number().optional().describe("X coordinate to spotlight (used if no objectId)"),
+        y: z.number().optional().describe("Y coordinate to spotlight (used if no objectId)"),
+      }),
+      execute: instrumentExecute("spotlight", async ({ objectId, x, y }) => {
+        let spotX = x;
+        let spotY = y;
+        if (objectId) {
+          const obj = await stub.readObject(objectId);
+          if (obj) {
+            spotX = obj.x + obj.width / 2;
+            spotY = obj.y + obj.height / 2;
+            cursorToCenter(stub, obj);
+          }
+        }
+        const result = await stub.mutate({ type: "spotlight", objectId, x: spotX, y: spotY });
+        if (!result.ok) return { error: result.error };
+        return { spotlight: objectId ?? "position", x: spotX, y: spotY };
+      }),
+    }),
+
+    // 18. blackout
+    blackout: tool({
+      description:
+        "Fade the entire canvas to black for a dramatic scene transition. " +
+        "Use between major scene shifts - the blackout holds for 1.5 seconds then fades out. " +
+        "Use sparingly (once per scene transition maximum) for maximum theatrical impact.",
+      inputSchema: z.object({}),
+      execute: instrumentExecute("blackout", async () => {
+        const result = await stub.mutate({ type: "blackout" });
+        if (!result.ok) return { error: result.error };
+        return { blackout: true };
+      }),
+    }),
+
+    // 19. drawScene
     drawScene: tool({
       description:
         "Compose a visual character or object from 2-10 shapes in a bounding box. Uses proportional " +
@@ -1001,6 +1043,8 @@ export function createSDKTools(stub: BoardStub, batchId?: string, ai?: Ai, stora
                   "highlightObject",
                   "advanceScenePhase",
                   "choreograph",
+                  "spotlight",
+                  "blackout",
                   "drawScene",
                 ])
                 .describe("Tool name to execute"),

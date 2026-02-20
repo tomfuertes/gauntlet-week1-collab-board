@@ -63,4 +63,5 @@ export const toolCursors: Record<string, string> = {
   connector: "crosshair",
   text: "text",
   frame: "crosshair",
+  spotlight: "cell",
 };

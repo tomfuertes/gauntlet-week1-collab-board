@@ -1,5 +1,5 @@
 import React, { useState, useRef, useCallback, useEffect, useLayoutEffect, useMemo } from "react";
-import { Stage, Layer, Rect, Text, Transformer, Arrow as KonvaArrow, Circle as KonvaCircle } from "react-konva";
+import { Stage, Layer, Rect, Text, Transformer, Arrow as KonvaArrow, Circle as KonvaCircle, Shape } from "react-konva";
 import type { KonvaEventObject } from "konva/lib/Node";
 import Konva from "konva";
 import type { AuthUser } from "../App";
@@ -407,6 +407,83 @@ export function Board({
     [onEffect],
   );
 
+  // --- Spotlight & Blackout state ---
+  // KEY-DECISION 2026-02-20: Each spotlight trigger gets a unique id so useEffect re-fires
+  // even when spotlight hits the same position twice in a row.
+  const [spotlightState, setSpotlightState] = useState<{
+    x: number;
+    y: number;
+    id: string;
+  } | null>(null);
+  const [blackoutActive, setBlackoutActive] = useState(false);
+  const spotlightLayerRef = useRef<Konva.Layer>(null);
+  const blackoutLayerRef = useRef<Konva.Layer>(null);
+  const spotlightTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const blackoutTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Animate spotlight layer in, hold 5s, fade out
+  useEffect(() => {
+    if (!spotlightState) return;
+    const layer = spotlightLayerRef.current;
+    if (!layer) return;
+    if (spotlightTimerRef.current) clearTimeout(spotlightTimerRef.current);
+    layer.opacity(0);
+    layer.to({ opacity: 1, duration: 0.3 });
+    spotlightTimerRef.current = setTimeout(() => {
+      layer.to({ opacity: 0, duration: 0.3, onFinish: () => setSpotlightState(null) });
+    }, 5000);
+    return () => {
+      if (spotlightTimerRef.current) clearTimeout(spotlightTimerRef.current);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [spotlightState?.id]);
+
+  // Animate blackout: fade in (0.5s) → hold 1.5s → fade out (0.5s) → remove
+  useEffect(() => {
+    if (!blackoutActive) return;
+    const layer = blackoutLayerRef.current;
+    if (!layer) return;
+    if (blackoutTimerRef.current) clearTimeout(blackoutTimerRef.current);
+    layer.opacity(0);
+    layer.to({
+      opacity: 1,
+      duration: 0.5,
+      onFinish: () => {
+        blackoutTimerRef.current = setTimeout(() => {
+          layer.to({ opacity: 0, duration: 0.5, onFinish: () => setBlackoutActive(false) });
+        }, 1500);
+      },
+    });
+    return () => {
+      if (blackoutTimerRef.current) clearTimeout(blackoutTimerRef.current);
+    };
+  }, [blackoutActive]);
+
+  // Cleanup timers on unmount
+  useEffect(() => {
+    return () => {
+      if (spotlightTimerRef.current) clearTimeout(spotlightTimerRef.current);
+      if (blackoutTimerRef.current) clearTimeout(blackoutTimerRef.current);
+    };
+  }, []);
+
+  const onSpotlight = useCallback((objectId?: string, x?: number, y?: number) => {
+    let spotX = x ?? 600;
+    let spotY = y ?? 420;
+    if (objectId) {
+      const obj = objectsRef.current.get(objectId);
+      if (obj) {
+        spotX = obj.x + obj.width / 2;
+        spotY = obj.y + obj.height / 2;
+      }
+    }
+    setSpotlightState({ x: spotX, y: spotY, id: crypto.randomUUID() });
+  }, []);
+
+  const onBlackout = useCallback(() => {
+    setBlackoutActive(true);
+  }, []);
+
   // Object fade-in animation tracking
   const wasInitializedRef = useRef(false);
   useEffect(() => {
@@ -469,7 +546,7 @@ export function Board({
     patchObjectLocal,
     batchUndo,
     lastServerMessageAt,
-  } = useWebSocket(boardId, onAnimatedUpdate, onEffect, onSequence);
+  } = useWebSocket(boardId, onAnimatedUpdate, onEffect, onSequence, onSpotlight, onBlackout);
   // Keep ref current so onSequence's setTimeout callbacks always use the latest patchObjectLocal
   patchObjectLocalRef.current = patchObjectLocal;
 
@@ -511,6 +588,9 @@ export function Board({
   // Stable refs to avoid recreating callbacks on every state change
   const objectsRef = useRef(objects);
   objectsRef.current = objects;
+
+  // Derive person-type objects for freeze tag character picker in ChatPanel
+  const personObjects = useMemo(() => [...objects.values()].filter((o) => o.type === "person"), [objects]);
 
   // --- AI Batch Undo state ---
   const [undoAiBatchId, setUndoAiBatchId] = useState<string | null>(null);
@@ -1029,7 +1109,12 @@ export function Board({
       const worldX = (pointer.x - stagePosRef.current.x) / scaleRef.current;
       const worldY = (pointer.y - stagePosRef.current.y) / scaleRef.current;
 
-      if (toolMode === "select") {
+      if (toolMode === "spotlight") {
+        // Spotlight mode: send spotlight WS message at clicked position, return to select
+        send({ type: "spotlight", x: worldX, y: worldY });
+        setToolMode("select");
+        return;
+      } else if (toolMode === "select") {
         startMarquee(worldX, worldY);
       } else if (toolMode === "frame") {
         setFrameDraft({ startX: worldX, startY: worldY, x: worldX, y: worldY, width: 0, height: 0 });
@@ -1052,7 +1137,7 @@ export function Board({
         drawStartRef.current = ds;
       }
     },
-    [toolMode, startMarquee],
+    [toolMode, startMarquee, send],
   );
 
   // Stage mouseup: finish marquee, frame draft, or shape/connector creation
@@ -1780,6 +1865,7 @@ export function Board({
             mobileMode={true}
             claimedPersonaId={claimedPersonaId}
             onClaimChange={setClaimedPersonaId}
+            personObjects={personObjects}
           />
         </div>
 
@@ -2366,6 +2452,58 @@ export function Board({
           <Cursors cursors={cursors} />
         </Layer>
 
+        {/* Spotlight overlay: dark mask with transparent circle cut-out via destination-out.
+            KEY-DECISION 2026-02-20: Separate Layer ensures destination-out only affects this
+            layer's canvas buffer, not content layers below. The hole shows through because
+            the Layer composites normally on top. Layer opacity is animated for fade-in/out. */}
+        {spotlightState && (
+          <Layer ref={spotlightLayerRef} listening={false}>
+            <Shape
+              listening={false}
+              sceneFunc={(konvaCtx) => {
+                if (!spotlightState) return;
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                const ctx = (konvaCtx as any)._context as CanvasRenderingContext2D;
+                const visX = -stagePos.x / scale;
+                const visY = -stagePos.y / scale;
+                const visW = size.width / scale;
+                const visH = size.height / scale;
+                const spotRadius = 200 / scale; // 200px on-screen regardless of zoom
+                ctx.save();
+                ctx.fillStyle = "rgba(0, 0, 0, 1)";
+                ctx.fillRect(visX, visY, visW, visH);
+                ctx.globalCompositeOperation = "destination-out";
+                ctx.fillStyle = "rgba(0, 0, 0, 1)";
+                ctx.beginPath();
+                ctx.arc(spotlightState.x, spotlightState.y, spotRadius, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.restore();
+              }}
+            />
+          </Layer>
+        )}
+
+        {/* Blackout overlay: full-canvas fade to near-black for scene transitions */}
+        {blackoutActive && (
+          <Layer ref={blackoutLayerRef} listening={false}>
+            <Shape
+              listening={false}
+              sceneFunc={(konvaCtx) => {
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                const ctx = (konvaCtx as any)._context as CanvasRenderingContext2D;
+                const visX = -stagePos.x / scale;
+                const visY = -stagePos.y / scale;
+                const visW = size.width / scale;
+                const visH = size.height / scale;
+                ctx.save();
+                ctx.fillStyle = "rgba(0, 0, 0, 0.85)";
+                ctx.fillRect(visX, visY, visW, visH);
+                ctx.restore();
+              }}
+            />
+          </Layer>
+        )}
+
         {/* Audience silhouettes at bottom of stage - only when spectators present */}
         <AudienceRow spectatorCount={spectatorCount} />
       </Stage>
@@ -2580,6 +2718,7 @@ export function Board({
             setStagePos({ x: 0, y: 0 });
           }}
           onPostcard={handleOpenPostcard}
+          onBlackout={onBlackout}
           isMobile={isMobile}
         />
       )}
@@ -2614,6 +2753,7 @@ export function Board({
           claimedPersonaId={claimedPersonaId}
           onClaimChange={setClaimedPersonaId}
           onMessagesChange={setRecentChatMessages}
+          personObjects={personObjects}
         />
       )}
 

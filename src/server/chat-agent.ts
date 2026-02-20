@@ -220,6 +220,12 @@ export class ChatAgent extends AIChatAgent<Bindings> {
   private _hatPromptCount = 0; // increments on each new hat prompt for spatial offset calculation
   private _yesAndCount = 0;
 
+  // KEY-DECISION 2026-02-20: Freeze Tag state resets on DO hibernation (same as other game state).
+  // Client sends [FREEZE] and [TAKEOVER: name] markers; server tracks freeze phase in these fields.
+  // _freezeIsFrozen is a transient gate (on for 1 exchange: freeze announcement), reset after takeover.
+  private _freezeIsFrozen = false;
+  private _freezeTakenCharacter: string | undefined = undefined;
+
   // Per-message requested model (resets on DO hibernation - client re-sends model on each message)
   private _requestedModel = "";
 
@@ -244,6 +250,9 @@ export class ChatAgent extends AIChatAgent<Bindings> {
   private _pendingCanvasActions: CanvasAction[] = [];
   private _canvasReactionCooldownUntil = 0;
   private _lastHumanMessageAt = 0;
+
+  // Heckler mode: audience one-liners buffered and injected into next AI response system prompt
+  private _pendingHeckles: string[] = [];
 
   /** Check if daily AI budget is exhausted. Returns true if over budget. */
   private _isOverBudget(): boolean {
@@ -824,7 +833,7 @@ export class ChatAgent extends AIChatAgent<Bindings> {
     const tools = createSDKTools(boardStub, batchId, this.env.AI, this.ctx.storage);
 
     // Update game mode from client (sent on every message so it survives DO hibernation)
-    if (body?.gameMode && ["hat", "yesand", "freeform"].includes(body.gameMode)) {
+    if (body?.gameMode && ["hat", "yesand", "freeform", "freezetag"].includes(body.gameMode)) {
       this._gameMode = body.gameMode as GameMode;
     }
 
@@ -870,19 +879,54 @@ export class ChatAgent extends AIChatAgent<Bindings> {
     // Hat prompt spatial offset: each new prompt gets x+=600 so scenes don't pile up.
     // Clamped to canvas right edge (1150 - 500 frame width = 650 max x).
     const hatXOffset = Math.min(50 + this._hatPromptCount * 600, 650);
+
+    // Handle freeze tag [FREEZE] and [TAKEOVER: name] markers in the last user message.
+    // Detection runs before gameModeState build so the correct phase is injected this exchange.
+    const lastMsgForFreeze = this.messages[this.messages.length - 1];
+    const lastTextForFreeze =
+      lastMsgForFreeze?.parts
+        ?.filter((p) => p.type === "text")
+        .map((p) => (p as { type: "text"; text: string }).text)
+        .join("") ?? "";
+    if (this._gameMode === "freezetag") {
+      if (lastTextForFreeze.includes("[FREEZE]")) {
+        this._freezeIsFrozen = true;
+        this._freezeTakenCharacter = undefined;
+        console.debug(JSON.stringify({ event: "freezetag:freeze", boardId: this.name }));
+      }
+      const takeoverMatch = lastTextForFreeze.match(/\[TAKEOVER:\s*([^\]]+)\]/);
+      if (takeoverMatch) {
+        this._freezeTakenCharacter = takeoverMatch[1].trim();
+        this._freezeIsFrozen = false;
+        console.debug(
+          JSON.stringify({ event: "freezetag:takeover", boardId: this.name, character: this._freezeTakenCharacter }),
+        );
+      }
+    }
+
     const gameModeState: GameModeState = {
       hatPrompt: this._hatPromptIndex >= 0 ? HAT_PROMPTS[this._hatPromptIndex] : undefined,
       hatExchangeCount: this._hatExchangeCount,
       hatPromptOffset: hatXOffset,
       yesAndCount: this._yesAndCount,
+      freezeIsFrozen: this._freezeIsFrozen,
+      freezeTakenCharacter: this._freezeTakenCharacter,
     };
     const gameModeBlock = buildGameModePromptBlock(this._gameMode, gameModeState);
 
-    // Clear relationships, lifecycle phase, and plot twist gate at scene start (first message = fresh scene)
+    // After takeover is processed (injected into system prompt this exchange), clear it so
+    // subsequent messages return to normal freeze-tag play. Freeze state clears on takeover above.
+    if (this._gameMode === "freezetag" && this._freezeTakenCharacter) {
+      this._freezeTakenCharacter = undefined;
+    }
+
+    // Clear relationships, lifecycle phase, plot twist gate, and freeze state at scene start
     if (this.messages.length <= 1) {
       await this.ctx.storage.delete("narrative:relationships");
       await this.ctx.storage.delete("scene:lifecyclePhase");
       this._plotTwistUsed = false;
+      this._freezeIsFrozen = false;
+      this._freezeTakenCharacter = undefined;
     }
 
     // Detect [PLOT TWIST] trigger in the last user message.
@@ -996,6 +1040,13 @@ export class ChatAgent extends AIChatAgent<Bindings> {
     // Inject budget phase prompt when not in normal phase
     if (budgetPhase !== "normal") {
       systemPrompt += `\n\n${BUDGET_PROMPTS[budgetPhase]}`;
+    }
+
+    // Heckler mode: drain pending audience heckles and inject as context
+    if (this._pendingHeckles.length > 0) {
+      const heckles = this._pendingHeckles;
+      this._pendingHeckles = [];
+      systemPrompt += `\n\n${buildHecklePrompt(heckles)}`;
     }
 
     // Momentum nudge: after 3+ exchanges, prompt AI to end with a provocative hook
@@ -1989,6 +2040,15 @@ export class ChatAgent extends AIChatAgent<Bindings> {
         }),
       );
     }
+  }
+
+  /** Receives audience heckle notifications from Board DO.
+   *  Buffers text for injection into the AI's next chat response system prompt.
+   *  KEY-DECISION 2026-02-20: Buffer-and-inject (not immediate reaction) so heckles surface
+   *  naturally in the next player exchange rather than interrupting mid-improv. */
+  async onHeckle(userId: string, text: string): Promise<void> {
+    console.debug(JSON.stringify({ event: "heckle:received", boardId: this.name, userId, textLen: text.length }));
+    this._pendingHeckles.push(text);
   }
 
   /** Called by DO schedule after 5s of player idle - reacts to recent canvas mutations in character.

@@ -2,7 +2,7 @@ import React from "react";
 import type { BoardObject, BoardObjectProps } from "@shared/types";
 import { colors } from "../theme";
 
-export type ToolMode = "select" | "sticky" | "person" | "rect" | "circle" | "connector" | "text" | "frame";
+export type ToolMode = "select" | "sticky" | "person" | "rect" | "circle" | "connector" | "text" | "frame" | "spotlight";
 
 export const COLOR_PRESETS = [
   "#fbbf24", // amber (sticky default)
@@ -33,6 +33,7 @@ export interface ToolbarProps {
   onZoomOut: () => void;
   onZoomReset: () => void;
   onPostcard: () => void;
+  onBlackout: () => void;
   isMobile?: boolean;
 }
 
@@ -52,6 +53,7 @@ export function Toolbar({
   onZoomOut,
   onZoomReset,
   onPostcard,
+  onBlackout,
   isMobile,
 }: ToolbarProps) {
   // Color picker state
@@ -164,6 +166,14 @@ export function Toolbar({
         />
         <ToolbarSep />
         <ToolIconBtn icon={<IconPostcard />} title="Scene Postcard" active={false} onClick={onPostcard} />
+        <ToolbarSep />
+        <ToolIconBtn
+          icon={<IconSpotlight />}
+          title="Spotlight - click canvas to place (X)"
+          active={toolMode === "spotlight"}
+          onClick={() => setToolMode((m) => (m === "spotlight" ? "select" : "spotlight"))}
+        />
+        <ToolIconBtn icon={<IconBlackout />} title="Blackout scene transition" active={false} onClick={onBlackout} />
       </div>
 
       {/* Arrow style picker - shown above toolbar when connectors are selected */}
@@ -593,6 +603,26 @@ function IconPostcard() {
       {/* Camera body */}
       <path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z" />
       <circle cx="12" cy="13" r="4" />
+    </svg>
+  );
+}
+
+function IconSpotlight() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      {/* Spotlight cone from top-left down to center */}
+      <polygon points="4,2 10,2 16,20 2,20" fill="currentColor" fillOpacity="0.25" strokeLinejoin="round" />
+      {/* Bright circle at bottom (the lit area) */}
+      <ellipse cx="9" cy="20" rx="7" ry="2" fill="currentColor" fillOpacity="0.5" stroke="none" />
+    </svg>
+  );
+}
+
+function IconBlackout() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      {/* Moon/crescent - theatrical "lights out" icon */}
+      <path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z" />
     </svg>
   );
 }

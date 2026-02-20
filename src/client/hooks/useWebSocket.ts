@@ -63,6 +63,8 @@ export function useWebSocket(
   onAnimatedUpdate?: (id: string, toX: number, toY: number, durationMs: number) => void,
   onEffect?: (id: string, effect: string) => void,
   onSequence?: (steps: ChoreographyStep[]) => void,
+  onSpotlight?: (objectId?: string, x?: number, y?: number) => void,
+  onBlackout?: () => void,
 ): UseWebSocketReturn {
   const wsRef = useRef<WebSocket | null>(null);
   // Refs so the WS closure always calls the latest callbacks without reconnecting
@@ -72,6 +74,10 @@ export function useWebSocket(
   onEffectRef.current = onEffect;
   const onSequenceRef = useRef(onSequence);
   onSequenceRef.current = onSequence;
+  const onSpotlightRef = useRef(onSpotlight);
+  onSpotlightRef.current = onSpotlight;
+  const onBlackoutRef = useRef(onBlackout);
+  onBlackoutRef.current = onBlackout;
   const lastServerMessageAt = useRef(0);
   const [connectionState, setConnectionState] = useState<ConnectionState>("connecting");
   const [initialized, setInitialized] = useState(false);
@@ -225,6 +231,12 @@ export function useWebSocket(
             break;
           case "obj:sequence":
             onSequenceRef.current?.(msg.steps);
+            break;
+          case "spotlight":
+            onSpotlightRef.current?.(msg.objectId, msg.x, msg.y);
+            break;
+          case "blackout":
+            onBlackoutRef.current?.();
             break;
           case "reaction":
             setReactions((prev) => [

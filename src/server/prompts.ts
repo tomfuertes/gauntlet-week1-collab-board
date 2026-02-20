@@ -64,6 +64,8 @@ export interface GameModeState {
   hatExchangeCount?: number;
   hatPromptOffset?: number; // x-offset for new hat scene frame (avoids piling on previous scenes)
   yesAndCount?: number;
+  freezeIsFrozen?: boolean; // freeze tag: whether scene is currently frozen
+  freezeTakenCharacter?: string; // freeze tag: name of character taken over after freeze
 }
 
 /** Build mode-specific system prompt block for injection into persona prompt */
@@ -101,6 +103,38 @@ export function buildGameModePromptBlock(mode: GameMode, state: GameModeState): 
       `- Each beat should escalate or add a new detail. Small steps, not giant leaps.\n` +
       `- If someone breaks the chain (doesn't "yes, and"), gently redirect: "Let's get back on the chain!"\n` +
       `- The chain ends at beat 10 with a callback to beat 1.`
+    );
+  }
+  if (mode === "freezetag") {
+    if (state.freezeIsFrozen) {
+      return (
+        `[GAME MODE: FREEZE TAG - SCENE FROZEN]\n` +
+        `The scene has been frozen. Announce dramatically: "FREEZE! Everything stops." ` +
+        `A player is about to take over a character. Wait for their [TAKEOVER: name] message.\n` +
+        `RULES:\n` +
+        `- Respond with a theatrical freeze announcement (1-2 sentences max).\n` +
+        `- Do NOT advance the scene. Everything is suspended mid-action.\n` +
+        `- Do NOT create canvas objects while frozen.`
+      );
+    }
+    if (state.freezeTakenCharacter) {
+      return (
+        `[GAME MODE: FREEZE TAG - TAKEOVER: ${state.freezeTakenCharacter}]\n` +
+        `A player just stepped into ${state.freezeTakenCharacter}'s shoes.\n` +
+        `RULES:\n` +
+        `- Open with exactly 1 sentence: "The scene shifts... [player] steps into ${state.freezeTakenCharacter}'s shoes."\n` +
+        `- Update ${state.freezeTakenCharacter}'s sticky/person label on canvas to reflect the new player direction (use updateText).\n` +
+        `- Then continue improv in a new direction while keeping the setting and other characters intact.\n` +
+        `- Yes-And with full energy. The freeze is over - scene is live again.`
+      );
+    }
+    return (
+      `[GAME MODE: FREEZE TAG]\n` +
+      `RULES:\n` +
+      `- Any player can yell FREEZE to stop the scene (they click the FREEZE button, sending [FREEZE]).\n` +
+      `- After a freeze, the freezing player takes over any character on stage ([TAKEOVER: name]).\n` +
+      `- After a takeover, do a brief "The scene shifts..." narration, update the character on canvas, then continue improv.\n` +
+      `- Between freezes, play normally with Yes-And energy.`
     );
   }
   return "";
@@ -273,6 +307,8 @@ TOOL RULES:
 - generateImage sparingly - 1 per response max. Write vivid, specific prompts ("dimly lit dentist office with cobwebs, gothic style").
 - highlightObject for dramatic emphasis: pulse (scale bounce), shake (jitter), flash (blink). Use sparingly - 1 per response on the most important object.
 - choreograph for sequenced multi-object animations: characters walking in sync, reveal sequences, coordinated movement. Use delayMs to stagger timing (0, 500, 1000...). Requires object IDs - call getBoardState first.
+- spotlight for dramatic reveals: dims everything except the target. Pass objectId to focus on a canvas object, or (x,y) for a position. Use at peak/climax moments - once per scene maximum.
+- blackout for scene transitions: full canvas fade to black between major shifts. Use at curtain or between scenes only.
 
 LAYOUT RULES:
 - Canvas usable area: (50,60) to (1150,780). Never place objects outside these bounds.
@@ -285,6 +321,8 @@ COLORS: #fbbf24 yellow, #f87171 red, #4ade80 green, #60a5fa blue, #c084fc purple
 PERSONA COLORS: SPARK always uses red (#f87171) for stickies. SAGE always uses green (#4ade80) for stickies.
 
 DISPERSION RULE: When creating stickies WITHOUT a containing frame, spread them across the canvas. Use varied x coordinates (50-1100) and y coordinates (60-700). Never place two stickies at the same position. Offset each new sticky by at least 200px from existing ones.
+
+AUDIENCE HECKLES: When you see [HECKLE from audience], the spectators watching your scene have spoken. Incorporate heckles with "yes, and" energy - they are gifts, not interruptions. Weave them into the scene organically without breaking the fourth wall.
 
 CONTENT GUIDELINES:
 - Keep all content PG-13. No explicit violence, sexual content, or hate speech.
@@ -435,5 +473,25 @@ export function buildTagOutPrompt(oldPersonaName: string, newPersonaName: string
     `[TAG-OUT] ${playerName} just tagged out - switching from ${oldPersonaName} to ${newPersonaName}. ` +
     `Open your response with a 1-sentence theatrical handoff (e.g. "${oldPersonaName} exits stage left as ${newPersonaName} bursts through the door..."). ` +
     `Then continue the scene AS ${newPersonaName}. Brief and dramatic - keep the scene moving.`
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Heckler mode prompt - injected when audience spends reactions to interject
+// ---------------------------------------------------------------------------
+
+/**
+ * Injected when one or more audience heckles have been buffered since the last AI response.
+ * Instructs the AI to incorporate audience interjections with "yes, and" energy.
+ */
+export function buildHecklePrompt(heckles: string[]): string {
+  const lines = heckles.map((h) => `"${h}"`).join("; ");
+  return (
+    `[HECKLE from audience] The audience just shouted: ${lines}\n` +
+    `RULES:\n` +
+    `- These are gifts from the spectators watching your scene. Treat them as "yes, and" offers.\n` +
+    `- Acknowledge the audience participation briefly and in character - one sentence, then continue.\n` +
+    `- Do NOT break the fourth wall or address "the audience" directly; weave it into the scene organically.\n` +
+    `- Example: if heckled "your hat is on fire", a character might notice their hat smoking mid-sentence.`
   );
 }

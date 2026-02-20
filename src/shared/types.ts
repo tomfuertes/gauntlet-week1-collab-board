@@ -71,7 +71,9 @@ export type BoardMutation =
   | { type: "obj:update"; obj: BoardObjectUpdate; anim?: { duration: number } }
   | { type: "obj:delete"; id: string }
   | { type: "obj:effect"; id: string; effect: EffectType }
-  | { type: "obj:sequence"; steps: ChoreographyStep[] };
+  | { type: "obj:sequence"; steps: ChoreographyStep[] }
+  | { type: "spotlight"; objectId?: string; x?: number; y?: number }
+  | { type: "blackout" };
 
 export type WSClientMessage =
   | { type: "cursor"; x: number; y: number }
@@ -82,8 +84,11 @@ export type WSClientMessage =
   | { type: "text:blur"; objectId: string }
   | { type: "batch:undo"; batchId: string }
   | { type: "reaction"; emoji: string; x: number; y: number }
+  | { type: "heckle"; text: string }
   | { type: "obj:effect"; id: string; effect: EffectType }
-  | { type: "obj:sequence"; steps: ChoreographyStep[] };
+  | { type: "obj:sequence"; steps: ChoreographyStep[] }
+  | { type: "spotlight"; objectId?: string; x?: number; y?: number }
+  | { type: "blackout" };
 
 export type WSServerMessage =
   | { type: "cursor"; userId: string; username: string; x: number; y: number }
@@ -96,8 +101,11 @@ export type WSServerMessage =
   | { type: "text:cursor"; userId: string; username: string; objectId: string; position: number }
   | { type: "text:blur"; userId: string; objectId: string }
   | { type: "reaction"; userId: string; emoji: string; x: number; y: number }
+  | { type: "heckle"; userId: string; text: string }
   | { type: "obj:effect"; id: string; effect: EffectType }
-  | { type: "obj:sequence"; steps: ChoreographyStep[] };
+  | { type: "obj:sequence"; steps: ChoreographyStep[] }
+  | { type: "spotlight"; objectId?: string; x?: number; y?: number }
+  | { type: "blackout" };
 
 export const AI_USER_ID = "ai-agent" as const;
 export const AI_USERNAME = "AI Assistant" as const;
@@ -144,7 +152,7 @@ export const PERSONA_COLORS: Record<string, string> = Object.fromEntries(
 /** Max human turns per scene before AI wraps up */
 export const SCENE_TURN_BUDGET = 20;
 
-export type GameMode = "freeform" | "hat" | "yesand";
+export type GameMode = "freeform" | "hat" | "yesand" | "freezetag";
 
 /** Explicit scene lifecycle phases with AI-directed transitions */
 export type SceneLifecyclePhase = "establish" | "build" | "peak" | "resolve" | "curtain";
@@ -158,6 +166,12 @@ export const GAME_MODES = [
     description: "Random prompts, short scenes",
   },
   { mode: "yesand" as const, label: "Yes-And Chain", icon: "\uD83D\uDD17", description: "Build a 10-beat chain" },
+  {
+    mode: "freezetag" as const,
+    label: "Freeze Tag",
+    icon: "\uD83E\uDD76",
+    description: "Freeze the scene, steal a character, restart in a new direction",
+  },
 ] as const;
 
 /** Short ID used as the client-side state value for the model selector */
