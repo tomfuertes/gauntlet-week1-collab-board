@@ -134,6 +134,107 @@ const InteractiveBoardObject = React.memo(function InteractiveBoardObject({
   return <BoardObjectRenderer obj={obj} groupProps={groupProps} aiGlow={hasAiGlow} interactive />;
 });
 
+// Tap-to-create popup: appears at single-tap position on empty canvas (mobile only)
+function TapCreateMenu({
+  screenX,
+  screenY,
+  onSelect,
+  onDismiss,
+}: {
+  screenX: number;
+  screenY: number;
+  onSelect: (type: "sticky" | "text" | "person" | "rect" | "circle") => void;
+  onDismiss: () => void;
+}) {
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handle = (e: TouchEvent | MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        onDismiss();
+      }
+    };
+    // Delay to avoid dismissing on the same tap that opened the menu
+    const t = setTimeout(() => {
+      document.addEventListener("touchstart", handle, { passive: true });
+      document.addEventListener("mousedown", handle);
+    }, 50);
+    return () => {
+      clearTimeout(t);
+      document.removeEventListener("touchstart", handle);
+      document.removeEventListener("mousedown", handle);
+    };
+  }, [onDismiss]);
+
+  const MENU_W = 260;
+  const left = Math.max(8, Math.min(screenX - MENU_W / 2, window.innerWidth - MENU_W - 8));
+  const top = screenY > window.innerHeight * 0.6 ? screenY - 76 : screenY + 12;
+
+  const options: {
+    type: "sticky" | "text" | "person" | "rect" | "circle";
+    label: string;
+    bg: string;
+    radius: number;
+  }[] = [
+    { type: "sticky", label: "Sticky", bg: "#fbbf24", radius: 4 },
+    { type: "text", label: "Text", bg: "#818cf8", radius: 4 },
+    { type: "person", label: "Person", bg: "#4ade80", radius: 4 },
+    { type: "rect", label: "Shape", bg: "#3b82f6", radius: 4 },
+    { type: "circle", label: "Circle", bg: "#8b5cf6", radius: 50 },
+  ];
+
+  return (
+    <div
+      ref={menuRef}
+      style={{
+        position: "fixed",
+        left,
+        top,
+        zIndex: 40,
+        background: "rgba(22, 33, 62, 0.95)",
+        border: "1px solid #334155",
+        borderRadius: 12,
+        backdropFilter: "blur(12px)",
+        WebkitBackdropFilter: "blur(12px)",
+        display: "flex",
+        gap: 4,
+        padding: "8px",
+        boxShadow: "0 8px 32px rgba(0,0,0,0.5)",
+      }}
+    >
+      {options.map((opt) => (
+        <button
+          key={opt.type}
+          onTouchStart={(e) => {
+            e.stopPropagation();
+            onSelect(opt.type);
+          }}
+          onClick={() => onSelect(opt.type)}
+          style={{
+            minWidth: 44,
+            minHeight: 52,
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            justifyContent: "center",
+            background: "transparent",
+            border: "none",
+            borderRadius: 8,
+            color: "#94a3b8",
+            cursor: "pointer",
+            fontSize: "0.6875rem",
+            gap: 5,
+            padding: "4px 6px",
+          }}
+        >
+          <div style={{ width: 22, height: 22, background: opt.bg, borderRadius: opt.radius }} />
+          <span>{opt.label}</span>
+        </button>
+      ))}
+    </div>
+  );
+}
+
 export function Board({
   user,
   boardId,
@@ -147,6 +248,32 @@ export function Board({
 }) {
   const isMobile = useIsMobile();
   const [canvasExpanded, setCanvasExpanded] = useState(false);
+  // Touch gesture state for pinch-to-zoom and single-finger pan
+  const touchGestureRef = useRef<{
+    pinching: boolean;
+    lastDist: number;
+    panningEmptyStage: boolean;
+    panLastX: number;
+    panLastY: number;
+    tapStart: { x: number; y: number; time: number } | null;
+    lastTapTime: number;
+    lastThrottleTime: number;
+  }>({
+    pinching: false,
+    lastDist: 0,
+    panningEmptyStage: false,
+    panLastX: 0,
+    panLastY: 0,
+    tapStart: null,
+    lastTapTime: 0,
+    lastThrottleTime: 0,
+  });
+  const [tapMenuPos, setTapMenuPos] = useState<{
+    screenX: number;
+    screenY: number;
+    worldX: number;
+    worldY: number;
+  } | null>(null);
 
   const stageRef = useRef<Konva.Stage>(null);
   const [stagePos, setStagePos] = useState({ x: 0, y: 0 });
@@ -608,6 +735,24 @@ export function Board({
     window.addEventListener("resize", onResize);
     return () => window.removeEventListener("resize", onResize);
   }, []);
+
+  // KEY-DECISION 2026-02-20: Non-passive touchmove on the stage container prevents browser
+  // default pinch-zoom/scroll during gestures. React 17+ registers touch events passively,
+  // so calling e.evt.preventDefault() in Konva handlers is a no-op - native listener required.
+  useEffect(() => {
+    if (!isMobile) return;
+    const stage = stageRef.current;
+    if (!stage) return;
+    const container = stage.container();
+    const onTouchMove = (e: TouchEvent) => {
+      const ts = touchGestureRef.current;
+      if (ts.pinching || ts.panningEmptyStage || e.touches.length >= 2) {
+        e.preventDefault();
+      }
+    };
+    container.addEventListener("touchmove", onTouchMove, { passive: false });
+    return () => container.removeEventListener("touchmove", onTouchMove);
+  }, [isMobile]);
 
   // Keyboard shortcuts for tool switching + delete
   useKeyboardShortcuts({
@@ -1304,6 +1449,205 @@ export function Board({
     // Shape creation is now handled by mousedown/mouseup
   }, []);
 
+  // --- Mobile touch handlers ---
+
+  const handleStageTouchStart = useCallback(
+    (e: KonvaEventObject<TouchEvent>) => {
+      if (!isMobile) return;
+      const ts = touchGestureRef.current;
+      const touches = e.evt.touches;
+      if (touches.length >= 2) {
+        ts.pinching = true;
+        ts.panningEmptyStage = false;
+        ts.tapStart = null;
+        ts.lastDist = Math.hypot(touches[0].clientX - touches[1].clientX, touches[0].clientY - touches[1].clientY);
+        return;
+      }
+      ts.pinching = false;
+      ts.lastDist = 0;
+      if (touches.length === 1) {
+        const touch = touches[0];
+        if (e.target === stageRef.current) {
+          ts.panningEmptyStage = true;
+          ts.panLastX = touch.clientX;
+          ts.panLastY = touch.clientY;
+          ts.tapStart = { x: touch.clientX, y: touch.clientY, time: Date.now() };
+        } else {
+          ts.panningEmptyStage = false;
+          ts.tapStart = null;
+        }
+      }
+    },
+    [isMobile],
+  );
+
+  const handleStageTouchMove = useCallback(
+    (e: KonvaEventObject<TouchEvent>) => {
+      if (!isMobile) return;
+      const ts = touchGestureRef.current;
+      const touches = e.evt.touches;
+
+      if (touches.length >= 2) {
+        ts.panningEmptyStage = false;
+        ts.tapStart = null;
+        const now = Date.now();
+        if (now - ts.lastThrottleTime < 33) return; // throttle to ~30fps
+        ts.lastThrottleTime = now;
+
+        const dist = Math.hypot(touches[0].clientX - touches[1].clientX, touches[0].clientY - touches[1].clientY);
+        const midX = (touches[0].clientX + touches[1].clientX) / 2;
+        const midY = (touches[0].clientY + touches[1].clientY) / 2;
+        if (ts.lastDist > 0) {
+          const factor = dist / ts.lastDist;
+          const oldScale = scaleRef.current;
+          const newScale = Math.min(3, Math.max(0.5, oldScale * factor));
+          setScale(newScale);
+          setStagePos({
+            x: midX - (midX - stagePosRef.current.x) * (newScale / oldScale),
+            y: midY - (midY - stagePosRef.current.y) * (newScale / oldScale),
+          });
+        }
+        ts.lastDist = dist;
+        return;
+      }
+
+      if (touches.length === 1 && ts.panningEmptyStage) {
+        const touch = touches[0];
+        const dx = touch.clientX - ts.panLastX;
+        const dy = touch.clientY - ts.panLastY;
+        setStagePos((prev) => ({ x: prev.x + dx, y: prev.y + dy }));
+        ts.panLastX = touch.clientX;
+        ts.panLastY = touch.clientY;
+        if (ts.tapStart) {
+          const moved = Math.hypot(touch.clientX - ts.tapStart.x, touch.clientY - ts.tapStart.y);
+          if (moved > 8) ts.tapStart = null;
+        }
+      }
+    },
+    [isMobile],
+  );
+
+  const handleStageTouchEnd = useCallback(
+    (e: KonvaEventObject<TouchEvent>) => {
+      if (!isMobile) return;
+      const ts = touchGestureRef.current;
+      if (ts.pinching && e.evt.touches.length < 2) {
+        ts.pinching = false;
+        ts.lastDist = 0;
+      }
+      if (e.evt.touches.length === 0) {
+        ts.panningEmptyStage = false;
+        if (ts.tapStart) {
+          const elapsed = Date.now() - ts.tapStart.time;
+          if (elapsed < 300) {
+            const now = Date.now();
+            if (now - ts.lastTapTime < 350) {
+              // Double-tap: reset view to 1:1
+              setScale(1);
+              setStagePos({ x: 0, y: 0 });
+              ts.lastTapTime = 0;
+              setTapMenuPos(null);
+            } else {
+              ts.lastTapTime = now;
+              // Single tap on empty canvas: show creation popup
+              const stage = stageRef.current;
+              if (stage) {
+                const pointer = stage.getPointerPosition();
+                if (pointer) {
+                  const worldX = (pointer.x - stagePosRef.current.x) / scaleRef.current;
+                  const worldY = (pointer.y - stagePosRef.current.y) / scaleRef.current;
+                  setTapMenuPos({ screenX: ts.tapStart.x, screenY: ts.tapStart.y, worldX, worldY });
+                }
+              }
+            }
+          }
+          ts.tapStart = null;
+        }
+      }
+    },
+    [isMobile],
+  );
+
+  const handleTapMenuSelect = useCallback(
+    (type: "sticky" | "text" | "person" | "rect" | "circle") => {
+      if (!tapMenuPos) return;
+      const { worldX, worldY } = tapMenuPos;
+      setTapMenuPos(null);
+      if (type === "sticky") {
+        createObject({
+          id: crypto.randomUUID(),
+          type: "sticky",
+          x: worldX - 100,
+          y: worldY - 100,
+          width: 200,
+          height: 200,
+          rotation: 0,
+          props: { text: "", color: "#fbbf24" },
+          createdBy: user.id,
+          updatedAt: Date.now(),
+        });
+      } else if (type === "text") {
+        const id = crypto.randomUUID();
+        createObject({
+          id,
+          type: "text",
+          x: worldX,
+          y: worldY,
+          width: 200,
+          height: 40,
+          rotation: 0,
+          props: { text: "", color: "#ffffff" },
+          createdBy: user.id,
+          updatedAt: Date.now(),
+        });
+        setEditingId(id);
+      } else if (type === "person") {
+        const name = window.prompt("Character name:");
+        if (name !== null) {
+          createObject({
+            id: crypto.randomUUID(),
+            type: "person",
+            x: worldX - 30,
+            y: worldY - 60,
+            width: 60,
+            height: 120,
+            rotation: 0,
+            props: { text: name || "Character", color: getUserColor(user.id) },
+            createdBy: user.id,
+            updatedAt: Date.now(),
+          });
+        }
+      } else if (type === "rect") {
+        createObject({
+          id: crypto.randomUUID(),
+          type: "rect",
+          x: worldX - 75,
+          y: worldY - 50,
+          width: 150,
+          height: 100,
+          rotation: 0,
+          props: { fill: "#3b82f6", stroke: "#2563eb" },
+          createdBy: user.id,
+          updatedAt: Date.now(),
+        });
+      } else if (type === "circle") {
+        createObject({
+          id: crypto.randomUUID(),
+          type: "circle",
+          x: worldX - 50,
+          y: worldY - 50,
+          width: 100,
+          height: 100,
+          rotation: 0,
+          props: { fill: "#8b5cf6", stroke: "#7c3aed" },
+          createdBy: user.id,
+          updatedAt: Date.now(),
+        });
+      }
+    },
+    [tapMenuPos, createObject, user.id],
+  );
+
   const handleLogout = async () => {
     await fetch("/auth/logout", { method: "POST" });
     onLogout();
@@ -1690,6 +2034,9 @@ export function Board({
           }
         }}
         onDblClick={handleStageDblClick}
+        onTouchStart={isMobile ? handleStageTouchStart : undefined}
+        onTouchMove={isMobile ? handleStageTouchMove : undefined}
+        onTouchEnd={isMobile ? handleStageTouchEnd : undefined}
       >
         <Layer>
           <BoardGrid stagePos={stagePos} scale={scale} size={size} />
@@ -1886,6 +2233,7 @@ export function Board({
           <Transformer
             ref={trRef}
             {...TRANSFORMER_CONFIG}
+            anchorSize={isMobile ? 16 : TRANSFORMER_CONFIG.anchorSize}
             keepRatio={circleOnlySelected}
             enabledAnchors={
               circleOnlySelected
@@ -2195,8 +2543,8 @@ export function Board({
         />
       )}
 
-      {/* Toolbar hidden on mobile - AI creates objects via chat */}
-      {!isMobile && (
+      {/* Toolbar: always shown on desktop; on mobile shown when canvas is expanded */}
+      {(!isMobile || canvasExpanded) && (
         <Toolbar
           toolMode={toolMode}
           setToolMode={setToolMode}
@@ -2215,6 +2563,17 @@ export function Board({
             setScale(1);
             setStagePos({ x: 0, y: 0 });
           }}
+          isMobile={isMobile}
+        />
+      )}
+
+      {/* Tap-to-create menu: shown on single-tap on empty canvas (mobile only) */}
+      {isMobile && tapMenuPos && (
+        <TapCreateMenu
+          screenX={tapMenuPos.screenX}
+          screenY={tapMenuPos.screenY}
+          onSelect={handleTapMenuSelect}
+          onDismiss={() => setTapMenuPos(null)}
         />
       )}
 
