@@ -139,7 +139,14 @@ function SceneCard({ scene }: { scene: SceneMeta }) {
           }}
         >
           <span>{scene.creator}</span>
-          <span>{new Date(scene.last_activity_at + "Z").toLocaleDateString()}</span>
+          <span>
+            {(() => {
+              // last_activity_at is a D1 datetime string (no timezone suffix); append Z for UTC
+              // COALESCE on the server ensures non-null, but guard here for belt-and-suspenders
+              const d = scene.last_activity_at ? new Date(scene.last_activity_at + "Z") : null;
+              return d && !isNaN(d.getTime()) ? d.toLocaleDateString() : "";
+            })()}
+          </span>
         </div>
       </div>
     </div>

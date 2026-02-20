@@ -25,7 +25,7 @@ playwright-cli -s=uat open <url>              # open browser
 playwright-cli -s=uat snapshot                 # get element refs (e3, e15, etc.)
 playwright-cli -s=uat fill <ref> "text"       # fill input
 playwright-cli -s=uat click <ref>             # click element
-playwright-cli -s=uat screenshot --filename=.playwright-cli/<name>.png
+playwright-cli -s=uat screenshot --filename=playwright/<name>.png
 playwright-cli -s=uat close                   # cleanup
 
 # Two-browser sync testing
@@ -37,7 +37,7 @@ playwright-cli close-all
 
 ## Key Rules
 
-- **All screenshots go to `.playwright-cli/`** - use `--filename=.playwright-cli/<descriptive-name>.png`
+- **All screenshots go to `playwright/`** - use `--filename=playwright/<descriptive-name>.png`
 - **Always namespace sessions** with `-s=uat` (or `-s=uat-user1`/`-s=uat-user2` for sync tests)
 - **Snapshots over screenshots** - YAML accessibility trees are ~10x cheaper in tokens than images. Use snapshots for ALL verification (element exists, text content, state checking). Only use screenshots for visual-only checks (layout, colors, visual glitches) or on test failure for debugging. Never screenshot just to "see what happened."
 - **Close sessions when done** - `playwright-cli close-all`
@@ -90,5 +90,5 @@ Return a structured summary:
 - **Status:** PASS / FAIL
 - **Steps:** <what you did>
 - **Issues:** <any failures, with screenshots>
-- **Screenshots:** <list of .playwright-cli/*.png files created>
+- **Screenshots:** <list of playwright/*.png files created>
 ```

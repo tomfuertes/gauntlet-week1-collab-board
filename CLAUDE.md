@@ -130,7 +130,7 @@ playwright-cli open http://localhost:5173    # open app (localhost for dev)
 playwright-cli snapshot                       # get element refs (e.g., e3, e15)
 playwright-cli fill e5 "username"             # interact by ref
 playwright-cli click e3                       # click by ref
-playwright-cli screenshot --filename=.playwright-cli/verify.png  # visual verification
+playwright-cli screenshot --filename=playwright/verify.png  # visual verification
 playwright-cli close                          # cleanup
 
 # Two-browser sync testing (primary validation method)
@@ -145,7 +145,7 @@ playwright-cli state-save auth-user1.json     # save auth state for reuse
 playwright-cli state-load auth-user1.json     # restore auth state
 ```
 
-**All artifacts MUST go to `.playwright-cli/`** (gitignored). Always use `--filename=.playwright-cli/<name>.png` for screenshots. Never save screenshots to the repo root - no manual cleanup needed. Snapshots are YAML accessibility trees - prefer them over screenshots for understanding page structure.
+**All artifacts MUST go to `playwright/`** (gitignored). Always use `--filename=playwright/<name>.png` for screenshots. Never save screenshots to the repo root - no manual cleanup needed. Snapshots are YAML accessibility trees - prefer them over screenshots for understanding page structure.
 
 ### E2E Tests (Playwright)
 

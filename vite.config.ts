@@ -39,7 +39,7 @@ export default defineConfig({
   server: {
     watch: {
       // Exclude build outputs from chokidar to reduce FD usage in multi-worktree setups
-      ignored: ["**/dist/**", "**/.wrangler/**", "**/.playwright-cli/**"],
+      ignored: ["**/dist/**", "**/.wrangler/**", "**/playwright/**"],
     },
     proxy: {
       "/api": `http://localhost:${wranglerPort}`,

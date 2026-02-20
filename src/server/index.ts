@@ -93,11 +93,12 @@ app.get("/api/boards/public", async (c) => {
   try {
     const { results } = await c.env.DB.prepare(
       `SELECT b.id, b.name, b.game_mode, u.display_name AS creator,
-              a.last_activity_at, COALESCE(a.activity_count, 0) AS eventCount
+              COALESCE(a.last_activity_at, b.created_at) AS last_activity_at,
+              COALESCE(a.activity_count, 0) AS eventCount
        FROM boards b
        JOIN users u ON u.id = b.created_by
        LEFT JOIN board_activity a ON a.board_id = b.id
-       ORDER BY a.last_activity_at DESC
+       ORDER BY COALESCE(a.last_activity_at, b.created_at) DESC
        LIMIT 50`,
     ).all<{
       id: string;
