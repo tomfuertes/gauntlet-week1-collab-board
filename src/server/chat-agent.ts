@@ -27,7 +27,8 @@ import { HAT_PROMPTS, getRandomHatPrompt } from "./hat-prompts";
 import type { Bindings } from "./env";
 import { recordBoardActivity } from "./env";
 import type { BoardObject, BoardObjectProps, GameMode, Persona } from "../shared/types";
-import { SCENE_TURN_BUDGET, DEFAULT_PERSONAS, AI_MODELS } from "../shared/types";
+import { SCENE_TURN_BUDGET, DEFAULT_PERSONAS, AI_MODELS, AI_USER_ID } from "../shared/types";
+import { getTemplateById } from "../shared/board-templates";
 
 /**
  * Strip leaked model internals from output text: <think> blocks, <tool_call> fragments,
@@ -433,6 +434,68 @@ export class ChatAgent extends AIChatAgent<Bindings> {
     this._autonomousExchangeCount = 0; // human spoke - reset cooldown
     const startTime = Date.now();
 
+    const doId = this.env.BOARD.idFromName(this.name);
+    const boardStub = this.env.BOARD.get(doId);
+
+    // KEY-DECISION 2026-02-19: Server-side template seeding. When body.templateId is present,
+    // create all template objects via Board DO RPC (guaranteed count), rewrite the user message
+    // to displayText, and set a flag so the system prompt injects the template description
+    // instead of SCENE_SETUP_PROMPT. This replaced LLM-parsed pseudocode which was unreliable.
+    let templateDescription: string | undefined;
+    if (body?.templateId) {
+      const template = getTemplateById(body.templateId as string);
+      if (template) {
+        const seedBatchId = crypto.randomUUID();
+
+        // Seed all template objects on the board. Errors are non-fatal: if seeding
+        // partially fails, the AI still responds to whatever objects were created.
+        try {
+          for (const objSpec of template.objects) {
+            const obj: BoardObject = {
+              ...objSpec,
+              id: crypto.randomUUID(),
+              createdBy: AI_USER_ID,
+              updatedAt: Date.now(),
+              batchId: seedBatchId,
+            } as BoardObject;
+            await boardStub.mutate({ type: "obj:create", obj });
+          }
+        } catch (err) {
+          console.error(
+            JSON.stringify({
+              event: "template:seed:error",
+              boardId: this.name,
+              templateId: template.id,
+              batchId: seedBatchId,
+              error: String(err),
+            }),
+          );
+        }
+
+        console.debug(
+          JSON.stringify({
+            event: "template:seed",
+            boardId: this.name,
+            templateId: template.id,
+            objectCount: template.objects.length,
+            batchId: seedBatchId,
+          }),
+        );
+
+        // Rewrite the last user message to show displayText instead of raw pseudocode/templateId
+        const lastMsg = this.messages[this.messages.length - 1];
+        if (lastMsg && lastMsg.role === "user") {
+          const userPrefix = body?.username ? `[${body.username}] ` : "";
+          this.messages[this.messages.length - 1] = {
+            ...lastMsg,
+            parts: [{ type: "text" as const, text: `${userPrefix}${template.displayText}` }],
+          };
+        }
+
+        templateDescription = template.description;
+      }
+    }
+
     // Update persona claim from client (re-sent on every message for hibernation resilience)
     if (body?.personaId && body?.username) {
       this._personaClaims.set(body.username as string, body.personaId as string);
@@ -519,8 +582,6 @@ export class ChatAgent extends AIChatAgent<Bindings> {
       }),
     );
 
-    const doId = this.env.BOARD.idFromName(this.name);
-    const boardStub = this.env.BOARD.get(doId);
     const batchId = crypto.randomUUID();
     const tools = createSDKTools(boardStub, batchId, this.env.AI);
 
@@ -578,8 +639,10 @@ export class ChatAgent extends AIChatAgent<Bindings> {
     // Build persona-aware system prompt with optional selection + multiplayer context
     let systemPrompt = buildPersonaSystemPrompt(activePersona, otherPersona, SYSTEM_PROMPT, gameModeBlock);
 
-    // Scene setup: inject character composition + scene structure on first exchange only
-    if (humanTurns <= 1) {
+    // Scene setup: inject template description (if template was seeded) or generic scene structure
+    if (templateDescription) {
+      systemPrompt += `\n\nSCENE ALREADY SET: The canvas has been populated with the scene. Here's what's there:\n${templateDescription}\nReact to what's on the canvas. Do NOT recreate these objects - they already exist. Riff on the scene in character.`;
+    } else if (humanTurns <= 1) {
       systemPrompt += `\n\n${SCENE_SETUP_PROMPT}`;
     }
 

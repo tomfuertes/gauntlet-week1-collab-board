@@ -20,6 +20,8 @@ interface ChatPanelProps {
   aiModel?: AIModel;
   onClose: () => void;
   initialPrompt?: string;
+  /** Template ID for server-side seeding (sent alongside initialPrompt) */
+  initialTemplateId?: string;
   selectedIds?: Set<string>;
   onAIComplete?: () => void;
   /** Mobile mode: fills parent instead of floating as absolute panel; larger touch targets */
@@ -280,6 +282,7 @@ export function ChatPanel({
   aiModel,
   onClose,
   initialPrompt,
+  initialTemplateId,
   selectedIds,
   onAIComplete,
   mobileMode = false,
@@ -291,6 +294,9 @@ export function ChatPanel({
   // One-shot intent from chip click - sent in body.intent for the next message only, then cleared.
   // Uses state (not ref) so useAgentChat's body ref updates before the send effect fires.
   const [pendingIntent, setPendingIntent] = useState<string | undefined>();
+
+  // One-shot template ID - sent in body.templateId for template seeding, then cleared.
+  const [pendingTemplateId, setPendingTemplateId] = useState<string | undefined>();
 
   // Persona management state
   const [personas, setPersonas] = useState<Persona[]>([...DEFAULT_PERSONAS]);
@@ -411,6 +417,7 @@ export function ChatPanel({
       model: aiModel,
       personaId: claimedPersonaId ?? undefined,
       intent: pendingIntent,
+      templateId: pendingTemplateId,
     },
   });
 
@@ -440,6 +447,23 @@ export function ChatPanel({
     }
   }, [pendingIntent, sendMessage]);
 
+  // Same pattern for template chips: set templateId state -> re-render updates body ref -> send displayText
+  useEffect(() => {
+    if (!pendingTemplateId) return;
+    const tmpl = BOARD_TEMPLATES.find((t) => t.id === pendingTemplateId);
+    if (!tmpl) {
+      setPendingTemplateId(undefined);
+      return;
+    }
+    try {
+      sendMessage(tmpl.displayText);
+      setPendingTemplateId(undefined);
+    } catch (err) {
+      console.error("[ChatPanel] template chip send failed:", err);
+      setPendingTemplateId(undefined);
+    }
+  }, [pendingTemplateId, sendMessage]);
+
   const loading = sdkStatus === "streaming" || sdkStatus === "submitted";
   const error = sdkStatus === "error" ? sdkError?.message || "Something went wrong" : undefined;
   const status = sdkStatus === "submitted" ? "Thinking..." : sdkStatus === "streaming" ? "Responding..." : "";
@@ -467,14 +491,20 @@ export function ChatPanel({
   }, [uiMessages, loading, status]);
 
   // Auto-send initialPrompt when it changes (supports overlay + context menu)
+  // When initialTemplateId is provided, route through the template flow (sets pendingTemplateId
+  // which triggers the template effect, ensuring body.templateId is set before the HTTP request).
   useEffect(() => {
     if (initialPrompt && initialPrompt !== lastHandledPrompt.current) {
       lastHandledPrompt.current = initialPrompt;
-      sendMessage(initialPrompt);
+      if (initialTemplateId) {
+        setPendingTemplateId(initialTemplateId);
+      } else {
+        sendMessage(initialPrompt);
+      }
     } else if (!initialPrompt) {
       inputRef.current?.focus();
     }
-  }, [initialPrompt]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [initialPrompt, initialTemplateId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleSubmit = () => {
     const text = inputRef.current?.value.trim();
@@ -866,13 +896,13 @@ export function ChatPanel({
           {uiMessages.length === 0
             ? BOARD_TEMPLATES.map((t) => (
                 <ChipButton
-                  key={t.label}
+                  key={t.id}
                   label={t.label}
                   color={colors.textMuted}
                   borderRadius={6}
                   disabled={loading}
                   mobile={mobileMode}
-                  onClick={() => sendMessage(t.prompt)}
+                  onClick={() => setPendingTemplateId(t.id)}
                 />
               ))
             : getIntentChips(userMessageCount, gameMode).map((chip) => (

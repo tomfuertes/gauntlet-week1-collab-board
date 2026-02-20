@@ -153,6 +153,7 @@ export function Board({
   const [toolMode, setToolMode] = useState<ToolMode>("select");
   const [chatOpen, setChatOpen] = useState(false);
   const [chatInitialPrompt, setChatInitialPrompt] = useState<string | undefined>();
+  const [chatInitialTemplateId, setChatInitialTemplateId] = useState<string | undefined>();
   const [boardGenStarted, setBoardGenStarted] = useState(false);
   const [gameMode, setGameMode] = useState<GameMode>("freeform");
   // Claude Haiku 4.5 default; sent on every message so server knows which provider to use
@@ -1001,6 +1002,7 @@ export function Board({
             aiModel={aiModel}
             onClose={() => {}}
             initialPrompt={chatInitialPrompt}
+            initialTemplateId={chatInitialTemplateId}
             selectedIds={selectedIds}
             onAIComplete={handleAIComplete}
             mobileMode={true}
@@ -1082,6 +1084,7 @@ export function Board({
                 setPendingFrame(null);
                 // Prevent chatInitialPrompt from re-firing on ChatPanel remount
                 setChatInitialPrompt(undefined);
+                setChatInitialTemplateId(undefined);
               }}
               style={{ color: colors.textMuted, fontSize: "0.875rem", minHeight: 44, minWidth: 44 }}
             >
@@ -1228,12 +1231,13 @@ export function Board({
       {/* Onboard modal - shown on empty boards until user starts a scene or dismisses */}
       {initialized && objects.size === 0 && !boardGenStarted && !chatOpen && (
         <OnboardModal
-          onSubmit={(prompt, mode, model, personaId) => {
+          onSubmit={(prompt, mode, model, personaId, templateId) => {
             setGameMode(mode);
             setAIModel(model);
             setClaimedPersonaId(personaId);
             setBoardGenStarted(true);
             setChatInitialPrompt(prompt);
+            setChatInitialTemplateId(templateId);
             setChatOpen(true);
             // Persist mode to D1 (fire-and-forget)
             if (mode !== "freeform") {
@@ -1623,9 +1627,11 @@ export function Board({
           onClose={() => {
             setChatOpen(false);
             setChatInitialPrompt(undefined);
+            setChatInitialTemplateId(undefined);
             if (objects.size === 0) setBoardGenStarted(false);
           }}
           initialPrompt={chatInitialPrompt}
+          initialTemplateId={chatInitialTemplateId}
           selectedIds={selectedIds}
           onAIComplete={handleAIComplete}
           claimedPersonaId={claimedPersonaId}
