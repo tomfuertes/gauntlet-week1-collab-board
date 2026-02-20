@@ -55,6 +55,14 @@ export type BoardObjectUpdate = Partial<Omit<BoardObjectBase, "id">> & {
 
 export type EffectType = "pulse" | "shake" | "flash";
 
+/** Canvas-position visual effect that auto-removes after `duration` ms. Not persisted. */
+export interface TransientEffect {
+  type: "sparkle" | "poof" | "explosion" | "highlight";
+  x: number;
+  y: number;
+  duration: number;
+}
+
 export interface SfxEffect {
   id: string;
   label: string;
@@ -89,6 +97,7 @@ export type BoardMutation =
   | { type: "obj:delete"; id: string }
   | { type: "obj:effect"; id: string; effect: EffectType }
   | { type: "obj:sequence"; steps: ChoreographyStep[] }
+  | { type: "obj:transient"; effect: TransientEffect }
   | { type: "spotlight"; objectId?: string; x?: number; y?: number }
   | { type: "blackout" }
   | { type: "sfx"; effect: string; x: number; y: number };
@@ -104,6 +113,7 @@ export type WSClientMessage =
   | { type: "reaction"; emoji: string; x: number; y: number }
   | { type: "heckle"; text: string }
   | { type: "obj:effect"; id: string; effect: EffectType }
+  | { type: "obj:transient"; effect: TransientEffect }
   | { type: "obj:sequence"; steps: ChoreographyStep[] }
   | { type: "spotlight"; objectId?: string; x?: number; y?: number }
   | { type: "blackout" }
@@ -122,6 +132,7 @@ export type WSServerMessage =
   | { type: "reaction"; userId: string; emoji: string; x: number; y: number }
   | { type: "heckle"; userId: string; text: string }
   | { type: "obj:effect"; id: string; effect: EffectType }
+  | { type: "obj:transient"; effect: TransientEffect }
   | { type: "obj:sequence"; steps: ChoreographyStep[] }
   | { type: "spotlight"; objectId?: string; x?: number; y?: number }
   | { type: "blackout" }

@@ -8,6 +8,7 @@ import type {
   MutateResult,
   BoardStub,
   CharacterRelationship,
+  TransientEffect,
 } from "../shared/types";
 import { computeConnectedLineGeometry, getEdgePoint, type ObjectBounds } from "../shared/connection-geometry";
 
@@ -1001,7 +1002,29 @@ export function createSDKTools(stub: BoardStub, batchId?: string, ai?: Ai, stora
       }),
     }),
 
-    // 20. play_sfx
+    // 20. createEffect
+    createEffect: tool({
+      description:
+        "Trigger a transient visual particle effect at a canvas position. " +
+        "sparkle: glittery burst for magical moments. poof: smoke cloud for disappearances. " +
+        "explosion: dramatic burst for impacts or revelations. highlight: glowing ring for emphasis. " +
+        "The effect auto-removes after duration ms. Use for theatrical punctuation without cluttering the canvas.",
+      inputSchema: z.object({
+        type: z.enum(["sparkle", "poof", "explosion", "highlight"]).describe("Effect type"),
+        x: z.number().describe("X position on the canvas (center of the effect)"),
+        y: z.number().describe("Y position on the canvas (center of the effect)"),
+        duration: z.number().default(2000).describe("Effect duration in ms (default: 2000)"),
+      }),
+      execute: instrumentExecute("createEffect", async ({ type, x, y, duration }) => {
+        const effect: TransientEffect = { type, x, y, duration };
+        const result = await stub.mutate({ type: "obj:transient", effect });
+        if (!result.ok) return { error: result.error };
+        console.debug(JSON.stringify({ event: "ai:effect", type, x, y, duration }));
+        return { effect: type, x, y, duration };
+      }),
+    }),
+
+    // 21. play_sfx
     play_sfx: tool({
       description:
         "Play a sound effect on the canvas for dramatic emphasis. " +
@@ -1085,6 +1108,7 @@ export function createSDKTools(stub: BoardStub, batchId?: string, ai?: Ai, stora
                   "spotlight",
                   "blackout",
                   "drawScene",
+                  "createEffect",
                   "play_sfx",
                 ])
                 .describe("Tool name to execute"),

@@ -564,6 +564,13 @@ export class Board extends DurableObject<Bindings> {
         this.broadcast({ type: "obj:sequence", steps: msg.steps });
         return { ok: true };
       }
+      case "obj:transient": {
+        // KEY-DECISION 2026-02-20: obj:transient is a pure canvas visual effect (sparkle, poof,
+        // explosion, highlight) at a canvas position. No storage, no replay - clients auto-remove
+        // after effect.duration ms. Same broadcast-all pattern as sfx/spotlight/blackout.
+        this.broadcast({ type: "obj:transient", effect: msg.effect });
+        return { ok: true };
+      }
       case "spotlight": {
         // KEY-DECISION 2026-02-20: Broadcast to ALL clients including sender (no excludeWs).
         // Spotlight is a pure ephemeral visual effect - no storage, no replay, all clients sync.
