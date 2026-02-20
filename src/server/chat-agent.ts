@@ -24,6 +24,7 @@ import {
   buildGameModePromptBlock,
   computeLifecyclePhase,
   buildLifecycleBlock,
+  CRITIC_PROMPT,
 } from "./prompts";
 import type { GameModeState } from "./prompts";
 import { HAT_PROMPTS, getRandomHatPrompt } from "./hat-prompts";
@@ -828,6 +829,17 @@ export class ChatAgent extends AIChatAgent<Bindings> {
           );
         }),
       );
+      this.ctx.waitUntil(
+        this._generateCriticReview(boardStub as unknown as BoardStub).catch((err: unknown) => {
+          console.error(
+            JSON.stringify({
+              event: "critic:unhandled",
+              boardId: this.name,
+              error: String(err),
+            }),
+          );
+        }),
+      );
     }
 
     // Scene setup: inject template description (if template was seeded) or generic scene structure
@@ -1214,6 +1226,92 @@ export class ChatAgent extends AIChatAgent<Bindings> {
       console.debug(JSON.stringify({ event: "board:named", boardId: this.name, name: boardName }));
     } catch (err) {
       console.error(JSON.stringify({ event: "board:name:db-error", boardId: this.name, error: String(err) }));
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // AI Critic Review (fires once at curtain phase via ctx.waitUntil)
+  // ---------------------------------------------------------------------------
+
+  /** Generate a witty 1-5 star critic review from the scene transcript and persist to D1.
+   *  Fires once via ctx.waitUntil - never blocks the AI response stream.
+   *
+   *  KEY-DECISION 2026-02-20: meta:criticReviewed DO Storage flag prevents re-run after hibernation.
+   *  Claude Haiku used for review quality; Workers AI fallback when ANTHROPIC_API_KEY absent.
+   *  Transcript capped at 2000 chars to keep the call cheap; strips [PERSONA] prefixes so the
+   *  critic sees clean dialogue, not protocol noise. */
+  private async _generateCriticReview(boardStub: BoardStub): Promise<void> {
+    // Guard: only review once per board lifetime
+    const alreadyReviewed = await this.ctx.storage.get<boolean>("meta:criticReviewed");
+    if (alreadyReviewed) return;
+    await this.ctx.storage.put("meta:criticReviewed", true);
+
+    // Extract transcript: human + assistant text, strip [PERSONA] prefixes
+    const transcriptLines: string[] = [];
+    for (const msg of this.messages) {
+      const textParts = msg.parts?.filter((p) => p.type === "text") ?? [];
+      for (const p of textParts) {
+        const text = (p as { type: "text"; text: string }).text
+          .replace(/^\[([^\]]+)\]\s*/, "") // strip [PERSONA] prefix
+          .trim();
+        if (text) transcriptLines.push(`${msg.role === "user" ? "Player" : "AI"}: ${text}`);
+      }
+    }
+
+    if (transcriptLines.length === 0) return;
+
+    // Cap transcript to keep the review call cheap
+    const fullTranscript = transcriptLines.join("\n");
+    const transcript = fullTranscript.length > 2000 ? fullTranscript.slice(0, 2000) + "..." : fullTranscript;
+
+    const reviewPrompt = `${CRITIC_PROMPT}\n\nSCENE TRANSCRIPT:\n${transcript}`;
+
+    let rawResponse = "";
+    let modelName = "";
+    try {
+      if (this.env.ANTHROPIC_API_KEY) {
+        const anthropic = createAnthropic({ apiKey: this.env.ANTHROPIC_API_KEY });
+        const result = await generateText({
+          model: anthropic("claude-haiku-4-5-20251001"),
+          messages: [{ role: "user" as const, content: reviewPrompt }],
+        });
+        rawResponse = result.text;
+        modelName = "claude-haiku-4.5";
+      } else {
+        const modelId = (this.env as unknown as Record<string, string>).WORKERS_AI_MODEL || "@cf/zai-org/glm-4.7-flash";
+        const workerAi = createWorkersAI({ binding: this.env.AI as any });
+        const result = await generateText({
+          model: (workerAi as any)(modelId),
+          messages: [{ role: "user" as const, content: reviewPrompt }],
+        });
+        rawResponse = result.text;
+        modelName = modelId.split("/").pop() || "workers-ai";
+      }
+    } catch (err) {
+      console.error(JSON.stringify({ event: "critic:gen-error", boardId: this.name, error: String(err) }));
+      return;
+    }
+
+    // Parse SCORE: [1-5] and REVIEW: [text] from response
+    const scoreMatch = rawResponse.match(/SCORE:\s*([1-5])/);
+    const reviewMatch = rawResponse.match(/REVIEW:\s*(.+?)(?:\n|$)/s);
+
+    if (!scoreMatch || !reviewMatch) {
+      console.warn(JSON.stringify({ event: "critic:parse-fail", boardId: this.name, raw: rawResponse.slice(0, 200) }));
+      return;
+    }
+
+    const score = parseInt(scoreMatch[1], 10);
+    const review = reviewMatch[1].trim();
+
+    if (!review) return;
+
+    // Persist via Board DO RPC (same pattern as archiveScene)
+    try {
+      await (boardStub as any).saveCriticReview(review, score, modelName);
+      console.debug(JSON.stringify({ event: "critic:saved", boardId: this.name, score, model: modelName }));
+    } catch (err) {
+      console.error(JSON.stringify({ event: "critic:save-error", boardId: this.name, error: String(err) }));
     }
   }
 

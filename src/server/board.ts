@@ -123,6 +123,27 @@ export class Board extends DurableObject<Bindings> {
     }
   }
 
+  /** Persist AI critic review + score to D1 (called from ChatAgent on curtain phase).
+   *  KEY-DECISION 2026-02-20: Board DO owns the D1 write so boardId is always available
+   *  via getBoardId() - same pattern as archiveScene(). */
+  async saveCriticReview(review: string, score: number, model: string): Promise<void> {
+    const boardId = await this.getBoardId();
+    if (!boardId) {
+      console.debug(JSON.stringify({ event: "critic:skip", reason: "no-boardId" }));
+      return;
+    }
+    try {
+      await this.env.DB.prepare(
+        "UPDATE boards SET critic_review = ?, critic_score = ?, critic_model = ?, updated_at = datetime('now') WHERE id = ?",
+      )
+        .bind(review, score, model, boardId)
+        .run();
+      console.debug(JSON.stringify({ event: "critic:saved", boardId, score, model }));
+    } catch (err) {
+      console.error(JSON.stringify({ event: "critic:error", boardId, error: String(err) }));
+    }
+  }
+
   /** Set AI presence visibility in the presence list */
   async setAiPresence(active: boolean): Promise<void> {
     this.aiActiveUntil = active ? Date.now() + 60_000 : 0;
