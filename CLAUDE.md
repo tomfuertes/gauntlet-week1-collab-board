@@ -94,40 +94,25 @@ cd /path/to/worktree && claude --model sonnet "$(cat /private/tmp/claude-501/pro
 ```
 This launches Claude with the prompt pre-loaded so the user just hits enter. Always include a specific, actionable prompt describing the feature to build. **Do NOT use "Enter plan mode first"** - it adds an approval gate that blocks the agent and the context exploration can compress away during implementation. Instead, write detailed prompts that specify the approach, and instruct the agent to read CLAUDE.md and relevant source files before implementing.
 
-### "venom" - Team-based worktree agents
+### Worktree Agent Workflow
 
-When the user says **"venom"** followed by task descriptions (any format, rambly is fine), the orchestrator owns the full lifecycle using agent teams:
+When the user asks for work in a worktree (any format, rambly is fine), the orchestrator owns the full lifecycle using agent teams:
 
-**Single task:**
-1. Derive a kebab-case branch name from the task
-2. `scripts/worktree.sh create <branch>` - required (handles deps, build, migrations, ports, permissions)
-3. Write detailed prompt to `$TMPDIR/prompt-<branch>.txt` (include worktree checklist items from below)
-4. Launch background `general-purpose` agent with CWD set to the worktree absolute path
-5. Monitor via task notifications in main context
-6. Merge when agent finishes (same merge protocol below)
-
-**Multiple tasks (team mode):**
 1. `TeamCreate` with a session-level team name
-2. `TaskCreate` for each work item (tasks can be added dynamically as scope grows)
-3. For each task: `scripts/worktree.sh create <branch>`, write prompt, spawn team member with `Task(team_name=..., name=<branch>, run_in_background=true)`
-4. Team members pick up tasks, implement, communicate progress via `SendMessage`
+2. `TaskCreate` for each work item (tasks can be added dynamically)
+3. For each task: derive kebab-case branch, `scripts/worktree.sh create <branch>`, write prompt to `$TMPDIR/prompt-<branch>.txt`, spawn team member with `Task(team_name=..., name=<branch>, run_in_background=true)`
+4. Team members implement, communicate progress via `SendMessage`
 5. Orchestrator reviews, redirects, assigns new tasks as they emerge
-6. Spawn new agents on-the-fly as tasks are added - agents join the team and claim work
-7. Merge each branch as it completes (same merge protocol - orchestrator only)
+6. New agents can be spawned on-the-fly as tasks are added
+7. Merge each branch as it completes (orchestrator only - see merge protocol below)
 8. `SendMessage(type="shutdown_request")` to each agent when done, then `TeamDelete`
 
-**Adding agents dynamically:** New team members can be spawned at any time as tasks emerge. No need to plan all agents upfront. The shared task list coordinates work - new agents check `TaskList` and claim unassigned, unblocked tasks.
-
-**Model selection by task complexity** (not hardcoded):
-- `model: "sonnet"` - Default for most: refactors, well-scoped features, DX fixes
+**Model selection by task complexity:**
+- `model: "sonnet"` - Default: refactors, well-scoped features, DX fixes
 - `model: "opus"` - Architectural changes, novel integrations, complex multi-system work
 - `model: "haiku"` - Mechanical tasks: bulk renames, migration boilerplate, config changes
 
-**Claude Code 2.1.49+ features** (available but not yet integrated into our workflow):
-- `isolation: "worktree"` in agent definitions - Claude Code creates temporary worktrees automatically. Does NOT handle deps/build/migrations, so we still use `scripts/worktree.sh` for this project.
-- `background: true` in `.claude/agents/` frontmatter - agent always runs in background without needing `run_in_background: true` at call site.
-- `Ctrl+F` kills background agents (2-press confirm) - use when agents go sideways instead of `TaskStop`.
-- `SubagentStart`/`SubagentStop` hooks - can trigger setup/cleanup scripts when agents spawn. Future: could replace `scripts/worktree.sh` if hooks can handle full deps/build/migrations setup.
+**Why `scripts/worktree.sh` instead of `claude -w` or `isolation: "worktree"`:** This project needs deps install (APFS clone), Vite build, D1 migrations, port assignment, and `.claude/settings.local.json` seeding per worktree. The script handles all of this. Native worktree isolation doesn't run project-specific setup.
 
 **NEVER delegate merging to sub-agents.** Always merge worktree branches in main context (the orchestrator). Worktree branches fork from a point-in-time snapshot of main. If other branches merge first, a sub-agent's squash merge will silently revert the intervening changes (the branch diff includes deletions it never made). The orchestrator must: (1) check `git diff main..feat/<branch>` for unexpected reversions, (2) rebase onto current main if needed, (3) resolve conflicts with full project context, (4) typecheck after merge.
 
@@ -285,27 +270,17 @@ Hooks enforce the bookends: `SessionStart` reminds to read context, `PreCompact`
 
 ## Custom Agents (Delegation)
 
-Main context is the orchestrator. Delegate execution to custom agents (`.claude/agents/`). Models are set in agent frontmatter - no need to specify at invocation. **Use Sonnet for implementation agents** (worktrees, code changes) to conserve Opus usage. Reserve Haiku for mechanical tasks (UAT clicks, worktree setup, exploration).
+Main context is the orchestrator. Delegate aggressively - keep main context for decisions, not execution. **Default to agent teams** (`TeamCreate`) for all multi-agent work. Background tasks (`run_in_background: true`) only for single atomic operations (one build, one test suite).
 
-| Task | Agent | Model | Background? |
-|------|-------|-------|-------------|
-| Feature worktree (multi-file impl) | `general-purpose` | sonnet | yes (user launches in worktree) |
-| UAT / smoke test / feature verification | `uat` | haiku | yes |
-| Worktree creation + setup | `worktree-setup` | haiku | yes |
-| PR review (code-reviewer, silent-failure-hunter) | `pr-review-toolkit:*` | sonnet | yes |
-| E2E test suite (`npx playwright test`) | background Bash | - | yes |
-| Codebase exploration (3+ file reads) | `Explore` (built-in) | sonnet | yes |
+| Task | Agent | Model | How |
+|------|-------|-------|-----|
+| Feature worktree | `general-purpose` | sonnet | team member |
+| UAT / smoke test | `uat` | haiku | team member |
+| PR review | `pr-review-toolkit:*` | sonnet | invoked by worktree agent via Skill |
+| E2E test suite | background Bash | - | `run_in_background: true` (atomic) |
+| Codebase exploration | `Explore` (built-in) | sonnet | team member or background (atomic) |
 
-**How to invoke:**
-```
-Task(subagent_type="uat", run_in_background=true,
-     prompt="Smoke test: auth + create board + one of each object type. Dev server on localhost:5173.")
-```
-
-**Before spawning UAT agents, always print a status summary for the user:**
-- What scenarios will be tested (bulleted list)
-- How many agents / sessions (single vs parallel)
-- Expected complexity (quick smoke ~2min, full feature ~5min, multi-browser sync ~5-8min)
+**UAT uses teams, not background tasks.** Each test scenario gets a teammate that reports failures immediately via `SendMessage`. The lead triages and fixes while other flows still run. Before spawning UAT, enumerate scenarios as a numbered list for the user.
 
 Never run playwright-cli sessions or full test suites in main Opus context. Always delegate.
 
