@@ -17,7 +17,7 @@ interface OnboardModalProps {
 export function OnboardModal({ onSubmit, onDismiss, personas = [...DEFAULT_PERSONAS] }: OnboardModalProps) {
   const [value, setValue] = useState("");
   const [selectedMode, setSelectedMode] = useState<GameMode>("freeform");
-  const [selectedModel, setSelectedModel] = useState<AIModel>("gpt-4o-mini");
+  const [selectedModel, setSelectedModel] = useState<AIModel>("claude-haiku-4.5");
   const [selectedPersonaId, setSelectedPersonaId] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const hasValue = value.trim().length > 0;

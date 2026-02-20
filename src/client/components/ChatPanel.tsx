@@ -228,7 +228,9 @@ function ToolHistory({ tools }: { tools: ToolCallDisplay[] }) {
           color: "#64748b",
           cursor: "pointer",
           fontSize: "0.6875rem",
-          padding: 0,
+          padding: "0 4px",
+          minHeight: 44,
+          minWidth: 44,
           display: "flex",
           alignItems: "center",
           gap: 4,
@@ -568,13 +570,14 @@ export function ChatPanel({
           {budgetLabel && (
             <span
               style={{
-                fontSize: "0.625rem",
-                fontWeight: 700,
+                fontSize: "0.75rem",
+                fontWeight: 800,
                 color: budgetColor,
-                background: `${budgetColor}18`,
-                border: `1px solid ${budgetColor}44`,
+                background: `${budgetColor}28`,
+                border: `1.5px solid ${budgetColor}88`,
                 borderRadius: 10,
-                padding: "1px 8px",
+                padding: "2px 10px",
+                letterSpacing: "0.02em",
                 animation: budgetPct >= 0.8 ? "cb-pulse 2s ease-in-out infinite" : undefined,
               }}
             >
@@ -640,7 +643,7 @@ export function ChatPanel({
           }}
         >
           <span style={{ fontSize: "0.6875rem", color: colors.textMuted, flexShrink: 0 }}>Partner:</span>
-          {/* "Anyone" pill */}
+          {/* "Anyone" pill - 44px min touch target (Apple HIG) */}
           <button
             onClick={() => onClaimChange(null)}
             style={{
@@ -648,6 +651,8 @@ export function ChatPanel({
               border: `1px solid ${claimedPersonaId === null ? colors.accent : colors.border}`,
               borderRadius: 20,
               padding: "2px 10px",
+              minHeight: 44,
+              minWidth: 44,
               color: claimedPersonaId === null ? colors.text : colors.textMuted,
               fontSize: "0.6875rem",
               cursor: "pointer",
@@ -667,6 +672,8 @@ export function ChatPanel({
                   border: `1px solid ${active ? persona.color : colors.border}`,
                   borderRadius: 20,
                   padding: "2px 10px",
+                  minHeight: 44,
+                  minWidth: 44,
                   color: active ? colors.text : colors.textMuted,
                   fontSize: "0.6875rem",
                   cursor: "pointer",
@@ -959,6 +966,8 @@ export function ChatPanel({
               fontSize: "0.8125rem",
               fontWeight: 600,
               flexShrink: 0,
+              minHeight: 44,
+              minWidth: 44,
             }}
           >
             Send
