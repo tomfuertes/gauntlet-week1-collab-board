@@ -25,6 +25,7 @@ import {
   computeLifecyclePhase,
   buildLifecycleBlock,
   CRITIC_PROMPT,
+  buildCanvasReactionPrompt,
 } from "./prompts";
 import type { GameModeState } from "./prompts";
 import { HAT_PROMPTS, getRandomHatPrompt } from "./hat-prompts";
@@ -177,6 +178,12 @@ export class ChatAgent extends AIChatAgent<Bindings> {
   // Langfuse client - lazily initialized on first request, null if env vars absent.
   // undefined = not yet checked; null = env vars missing, skip; Langfuse = active.
   private _langfuseClient: Langfuse | null | undefined = undefined;
+
+  // Canvas reaction engine state (resets on DO hibernation - correct, short-lived debounce state)
+  // Persistent schedule (onCanvasReaction) wakes the DO; empty buffer guard handles the stale-schedule case.
+  private _pendingCanvasActions: CanvasAction[] = [];
+  private _canvasReactionCooldownUntil = 0;
+  private _lastHumanMessageAt = 0;
 
   /** Check if daily AI budget is exhausted. Returns true if over budget. */
   private _isOverBudget(): boolean {
@@ -535,6 +542,7 @@ export class ChatAgent extends AIChatAgent<Bindings> {
 
     this._isGenerating = true;
     this._autonomousExchangeCount = 0; // human spoke - reset cooldown
+    this._lastHumanMessageAt = Date.now(); // track for canvas reaction "player is chatting" guard
     const startTime = Date.now();
 
     const doId = this.env.BOARD.idFromName(this.name);
@@ -1778,9 +1786,10 @@ export class ChatAgent extends AIChatAgent<Bindings> {
   // ---------------------------------------------------------------------------
 
   /** Receives canvas mutation notifications from Board DO after each player action.
-   *  Stub for T1 - verifies RPC plumbing compiles and works end-to-end.
-   *  T2 (task #59) will implement the debounce + canvas reaction engine here. */
-  onCanvasAction(action: CanvasAction): void {
+   *  Buffers significant actions and resets the 5s debounce timer.
+   *  Non-significant actions (position drags) reset the timer without buffering,
+   *  preventing reactions from firing mid-drag. */
+  async onCanvasAction(action: CanvasAction): Promise<void> {
     console.debug(
       JSON.stringify({
         event: "canvas-action:received",
@@ -1789,10 +1798,253 @@ export class ChatAgent extends AIChatAgent<Bindings> {
         userId: action.userId,
         username: action.username,
         objectId: action.objectId,
+        objectType: action.objectType,
         significant: action.significant,
         ts: action.ts,
       }),
     );
+
+    // Buffer significant actions for interest scoring (position drags are not significant)
+    if (action.significant) {
+      this._pendingCanvasActions.push(action);
+    }
+
+    // Reset the 5s canvas-reaction timer on ALL actions (including non-significant drags).
+    // KEY-DECISION 2026-02-20: Cancel-then-reschedule on every action so drag repositioning
+    // suppresses the reaction timer. Players dragging should not trigger canvas reactions.
+    // Timer is only rescheduled if there are buffered significant actions to react to.
+    try {
+      const existing = this.getSchedules({ type: "delayed" });
+      for (const s of existing) {
+        if (s.callback === "onCanvasReaction") {
+          await this.cancelSchedule(s.id);
+        }
+      }
+      if (this.messages.length > 0 && this._pendingCanvasActions.length > 0) {
+        await this.schedule(5, "onCanvasReaction" as keyof this);
+        console.debug(
+          JSON.stringify({
+            event: "canvas-action:timer-set",
+            boardId: this.name,
+            pendingCount: this._pendingCanvasActions.length,
+            delaySeconds: 5,
+          }),
+        );
+      }
+    } catch (err) {
+      console.warn(
+        JSON.stringify({
+          event: "canvas-action:timer-error",
+          boardId: this.name,
+          error: String(err),
+        }),
+      );
+    }
+  }
+
+  /** Called by DO schedule after 5s of player idle - reacts to recent canvas mutations in character.
+   *  Drains the pending action buffer, scores interest level, and generates a reaction if the
+   *  scene warrants it. Guards prevent reactions during active generation or chat. */
+  async onCanvasReaction(_payload: unknown, currentSchedule?: { id: string }) {
+    // Guard: skip if a newer canvas-reaction schedule exists (this one is stale).
+    // KEY-DECISION 2026-02-20: Check newer-timer BEFORE draining buffer - if a newer schedule
+    // exists, we preserve the buffer for it (draining would leave the newer schedule empty).
+    const allSchedules = this.getSchedules({ type: "delayed" });
+    const hasPending = allSchedules.some((s) => s.callback === "onCanvasReaction" && s.id !== currentSchedule?.id);
+    if (hasPending) {
+      console.debug(JSON.stringify({ event: "canvas-reaction:skip", reason: "newer-timer", boardId: this.name }));
+      return;
+    }
+
+    // Drain buffer (always, once we've confirmed we're the active timer)
+    const actions = this._pendingCanvasActions;
+    this._pendingCanvasActions = [];
+
+    // Guard 1: empty buffer
+    if (actions.length === 0) {
+      console.debug(JSON.stringify({ event: "canvas-reaction:skip", reason: "empty-buffer", boardId: this.name }));
+      return;
+    }
+
+    // Guard 2: another AI generation in progress
+    if (this._isGenerating) {
+      console.debug(JSON.stringify({ event: "canvas-reaction:skip", reason: "generating", boardId: this.name }));
+      return;
+    }
+
+    // Guard 3: cooldown active (30s between canvas reactions)
+    const now = Date.now();
+    if (now < this._canvasReactionCooldownUntil) {
+      console.debug(
+        JSON.stringify({
+          event: "canvas-reaction:skip",
+          reason: "cooldown",
+          boardId: this.name,
+          cooldownRemainingMs: this._canvasReactionCooldownUntil - now,
+        }),
+      );
+      return;
+    }
+
+    // Guard 4: no scene started yet
+    if (this.messages.length === 0) {
+      console.debug(JSON.stringify({ event: "canvas-reaction:skip", reason: "no-messages", boardId: this.name }));
+      return;
+    }
+
+    // Guard 5: scene budget exhausted
+    const humanTurns = this.messages.filter((m) => m.role === "user").length;
+    if (computeBudgetPhase(humanTurns, SCENE_TURN_BUDGET) === "scene-over") {
+      console.debug(JSON.stringify({ event: "canvas-reaction:skip", reason: "scene-over", boardId: this.name }));
+      return;
+    }
+
+    // Guard 6: player sent a chat message in the last 10s (they're engaged in chat, not just placing objects)
+    if (now - this._lastHumanMessageAt < 10_000) {
+      console.debug(
+        JSON.stringify({
+          event: "canvas-reaction:skip",
+          reason: "recent-chat",
+          boardId: this.name,
+          msSinceChat: now - this._lastHumanMessageAt,
+        }),
+      );
+      return;
+    }
+
+    // Interest scoring - only react if the buffered actions are sufficiently interesting
+    let score = 0;
+    for (const a of actions) {
+      if (a.type === "obj:create") {
+        score += a.objectType === "person" || a.objectType === "frame" || a.objectType === "sticky" ? 2 : 1;
+      } else if (a.type === "obj:delete") {
+        score += 1;
+      } else if (a.type === "obj:update" && a.text) {
+        score += 1;
+      }
+    }
+
+    console.debug(
+      JSON.stringify({
+        event: "canvas-reaction:evaluate",
+        boardId: this.name,
+        score,
+        actionCount: actions.length,
+        threshold: 2,
+      }),
+    );
+
+    if (score < 2) {
+      console.debug(
+        JSON.stringify({ event: "canvas-reaction:skip", reason: "low-interest", boardId: this.name, score }),
+      );
+      return;
+    }
+
+    // React!
+    this._isGenerating = true;
+    const startTime = Date.now();
+    const reactionPersonas = await this._getPersonas();
+    const reactionIndex = this._activePersonaIndex % reactionPersonas.length;
+    const reactionPersona = reactionPersonas[reactionIndex];
+    const reactionOther =
+      reactionPersonas.length > 1 ? reactionPersonas[(reactionIndex + 1) % reactionPersonas.length] : undefined;
+
+    this._logRequestStart("canvas-action", reactionPersona.name, { actionCount: actions.length, score });
+
+    const doId = this.env.BOARD.idFromName(this.name);
+    const boardStub = this.env.BOARD.get(doId);
+    const batchId = crypto.randomUUID();
+    const tools = createSDKTools(boardStub, batchId, this.env.AI, this.ctx.storage);
+
+    await boardStub.setAiPresence(true).catch((err: unknown) => {
+      console.debug(JSON.stringify({ event: "ai:presence:start-error", trigger: "canvas-action", error: String(err) }));
+    });
+
+    let didReact = false;
+    try {
+      const relationships = (await this.ctx.storage.get<CharacterRelationship[]>("narrative:relationships")) ?? [];
+      const relBlock = buildRelationshipBlock(relationships);
+
+      const gameModeState: GameModeState = {
+        hatPrompt: this._hatPromptIndex >= 0 ? HAT_PROMPTS[this._hatPromptIndex] : undefined,
+        hatExchangeCount: this._hatExchangeCount,
+        hatPromptOffset: Math.min(50 + this._hatPromptCount * 600, 650),
+        yesAndCount: this._yesAndCount,
+      };
+      const gameModeBlock = buildGameModePromptBlock(this._gameMode, gameModeState);
+
+      const storedPhase = await this.ctx.storage.get<SceneLifecyclePhase>("scene:lifecyclePhase");
+      const lifecyclePhase = computeLifecyclePhase(humanTurns, storedPhase ?? undefined);
+      const lifecycleBlock = this._gameMode !== "hat" ? `\n\n${buildLifecycleBlock(lifecyclePhase)}` : "";
+
+      const canvasReactionSystem =
+        buildPersonaSystemPrompt(reactionPersona, reactionOther, SYSTEM_PROMPT, gameModeBlock, relBlock) +
+        lifecycleBlock +
+        `\n\n${buildCanvasReactionPrompt(actions)}`;
+
+      const { messages: sanitizedMsgs, repairedCount } = sanitizeMessages(this.messages);
+      if (repairedCount > 0) this._traceSanitizeRepair("canvas-action", repairedCount);
+
+      const result = await generateText({
+        model: this._getTracedModel("canvas-action", reactionPersona.name, { gameMode: this._gameMode }),
+        system: canvasReactionSystem,
+        messages: await convertToModelMessages(sanitizedMsgs),
+        tools,
+        stopWhen: stepCountIs(2),
+      });
+
+      const reactionMessage = this._buildGenerateTextMessage(
+        result,
+        reactionPersona.name,
+        `[${reactionPersona.name}] ...`,
+      );
+      if (reactionMessage) {
+        this.messages.push(reactionMessage);
+        await this.persistMessages(this.messages);
+      }
+
+      const totalToolCalls = result.steps.reduce((sum, s) => sum + s.toolCalls.length, 0);
+      this._logRequestEnd("canvas-action", reactionPersona.name, startTime, result.steps.length, totalToolCalls, {
+        score,
+        actionCount: actions.length,
+      });
+      this._traceToolFailures("canvas-action", result.steps as any[]);
+
+      // Set 30s cooldown to prevent back-to-back canvas reactions
+      this._canvasReactionCooldownUntil = Date.now() + 30_000;
+      didReact = true;
+    } catch (err) {
+      console.error(
+        JSON.stringify({
+          event: "canvas-reaction:error",
+          boardId: this.name,
+          persona: reactionPersona.name,
+          score,
+          error: String(err),
+        }),
+      );
+    } finally {
+      this._isGenerating = false;
+      await boardStub.setAiPresence(false).catch((err: unknown) => {
+        console.debug(
+          JSON.stringify({ event: "ai:presence:cleanup-error", trigger: "canvas-action", error: String(err) }),
+        );
+      });
+    }
+
+    if (didReact) {
+      // Reset director timer (AI just acted - restart 60s inactivity window)
+      this._resetDirectorTimer();
+      // Trigger reactive persona cascade (same pattern as onChatMessage wrappedOnFinish)
+      // Called AFTER _isGenerating = false so _triggerReactivePersona's busy guard passes
+      this._autonomousExchangeCount++;
+      this.ctx.waitUntil(
+        this._triggerReactivePersona(reactionIndex, reactionPersonas).catch((err: unknown) => {
+          console.error(JSON.stringify({ event: "reactive:unhandled", boardId: this.name, error: String(err) }));
+        }),
+      );
+    }
   }
 
   /** Called by DO alarm after 60s of inactivity - generates a proactive scene complication */
