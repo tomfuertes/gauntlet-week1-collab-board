@@ -654,9 +654,118 @@ export function createSDKTools(stub: BoardStub, batchId?: string, ai?: Ai) {
         return createAndMutate(stub, obj);
       }),
     }),
+
+    // 12. createText
+    createText: tool({
+      description: "Create a text label on the whiteboard - smaller than stickies, for labels, captions, and names.",
+      inputSchema: z.object({
+        text: z.string().describe("The text content"),
+        x: z.number().describe("X position on the canvas"),
+        y: z.number().describe("Y position on the canvas"),
+        color: z.string().optional().describe("Text color hex (default: #1a1a2e)"),
+      }),
+      execute: instrumentExecute("createText", async ({ text, x, y, color }) => {
+        const charWidth = 8; // ~8px per char at default 16px font
+        const width = Math.max(40, text.length * charWidth + 16);
+        const height = 24;
+        const obj = makeObject("text", { x, y }, width, height, { text, color: color || "#1a1a2e" }, batchId);
+        return createAndMutate(stub, obj);
+      }),
+    }),
+
+    // 13. drawScene
+    drawScene: tool({
+      description:
+        "Compose a visual character or object from 2-10 shapes in a bounding box. Uses proportional " +
+        "coordinates (0-1) so you think in relative positions, not pixels. Auto-creates a text label. " +
+        "Example snowman at (300,200) 150x250: " +
+        'parts:[{shape:"circle",relX:0.5,relY:0.75,relW:0.9,relH:0.35,fill:"#fff"},' +
+        '{shape:"circle",relX:0.5,relY:0.4,relW:0.6,relH:0.25,fill:"#fff"},' +
+        '{shape:"circle",relX:0.5,relY:0.15,relW:0.3,relH:0.12,fill:"#333"},' +
+        '{shape:"rect",relX:0.5,relY:0.08,relW:0.45,relH:0.04,fill:"#333"}]',
+      inputSchema: z.object({
+        label: z.string().describe("What this represents (auto-creates a text label below)"),
+        x: z.number().describe("X position of composition top-left on canvas"),
+        y: z.number().describe("Y position of composition top-left on canvas"),
+        width: z.number().optional().describe("Bounding box width in pixels (default: 200)"),
+        height: z.number().optional().describe("Bounding box height in pixels (default: 300)"),
+        parts: z
+          .array(
+            z.object({
+              shape: z.enum(["rect", "circle", "line"]).describe("Shape type"),
+              relX: z.number().describe("Center X as 0-1 fraction of bounding box"),
+              relY: z.number().describe("Center Y as 0-1 fraction of bounding box"),
+              relW: z.number().describe("Width as 0-1 fraction of bounding box"),
+              relH: z.number().optional().describe("Height as 0-1 fraction (default: same as relW)"),
+              fill: z.string().optional().describe("Fill color hex"),
+              stroke: z.string().optional().describe("Stroke color hex"),
+            }),
+          )
+          .min(2)
+          .max(10)
+          .describe("Shape parts with proportional coordinates"),
+      }),
+      execute: instrumentExecute("drawScene", async ({ label, x, y, width, height, parts }) => {
+        const w = width ?? 200;
+        const h = height ?? 300;
+        const compositionBatchId = crypto.randomUUID();
+        const clamp = (v: number) => Math.max(0, Math.min(1, v));
+
+        const partIds: string[] = [];
+        let failed = 0;
+
+        for (const part of parts) {
+          const rx = clamp(part.relX);
+          const ry = clamp(part.relY);
+          const rw = clamp(part.relW);
+          const rh = clamp(part.relH ?? part.relW);
+
+          const absW = rw * w;
+          const absH = rh * h;
+          const absX = x + rx * w - absW / 2;
+          const absY = y + ry * h - absH / 2;
+
+          const shapeType = part.shape === "circle" ? "circle" : part.shape === "line" ? "line" : "rect";
+          const props: BoardObjectProps =
+            shapeType === "line"
+              ? { stroke: part.stroke || part.fill || "#94a3b8" }
+              : { fill: part.fill || "#3b82f6", stroke: part.stroke };
+
+          const obj = makeObject(shapeType, { x: absX, y: absY }, absW, absH, props, compositionBatchId);
+          const result = await createAndMutate(stub, obj);
+          if ("error" in result) {
+            failed++;
+          } else {
+            partIds.push(result.created as string);
+          }
+        }
+
+        // Text label below the composition
+        const labelWidth = Math.max(40, label.length * 8 + 16);
+        const labelObj = makeObject(
+          "text",
+          { x: x + w / 2 - labelWidth / 2, y: y + h + 8 },
+          labelWidth,
+          24,
+          { text: label, color: "#1a1a2e" },
+          compositionBatchId,
+        );
+        const labelResult = await createAndMutate(stub, labelObj);
+        if (!("error" in labelResult)) partIds.push(labelResult.created as string);
+
+        return {
+          created: partIds.length,
+          label,
+          bounds: { x, y, width: w, height: h },
+          batchId: compositionBatchId,
+          partIds,
+          ...(failed > 0 && { error: `${failed}/${parts.length} parts failed` }),
+        };
+      }),
+    }),
   };
 
-  // Registry of execute functions from tools 1-11, keyed by name.
+  // Registry of execute functions from tools 1-13, keyed by name.
   // Excludes batchExecute itself to prevent recursive batching.
   // Double-cast through unknown: each tool's execute has Zod-narrowed args, but at runtime
   // all accept Record<string,unknown> (instrumentExecute guards malformed inputs).
@@ -693,6 +802,8 @@ export function createSDKTools(stub: BoardStub, batchId?: string, ai?: Ai) {
                   "getBoardState",
                   "deleteObject",
                   "generateImage",
+                  "createText",
+                  "drawScene",
                 ])
                 .describe("Tool name to execute"),
               args: z.record(z.string(), z.unknown()).describe("Arguments for the tool (same as calling it directly)"),

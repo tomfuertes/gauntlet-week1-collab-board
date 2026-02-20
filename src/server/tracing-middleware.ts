@@ -80,10 +80,7 @@ function recordLangfuseGeneration(
  * Langfuse v3 (fetch-based) provides full I/O capture for debugging tool calls and
  * board quality. D1 ai_traces table removed - Langfuse is the sole observability layer.
  */
-export function createTracingMiddleware(
-  ctx: TraceContext,
-  langfuse?: Langfuse | null,
-): LanguageModelMiddleware {
+export function createTracingMiddleware(ctx: TraceContext, langfuse?: Langfuse | null): LanguageModelMiddleware {
   return {
     specificationVersion: "v3",
 
