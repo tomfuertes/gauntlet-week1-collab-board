@@ -3,8 +3,10 @@ import { colors } from "../theme";
 
 // Spec targets from docs/encrypted/spec.md - Performance Targets table
 const TARGETS = {
-  fps: { green: 55, yellow: 30 }, // 60fps target
-  msgAge: { green: 500, yellow: 2000 }, // ms since last server message
+  fps: { green: 55, yellow: 30 }, // >=55 green, 30-55 yellow, <30 red
+  msgAge: { green: 100, yellow: 500 }, // <100ms green, 100-500ms yellow, >500ms red
+  objects: { green: 500, yellow: 750 }, // <500 green, 500-750 yellow, >750 red
+  users: { green: 5, yellow: 10 }, // <=5 green, 6-10 yellow, >10 red
 };
 
 // Always visible by default (Shift+P or backtick to toggle off)
@@ -132,13 +134,13 @@ export function PerfOverlay({
 
   const rows: [string, string | number, string][] = [
     ["FPS", fps !== null ? fps : "--", fps !== null ? statusColor(fps, TARGETS.fps) : colors.textDim],
-    ["Objects", objectCount, colors.text],
+    ["Objects", objectCount, statusColor(objectCount, TARGETS.objects, true)],
     [
       "Msg age",
       msgAge !== null ? (msgAge > 5000 ? ">5s" : `${msgAge}ms`) : "--",
       msgAge !== null ? statusColor(msgAge, TARGETS.msgAge, true) : colors.textDim,
     ],
-    ["Users", cursorCount, colors.text],
+    ["Users", cursorCount, statusColor(cursorCount, TARGETS.users, true)],
     ["Nodes", konvaNodes, colors.textMuted],
     ["Conn", connectionState, connColor(connectionState)],
   ];
