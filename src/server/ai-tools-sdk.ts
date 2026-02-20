@@ -98,12 +98,14 @@ async function updateAndMutate(
   fields: Omit<BoardObjectUpdate, "id">,
   resultKey: string,
   extra?: Record<string, unknown>,
+  anim?: { duration: number },
 ) {
   let result: MutateResult;
   try {
     result = await stub.mutate({
       type: "obj:update",
       obj: { id, ...fields, updatedAt: Date.now() },
+      ...(anim ? { anim } : {}),
     });
   } catch (err) {
     console.error(JSON.stringify({ event: "ai:update:error", id, error: String(err) }));
@@ -523,11 +525,12 @@ export function createSDKTools(stub: BoardStub, batchId?: string, ai?: Ai) {
         id: z.string().describe("The ID of the object to move"),
         x: z.number().describe("New X position"),
         y: z.number().describe("New Y position"),
+        duration: z.number().optional().describe("Animation duration in ms, default 500"),
       }),
-      execute: instrumentExecute("moveObject", async ({ id, x, y }) => {
+      execute: instrumentExecute("moveObject", async ({ id, x, y, duration }) => {
         const existing = await readAndCenter(stub, id);
         if (existing) cursorToCenter(stub, { x, y, width: existing.width, height: existing.height });
-        const result = await updateAndMutate(stub, id, { x, y }, "moved", { x, y });
+        const result = await updateAndMutate(stub, id, { x, y }, "moved", { x, y }, { duration: duration ?? 500 });
         if ("error" in result) return result;
 
         // Cascade: update connected lines

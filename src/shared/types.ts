@@ -56,13 +56,13 @@ export type BoardObjectUpdate = Partial<Omit<BoardObjectBase, "id">> & {
 /** Mutation messages the Board DO can receive (excludes cursor) */
 export type BoardMutation =
   | { type: "obj:create"; obj: BoardObject }
-  | { type: "obj:update"; obj: BoardObjectUpdate }
+  | { type: "obj:update"; obj: BoardObjectUpdate; anim?: { duration: number } }
   | { type: "obj:delete"; id: string };
 
 export type WSClientMessage =
   | { type: "cursor"; x: number; y: number }
   | { type: "obj:create"; obj: BoardObject }
-  | { type: "obj:update"; obj: BoardObjectUpdate }
+  | { type: "obj:update"; obj: BoardObjectUpdate; anim?: { duration: number } }
   | { type: "obj:delete"; id: string }
   | { type: "text:cursor"; objectId: string; position: number }
   | { type: "text:blur"; objectId: string }
@@ -72,7 +72,7 @@ export type WSClientMessage =
 export type WSServerMessage =
   | { type: "cursor"; userId: string; username: string; x: number; y: number }
   | { type: "obj:create"; obj: BoardObject }
-  | { type: "obj:update"; obj: BoardObject }
+  | { type: "obj:update"; obj: BoardObject; anim?: { duration: number } }
   | { type: "obj:delete"; id: string }
   | { type: "presence"; users: { id: string; username: string }[]; spectatorCount: number }
   | { type: "init"; objects: BoardObject[] }
@@ -216,6 +216,7 @@ export interface ReplayEvent {
   ts: number;
   obj?: BoardObject; // present for create/update
   id?: string; // present for delete
+  anim?: { duration: number }; // ephemeral animation hint, not persisted to obj storage
 }
 
 /** Result from Board DO mutations (mutate RPC) */
