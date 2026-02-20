@@ -254,7 +254,12 @@ function instrumentExecute<TArgs, TResult>(
           error: err instanceof Error ? err.message : String(err),
         }),
       );
-      throw err;
+      // KEY-DECISION 2026-02-20: Return error as a result object instead of rethrowing.
+      // Tools that throw (e.g. stub.readObject() DO RPC failure) would otherwise bubble to the
+      // AI SDK where error visibility to the LLM depends on SDK internals. Returning { error }
+      // is the consistent pattern used by createAndMutate/updateAndMutate - the LLM always sees
+      // a tool result it can act on (retry, inform user) rather than an opaque exception.
+      return { error: `${toolName} failed: ${err instanceof Error ? err.message : String(err)}` } as unknown as TResult;
     }
   };
 }
