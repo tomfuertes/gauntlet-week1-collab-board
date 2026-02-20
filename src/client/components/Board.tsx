@@ -1,4 +1,4 @@
-import React, { useState, useRef, useCallback, useEffect } from "react";
+import React, { useState, useRef, useCallback, useEffect, useMemo } from "react";
 import { Stage, Layer, Rect, Text, Transformer, Arrow as KonvaArrow, Circle as KonvaCircle } from "react-konva";
 import type { KonvaEventObject } from "konva/lib/Node";
 import Konva from "konva";
@@ -347,6 +347,12 @@ export function Board({
   const selectedIdsRef = useRef(selectedIds);
   selectedIdsRef.current = selectedIds;
   const clipboardRef = useRef<BoardObject[]>([]);
+
+  // True when all selected objects are circles - drives proportional resize in Transformer
+  const circleOnlySelected = useMemo(
+    () => selectedIds.size > 0 && [...selectedIds].every((id) => objects.get(id)?.type === "circle"),
+    [selectedIds, objects],
+  );
 
   // Marquee selection (extracted to useDragSelection)
   const { marquee, justFinishedMarqueeRef, startMarquee, updateMarquee, finishMarquee } = useDragSelection({
@@ -1018,8 +1024,14 @@ export function Board({
       node.scaleY(1);
       // Lines store endpoint delta in width/height - don't clamp to min 20
       const isLine = obj.type === "line";
-      const newWidth = isLine ? Math.round(obj.width * sx) : Math.max(20, Math.round(obj.width * sx));
-      const newHeight = isLine ? Math.round(obj.height * sy) : Math.max(20, Math.round(obj.height * sy));
+      let newWidth = isLine ? Math.round(obj.width * sx) : Math.max(20, Math.round(obj.width * sx));
+      let newHeight = isLine ? Math.round(obj.height * sy) : Math.max(20, Math.round(obj.height * sy));
+      // Circles must stay circular: keepRatio on Transformer handles visual, this guards stored data
+      if (obj.type === "circle") {
+        const size = Math.max(newWidth, newHeight);
+        newWidth = size;
+        newHeight = size;
+      }
 
       // Check if connected lines need updating
       const lineUpdates = getConnectedLineUpdates(new Set([obj.id]));
@@ -1755,6 +1767,21 @@ export function Board({
           <Transformer
             ref={trRef}
             {...TRANSFORMER_CONFIG}
+            keepRatio={circleOnlySelected}
+            enabledAnchors={
+              circleOnlySelected
+                ? ["top-left", "top-right", "bottom-left", "bottom-right"]
+                : [
+                    "top-left",
+                    "top-center",
+                    "top-right",
+                    "middle-right",
+                    "middle-left",
+                    "bottom-left",
+                    "bottom-center",
+                    "bottom-right",
+                  ]
+            }
             boundBoxFunc={(_oldBox, newBox) => {
               // Lines can have near-zero dimensions in one axis - only clamp shapes
               const hasLineSelected = [...selectedIdsRef.current].some(
