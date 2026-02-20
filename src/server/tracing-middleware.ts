@@ -28,19 +28,6 @@ function recordLangfuseGeneration(
   },
 ): void {
   try {
-    const trace = lf.trace({
-      name: ctx.trigger,
-      metadata: { boardId: ctx.boardId, promptVersion: ctx.promptVersion },
-      tags: [ctx.trigger, ctx.model, `persona:${ctx.persona}`],
-    });
-    const generation = trace.generation({
-      name: `${ctx.trigger}:${ctx.persona}`,
-      model: ctx.model,
-      startTime: ctx.startTime,
-      // Full conversation messages - Langfuse renders arrays nicely
-      input: ctx.prompt,
-      metadata: { promptVersion: ctx.promptVersion, boardId: ctx.boardId },
-    });
     const toolCalls = (() => {
       try {
         return JSON.parse(ctx.toolCallsJson);
@@ -51,8 +38,24 @@ function recordLangfuseGeneration(
     const output: { text?: string; toolCalls?: unknown[] } = {};
     if (ctx.responseText) output.text = ctx.responseText;
     if (toolCalls.length > 0) output.toolCalls = toolCalls;
+    const resolvedOutput = Object.keys(output).length > 0 ? output : ctx.finishReason;
+
+    const trace = lf.trace({
+      name: ctx.trigger,
+      input: ctx.prompt,
+      output: resolvedOutput,
+      metadata: { boardId: ctx.boardId, promptVersion: ctx.promptVersion },
+      tags: [ctx.trigger, ctx.model, `persona:${ctx.persona}`],
+    });
+    const generation = trace.generation({
+      name: `${ctx.trigger}:${ctx.persona}`,
+      model: ctx.model,
+      startTime: ctx.startTime,
+      input: ctx.prompt,
+      metadata: { promptVersion: ctx.promptVersion, boardId: ctx.boardId },
+    });
     generation.end({
-      output: Object.keys(output).length > 0 ? output : ctx.finishReason,
+      output: resolvedOutput,
       usage: { input: ctx.inputTokens, output: ctx.outputTokens, unit: "TOKENS" },
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       level: (ctx.error ? "ERROR" : "DEFAULT") as any,
