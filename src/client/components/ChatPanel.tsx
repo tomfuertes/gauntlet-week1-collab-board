@@ -286,6 +286,10 @@ export function ChatPanel({
 }: ChatPanelProps) {
   const selectedIdsArray = useMemo(() => (selectedIds?.size ? [...selectedIds] : undefined), [selectedIds]);
 
+  // One-shot intent from chip click - sent in body.intent for the next message only, then cleared.
+  // Uses state (not ref) so useAgentChat's body ref updates before the send effect fires.
+  const [pendingIntent, setPendingIntent] = useState<string | undefined>();
+
   // Persona management state
   const [personas, setPersonas] = useState<Persona[]>([...DEFAULT_PERSONAS]);
   const [showPersonaModal, setShowPersonaModal] = useState(false);
@@ -404,6 +408,7 @@ export function ChatPanel({
       gameMode,
       model: aiModel,
       personaId: claimedPersonaId ?? undefined,
+      intent: pendingIntent,
     },
   });
 
@@ -415,6 +420,23 @@ export function ChatPanel({
     },
     [sdkSendMessage, username],
   );
+
+  // useAgentChat stores body in a ref updated synchronously during each render (bodyOptionRef.current = body).
+  // Setting pendingIntent via useState triggers a re-render, which updates that ref before React flushes effects.
+  // The effect then reads the already-updated ref when sendMessage constructs the HTTP body.
+  // KEY-DECISION 2026-02-20: sendMessage fires BEFORE setPendingIntent(undefined) so the body ref
+  // inside useAgentChat still holds intent at the moment the HTTP request is constructed.
+  useEffect(() => {
+    if (!pendingIntent) return;
+    const intent = pendingIntent;
+    try {
+      sendMessage(intent);
+      setPendingIntent(undefined); // clear after successful send
+    } catch (err) {
+      console.error("[ChatPanel] intent chip send failed:", err);
+      setPendingIntent(undefined); // clear on error too - avoids retry loops
+    }
+  }, [pendingIntent, sendMessage]);
 
   const loading = sdkStatus === "streaming" || sdkStatus === "submitted";
   const error = sdkStatus === "error" ? sdkError?.message || "Something went wrong" : undefined;
@@ -854,7 +876,15 @@ export function ChatPanel({
                   borderRadius={16}
                   disabled={loading || isSceneOver}
                   mobile={mobileMode}
-                  onClick={() => sendMessage(chip.prompt)}
+                  onClick={() => {
+                    // Hat/yesand mode chips have no INTENT_PROMPTS server-side entry - send direct.
+                    // Freeform chips route through pendingIntent so body.intent reaches the server.
+                    if (gameMode === "hat" || gameMode === "yesand") {
+                      sendMessage(chip.prompt);
+                    } else {
+                      setPendingIntent(chip.prompt);
+                    }
+                  }}
                 />
               ))}
         </div>

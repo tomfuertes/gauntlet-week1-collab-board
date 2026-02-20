@@ -8,6 +8,9 @@ import { createSDKTools, isPlainObject, rectsOverlap } from "./ai-tools-sdk";
 import { createTracingMiddleware, wrapLanguageModel, Langfuse } from "./tracing-middleware";
 import {
   SYSTEM_PROMPT,
+  SCENE_SETUP_PROMPT,
+  INTENT_PROMPTS,
+  MOMENTUM_PROMPT,
   DIRECTOR_PROMPTS,
   DIRECTOR_PROMPTS_HAT,
   DIRECTOR_PROMPTS_YESAND,
@@ -541,9 +544,29 @@ export class ChatAgent extends AIChatAgent<Bindings> {
     // Build persona-aware system prompt with optional selection + multiplayer context
     let systemPrompt = buildPersonaSystemPrompt(activePersona, otherPersona, SYSTEM_PROMPT, gameModeBlock);
 
+    // Scene setup: inject character composition + scene structure on first exchange only
+    if (humanTurns <= 1) {
+      systemPrompt += `\n\n${SCENE_SETUP_PROMPT}`;
+    }
+
+    // Intent-specific guidance: injected only when player clicked a dramatic chip.
+    // Runtime type check (body is `any`) before lookup - unknown keys log a warning for
+    // debugging version mismatches between client chip labels and INTENT_PROMPTS keys.
+    const intentKey = typeof body?.intent === "string" ? (body.intent as string) : undefined;
+    if (intentKey && INTENT_PROMPTS[intentKey]) {
+      systemPrompt += `\n\n${INTENT_PROMPTS[intentKey]}`;
+    } else if (intentKey) {
+      console.warn(JSON.stringify({ event: "chat:unknown-intent", boardId: this.name, intent: intentKey }));
+    }
+
     // Inject budget phase prompt when not in normal phase
     if (budgetPhase !== "normal") {
       systemPrompt += `\n\n${BUDGET_PROMPTS[budgetPhase]}`;
+    }
+
+    // Momentum nudge: after 3+ exchanges, prompt AI to end with a provocative hook
+    if (humanTurns >= 3 && budgetPhase === "normal") {
+      systemPrompt += `\n\n${MOMENTUM_PROMPT}`;
     }
 
     // Multiplayer attribution: tell the AI who is speaking
