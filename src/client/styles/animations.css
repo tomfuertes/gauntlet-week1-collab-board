@@ -216,3 +216,13 @@
   animation: cb-audience-float 2s ease-out forwards;
   z-index: 50;
 }
+
+/* Recap overlay - typewriter cursor blink */
+@keyframes cb-recap-blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}
+.cb-recap-cursor {
+  animation: cb-recap-blink 0.7s step-end infinite;
+  margin-left: 1px;
+}

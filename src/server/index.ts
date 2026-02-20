@@ -532,6 +532,30 @@ app.get("/api/boards/:boardId/replay", async (c) => {
   return c.json(events);
 });
 
+// "Previously On..." recap endpoint - auth required, generates AI narration on board return
+// Returns { available: true, narration: string } or { available: false }
+app.get("/api/boards/:boardId/recap", async (c) => {
+  const user = await requireAuth(c);
+  if (!user) return c.text("Unauthorized", 401);
+
+  const boardId = c.req.param("boardId");
+
+  // Guard: board must have 5+ replay events (ensures meaningful scene history)
+  const stats = await getBoardStub(c.env, boardId).getStats();
+  if (stats.eventCount < 5) {
+    return c.json({ available: false });
+  }
+
+  try {
+    const chatAgentStub = c.env.CHAT_AGENT.get(c.env.CHAT_AGENT.idFromName(boardId));
+    const result = await chatAgentStub.generateRecap();
+    return c.json(result);
+  } catch (err) {
+    console.error(JSON.stringify({ event: "recap:route-error", boardId, error: String(err) }));
+    return c.json({ available: false });
+  }
+});
+
 // Agent SDK route (auth-protected)
 app.all("/agents/*", async (c) => {
   const user = await requireAuth(c);

@@ -29,6 +29,7 @@ import { BoardGrid } from "./BoardGrid";
 import { AudienceRow, getAudienceFigureXs, AUDIENCE_Y } from "./AudienceRow";
 import { PerfOverlay } from "./PerfOverlay";
 import { PostcardModal } from "./PostcardModal";
+import { RecapOverlay } from "./RecapOverlay";
 import { Button } from "./Button";
 import { useIsMobile } from "../hooks/useIsMobile";
 import type { UIMessage } from "ai";
@@ -296,6 +297,9 @@ export function Board({
   // Per-player persona claim - set via OnboardModal or ChatPanel inline picker
   const [claimedPersonaId, setClaimedPersonaId] = useState<string | null>(null);
 
+  // "Previously On..." recap narration (null = not ready or not available)
+  const [recapNarration, setRecapNarration] = useState<string | null>(null);
+
   // Hydrate game mode from D1 on mount (so returning users get the right mode)
   useEffect(() => {
     fetch(`/api/boards/${boardId}`)
@@ -539,6 +543,7 @@ export function Board({
     presence,
     spectatorCount,
     reactions,
+    heckleEvents,
     send,
     createObject: wsCreate,
     updateObject: wsUpdate,
@@ -591,6 +596,22 @@ export function Board({
 
   // Derive person-type objects for freeze tag character picker in ChatPanel
   const personObjects = useMemo(() => [...objects.values()].filter((o) => o.type === "person"), [objects]);
+
+  // "Previously On..." recap: fetch once per hour after WS init, show if available
+  useEffect(() => {
+    if (!initialized) return;
+    const seenKey = `recap-seen-${boardId}`;
+    const seenAt = parseInt(localStorage.getItem(seenKey) ?? "0", 10);
+    // KEY-DECISION 2026-02-20: 1-hour TTL so returning users get a recap after stepping away,
+    // but rapid board switches don't spam them. Server handles the "enough history" gate.
+    if (seenAt > Date.now() - 60 * 60 * 1000) return;
+    fetch(`/api/boards/${boardId}/recap`)
+      .then((r) => (r.ok ? (r.json() as Promise<{ available: boolean; narration?: string }>) : null))
+      .then((data) => {
+        if (data?.available && data.narration) setRecapNarration(data.narration);
+      })
+      .catch(() => {}); // non-critical: fail silently, no recap shown
+  }, [boardId, initialized]);
 
   // --- AI Batch Undo state ---
   const [undoAiBatchId, setUndoAiBatchId] = useState<string | null>(null);
@@ -1866,6 +1887,7 @@ export function Board({
             claimedPersonaId={claimedPersonaId}
             onClaimChange={setClaimedPersonaId}
             personObjects={personObjects}
+            heckleEvents={heckleEvents}
           />
         </div>
 
@@ -2754,6 +2776,7 @@ export function Board({
           onClaimChange={setClaimedPersonaId}
           onMessagesChange={setRecentChatMessages}
           personObjects={personObjects}
+          heckleEvents={heckleEvents}
         />
       )}
 
@@ -2765,6 +2788,17 @@ export function Board({
         messages={recentChatMessages}
         boardId={boardId}
       />
+
+      {/* "Previously On..." recap overlay - shown on board return if scene has history */}
+      {recapNarration && (
+        <RecapOverlay
+          narration={recapNarration}
+          onDismiss={() => {
+            setRecapNarration(null);
+            localStorage.setItem(`recap-seen-${boardId}`, Date.now().toString());
+          }}
+        />
+      )}
 
       {/* Undo AI batch button - appears after AI creates objects */}
       {undoAiBatchId && (

@@ -29,6 +29,8 @@ import {
   buildTagOutPrompt,
   PLOT_TWISTS,
   buildPlotTwistPrompt,
+  buildHecklePrompt,
+  buildSfxReactionPrompt,
 } from "./prompts";
 import type { GameModeState } from "./prompts";
 import { HAT_PROMPTS, getRandomHatPrompt } from "./hat-prompts";
@@ -253,6 +255,8 @@ export class ChatAgent extends AIChatAgent<Bindings> {
 
   // Heckler mode: audience one-liners buffered and injected into next AI response system prompt
   private _pendingHeckles: string[] = [];
+  // Sound Board: SFX cues from players, consumed by onSfxReaction (fast 2s timer)
+  private _pendingSfxLabels: string[] = [];
 
   /** Check if daily AI budget is exhausted. Returns true if over budget. */
   private _isOverBudget(): boolean {
@@ -2051,6 +2055,121 @@ export class ChatAgent extends AIChatAgent<Bindings> {
     this._pendingHeckles.push(text);
   }
 
+  /** Receives SFX trigger from Board DO. Buffers label and schedules a fast 2s reaction.
+   *  KEY-DECISION 2026-02-20: SFX uses a dedicated onSfxReaction schedule (not onCanvasReaction)
+   *  to avoid interfering with the 5s canvas-action debounce and to bypass the interest-score
+   *  guard - a player-triggered sound cue is inherently interesting. */
+  async onSfxAction(effectId: string, label: string): Promise<void> {
+    console.debug(JSON.stringify({ event: "sfx:received", boardId: this.name, effectId, label }));
+    if (this.messages.length === 0) return; // no scene started yet
+    this._pendingSfxLabels.push(label);
+    // Cancel any existing sfx reaction schedule and set a fresh 2s one
+    try {
+      const existing = this.getSchedules({ type: "delayed" });
+      for (const s of existing) {
+        if (s.callback === "onSfxReaction") await this.cancelSchedule(s.id);
+      }
+      await this.schedule(2, "onSfxReaction" as keyof this);
+    } catch (err) {
+      console.warn(JSON.stringify({ event: "sfx:timer-error", boardId: this.name, error: String(err) }));
+    }
+  }
+
+  /** Called by DO schedule 2s after SFX trigger - generates an in-character reaction. */
+  async onSfxReaction(): Promise<void> {
+    const labels = this._pendingSfxLabels;
+    this._pendingSfxLabels = [];
+
+    if (labels.length === 0) return;
+    if (this._isGenerating) {
+      console.debug(JSON.stringify({ event: "sfx-reaction:skip", reason: "generating", boardId: this.name }));
+      return;
+    }
+    if (this.messages.length === 0) return;
+    const humanTurns = this.messages.filter((m) => m.role === "user").length;
+    if (computeBudgetPhase(humanTurns, SCENE_TURN_BUDGET) === "scene-over") {
+      console.debug(JSON.stringify({ event: "sfx-reaction:skip", reason: "scene-over", boardId: this.name }));
+      return;
+    }
+
+    this._isGenerating = true;
+    const startTime = Date.now();
+    const personas = await this._getPersonas();
+    const reactionIndex = this._activePersonaIndex % personas.length;
+    const reactionPersona = personas[reactionIndex];
+    const reactionOther = personas.length > 1 ? personas[(reactionIndex + 1) % personas.length] : undefined;
+
+    this._logRequestStart("sfx-reaction", reactionPersona.name, { labels });
+
+    const doId = this.env.BOARD.idFromName(this.name);
+    const boardStub = this.env.BOARD.get(doId);
+    const batchId = crypto.randomUUID();
+    const tools = createSDKTools(boardStub, batchId, this.env.AI, this.ctx.storage);
+
+    await boardStub.setAiPresence(true).catch((err: unknown) => {
+      console.debug(JSON.stringify({ event: "ai:presence:start-error", trigger: "sfx-reaction", error: String(err) }));
+    });
+
+    try {
+      const relationships = (await this.ctx.storage.get<CharacterRelationship[]>("narrative:relationships")) ?? [];
+      const relBlock = buildRelationshipBlock(relationships);
+      const gameModeState: GameModeState = {
+        hatPrompt: this._hatPromptIndex >= 0 ? HAT_PROMPTS[this._hatPromptIndex] : undefined,
+        hatExchangeCount: this._hatExchangeCount,
+        hatPromptOffset: Math.min(50 + this._hatPromptCount * 600, 650),
+        yesAndCount: this._yesAndCount,
+      };
+      const gameModeBlock = buildGameModePromptBlock(this._gameMode, gameModeState);
+      const storedPhase = await this.ctx.storage.get<SceneLifecyclePhase>("scene:lifecyclePhase");
+      const lifecyclePhase = computeLifecyclePhase(humanTurns, storedPhase ?? undefined);
+      const lifecycleBlock = this._gameMode !== "hat" ? `\n\n${buildLifecycleBlock(lifecyclePhase)}` : "";
+
+      const sfxSystem =
+        buildPersonaSystemPrompt(reactionPersona, reactionOther, SYSTEM_PROMPT, gameModeBlock, relBlock) +
+        lifecycleBlock +
+        `\n\n${buildSfxReactionPrompt(labels)}`;
+
+      const { messages: sanitizedMsgs, repairedCount } = sanitizeMessages(this.messages);
+      if (repairedCount > 0) this._traceSanitizeRepair("sfx-reaction", repairedCount);
+
+      const result = await generateText({
+        model: this._getTracedModel("sfx-reaction", reactionPersona.name, { gameMode: this._gameMode }),
+        system: sfxSystem,
+        messages: await convertToModelMessages(sanitizedMsgs),
+        tools,
+        stopWhen: stepCountIs(2),
+      });
+
+      const reactionMessage = this._buildGenerateTextMessage(result, reactionPersona.name);
+      if (reactionMessage) {
+        this.messages.push(reactionMessage);
+        await this.persistMessages(this.messages);
+      }
+
+      const totalToolCalls = result.steps.reduce((sum, s) => sum + s.toolCalls.length, 0);
+      this._logRequestEnd("sfx-reaction", reactionPersona.name, startTime, result.steps.length, totalToolCalls, {
+        labels,
+      });
+      this._traceToolFailures("sfx-reaction", result.steps as any[]);
+    } catch (err) {
+      console.error(
+        JSON.stringify({
+          event: "sfx-reaction:error",
+          boardId: this.name,
+          persona: reactionPersona.name,
+          error: String(err),
+        }),
+      );
+    } finally {
+      this._isGenerating = false;
+      await boardStub.setAiPresence(false).catch((err: unknown) => {
+        console.debug(
+          JSON.stringify({ event: "ai:presence:cleanup-error", trigger: "sfx-reaction", error: String(err) }),
+        );
+      });
+    }
+  }
+
   /** Called by DO schedule after 5s of player idle - reacts to recent canvas mutations in character.
    *  Drains the pending action buffer, scores interest level, and generates a reaction if the
    *  scene warrants it. Guards prevent reactions during active generation or chat. */
@@ -2452,6 +2571,85 @@ export class ChatAgent extends AIChatAgent<Bindings> {
           }),
         );
       });
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // "Previously On..." Recap - RPC method called by /api/boards/:id/recap
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Generate a dramatic TV-style "Previously on..." recap narration for the board.
+   * RPC-callable from index.ts after the caller verifies sufficient replay events.
+   *
+   * Returns { available: false } when:
+   *   - fewer than 3 human messages in history (not enough story to recap)
+   *   - AI generation fails (fail-open: user sees no recap, not an error)
+   *
+   * KEY-DECISION 2026-02-20: Cached by message count (recap:msgcount storage key).
+   * Any new message invalidates the cache, ensuring fresh recaps after each session.
+   * Using Claude Haiku directly (not this._getModel()) for theatrical prose quality -
+   * Workers AI models produce stilted output for narrative one-shots.
+   */
+  async generateRecap(): Promise<{ available: boolean; narration?: string }> {
+    const humanMessages = this.messages.filter((m) => m.role === "user");
+    if (humanMessages.length < 3) {
+      return { available: false };
+    }
+
+    // Cache invalidation: if message count matches, return cached narration
+    const [cachedNarration, cachedMsgCount] = await Promise.all([
+      this.ctx.storage.get<string>("recap:latest"),
+      this.ctx.storage.get<number>("recap:msgcount"),
+    ]);
+    if (cachedNarration && cachedMsgCount === this.messages.length) {
+      return { available: true, narration: cachedNarration };
+    }
+
+    // Build transcript from last 15 messages (text parts only, strips tool calls)
+    const recentMessages = this.messages.slice(-15);
+    const chatLines: string[] = [];
+    for (const msg of recentMessages) {
+      if (!msg.parts) continue;
+      const textParts = msg.parts
+        .filter((p) => (p as { type: string }).type === "text")
+        .map((p) => (p as { type: string; text: string }).text)
+        .filter((t) => t && t.trim().length > 5);
+      if (textParts.length === 0) continue;
+      const label = msg.role === "user" ? "Player" : "AI";
+      chatLines.push(`${label}: ${textParts.join(" ").slice(0, 200)}`);
+    }
+    const transcript = chatLines.join("\n");
+    if (!transcript) return { available: false };
+
+    // Prefer Anthropic for theatrical prose; fall back to board's configured model
+    const model = this.env.ANTHROPIC_API_KEY
+      ? createAnthropic({ apiKey: this.env.ANTHROPIC_API_KEY })("claude-haiku-4-5-20251001")
+      : this._getModel();
+
+    try {
+      const result = await generateText({
+        model,
+        messages: [
+          {
+            role: "user",
+            content: `Here is a transcript of an improv scene:\n\n${transcript}\n\nWrite a dramatic TV narrator-style "Previously on..." recap in 3-5 sentences. Be theatrical, highlight key moments and characters. End with a cliffhanger question or dramatic statement. Under 150 words. No meta-commentary, just narrate the scene.`,
+          },
+        ],
+      });
+
+      const narration = cleanModelOutput(result.text);
+      if (!narration) return { available: false };
+
+      // Cache keyed to current message count - auto-invalidates on new messages
+      await Promise.all([
+        this.ctx.storage.put("recap:latest", narration),
+        this.ctx.storage.put("recap:msgcount", this.messages.length),
+      ]);
+      return { available: true, narration };
+    } catch (err) {
+      console.error(JSON.stringify({ event: "recap:error", boardId: this.name, error: String(err) }));
+      return { available: false };
     }
   }
 }
