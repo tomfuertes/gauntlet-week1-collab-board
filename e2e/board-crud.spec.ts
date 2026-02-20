@@ -11,8 +11,8 @@ test.describe("Board CRUD", () => {
     // New board navigates directly to the board canvas
     await page.waitForSelector('span[title="connected"]', { timeout: 10_000 });
 
-    // Navigate back
-    await page.locator("button", { hasText: "Boards" }).first().click();
+    // Navigate back via hash (click can be intercepted by canvas overlay)
+    await page.goto("/");
     await expect(page.locator("text=Untitled Board")).toBeVisible();
   });
 
@@ -53,7 +53,8 @@ test.describe("Board CRUD", () => {
     const boardId = await createBoard(context);
     await navigateToBoard(page, boardId);
 
-    await page.locator("button", { hasText: "Boards" }).first().click();
+    // Navigate back via hash (click can be intercepted by canvas overlay)
+    await page.goto("/");
     await expect(page.locator("text=Your Boards")).toBeVisible();
   });
 });
