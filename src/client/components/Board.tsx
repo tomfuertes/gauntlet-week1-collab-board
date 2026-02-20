@@ -26,6 +26,7 @@ import { CanvasPreview } from "./CanvasPreview";
 import { OnboardModal } from "./OnboardModal";
 import { ConfettiBurst } from "./ConfettiBurst";
 import { BoardGrid } from "./BoardGrid";
+import { AudienceRow, getAudienceFigureXs, AUDIENCE_Y } from "./AudienceRow";
 import { PerfOverlay } from "./PerfOverlay";
 import { Button } from "./Button";
 import { useIsMobile } from "../hooks/useIsMobile";
@@ -1772,6 +1773,9 @@ export function Board({
           <AiCursor target={aiCursorTarget} />
           <Cursors cursors={cursors} />
         </Layer>
+
+        {/* Audience silhouettes at bottom of stage - only when spectators present */}
+        <AudienceRow spectatorCount={spectatorCount} />
       </Stage>
 
       {/* Inline text editing overlay */}
@@ -2121,12 +2125,27 @@ export function Board({
       {/* Confetti burst (first object + AI multi-create) */}
       {confettiPos && <ConfettiBurst key={confettiKey} x={confettiPos.x} y={confettiPos.y} onDone={clearConfetti} />}
 
-      {/* Floating reactions from spectators */}
+      {/* Floating reactions - above audience figures when spectators present, else canvas position */}
       {reactions.map((r) => {
-        const screenX = r.x * scale + stagePos.x;
-        const screenY = r.y * scale + stagePos.y;
+        let screenX: number;
+        let screenY: number;
+        if (spectatorCount > 0) {
+          const xs = getAudienceFigureXs(spectatorCount);
+          // Deterministic figure pick: first 2 hex chars of UUID give 0-255 range (NaN-safe fallback to 0)
+          const raw = parseInt(r.id.substring(0, 2), 16);
+          const figIdx = (Number.isNaN(raw) ? 0 : raw) % xs.length;
+          screenX = xs[figIdx] * scale + stagePos.x;
+          screenY = (AUDIENCE_Y - 24) * scale + stagePos.y;
+        } else {
+          screenX = r.x * scale + stagePos.x;
+          screenY = r.y * scale + stagePos.y;
+        }
         return (
-          <span key={r.id} className="cb-reaction" style={{ left: screenX, top: screenY }}>
+          <span
+            key={r.id}
+            className={spectatorCount > 0 ? "cb-audience-reaction" : "cb-reaction"}
+            style={{ left: screenX, top: screenY }}
+          >
             {r.emoji}
           </span>
         );
