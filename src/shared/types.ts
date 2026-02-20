@@ -53,11 +53,14 @@ export type BoardObjectUpdate = Partial<Omit<BoardObjectBase, "id">> & {
   props?: BoardObjectProps;
 };
 
+export type EffectType = "pulse" | "shake" | "flash";
+
 /** Mutation messages the Board DO can receive (excludes cursor) */
 export type BoardMutation =
   | { type: "obj:create"; obj: BoardObject }
   | { type: "obj:update"; obj: BoardObjectUpdate; anim?: { duration: number } }
-  | { type: "obj:delete"; id: string };
+  | { type: "obj:delete"; id: string }
+  | { type: "obj:effect"; id: string; effect: EffectType };
 
 export type WSClientMessage =
   | { type: "cursor"; x: number; y: number }
@@ -67,7 +70,8 @@ export type WSClientMessage =
   | { type: "text:cursor"; objectId: string; position: number }
   | { type: "text:blur"; objectId: string }
   | { type: "batch:undo"; batchId: string }
-  | { type: "reaction"; emoji: string; x: number; y: number };
+  | { type: "reaction"; emoji: string; x: number; y: number }
+  | { type: "obj:effect"; id: string; effect: EffectType };
 
 export type WSServerMessage =
   | { type: "cursor"; userId: string; username: string; x: number; y: number }
@@ -79,7 +83,8 @@ export type WSServerMessage =
   | { type: "board:deleted" }
   | { type: "text:cursor"; userId: string; username: string; objectId: string; position: number }
   | { type: "text:blur"; userId: string; objectId: string }
-  | { type: "reaction"; userId: string; emoji: string; x: number; y: number };
+  | { type: "reaction"; userId: string; emoji: string; x: number; y: number }
+  | { type: "obj:effect"; id: string; effect: EffectType };
 
 export const AI_USER_ID = "ai-agent" as const;
 export const AI_USERNAME = "AI Assistant" as const;

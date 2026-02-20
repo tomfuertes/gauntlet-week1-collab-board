@@ -192,6 +192,7 @@ TOOL RULES:
 - To create multiple objects: use batchExecute (preferred) or call ALL creates in a SINGLE response. Do NOT wait for results between creates.
 - Never duplicate a tool call that already succeeded.
 - generateImage sparingly - 1 per response max. Write vivid, specific prompts ("dimly lit dentist office with cobwebs, gothic style").
+- highlightObject for dramatic emphasis: pulse (scale bounce), shake (jitter), flash (blink). Use sparingly - 1 per response on the most important object.
 
 LAYOUT RULES:
 - Canvas usable area: (50,60) to (1150,780). Never place objects outside these bounds.

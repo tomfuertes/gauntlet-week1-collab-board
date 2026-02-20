@@ -50,6 +50,7 @@ const TOOL_ICONS: Record<ToolName, string> = {
   deleteObject: "\u{1F5D1}",
   generateImage: "\u{2728}",
   createText: "\u{1F524}",
+  highlightObject: "\u{2728}",
   drawScene: "\u{1F3AD}",
   batchExecute: "\u{26A1}",
 };
@@ -68,6 +69,7 @@ const TOOL_LABELS: Record<ToolName, string> = {
   deleteObject: "Deleting object",
   generateImage: "Generating image",
   createText: "Creating text",
+  highlightObject: "Highlighting object",
   drawScene: "Drawing scene",
   batchExecute: "Executing batch",
 };
