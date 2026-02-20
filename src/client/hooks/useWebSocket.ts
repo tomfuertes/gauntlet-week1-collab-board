@@ -1,7 +1,7 @@
 import { useEffect, useRef, useCallback, useState } from "react";
 import type { WSClientMessage, WSServerMessage, BoardObject, BoardObjectUpdate } from "@shared/types";
 
-export type ConnectionState = "connecting" | "connected" | "reconnecting" | "disconnected";
+export type ConnectionState = "connecting" | "connected" | "reconnecting" | "disconnected" | "failed";
 
 export interface CursorState {
   userId: string;
@@ -48,7 +48,15 @@ interface UseWebSocketReturn {
 }
 
 const BACKOFF_BASE_MS = 1000;
-const BACKOFF_CAP_MS = 8000;
+const BACKOFF_CAP_MS = 30000;
+const MAX_RETRY_COUNT = 10;
+
+// Close codes that should NOT trigger reconnection
+// 1000/1001: normal/going-away (intentional server close)
+// 4001-4099: app-level non-retryable (auth failure, invalid board, etc.)
+function isNonRetryableCode(code: number): boolean {
+  return code === 1000 || code === 1001 || (code >= 4001 && code <= 4099);
+}
 
 export function useWebSocket(
   boardId: string,
@@ -92,6 +100,17 @@ export function useWebSocket(
           return;
         }
         console.warn(`[WS] closed: code=${event.code} reason="${event.reason}" clean=${event.wasClean}`);
+        // KEY-DECISION 2026-02-20: non-retryable codes (auth failures, normal close) go straight
+        // to "disconnected" rather than "failed" - they're expected exits, not exhausted retries
+        if (isNonRetryableCode(event.code)) {
+          setConnectionState("disconnected");
+          return;
+        }
+        if (attempt >= MAX_RETRY_COUNT) {
+          console.error(`[WS] max retries (${MAX_RETRY_COUNT}) exhausted, giving up`);
+          setConnectionState("failed");
+          return;
+        }
         setConnectionState("reconnecting");
         const base = Math.min(BACKOFF_BASE_MS * 2 ** attempt, BACKOFF_CAP_MS);
         const delay = base * (0.5 + Math.random() * 0.5); // jitter to avoid thundering herd

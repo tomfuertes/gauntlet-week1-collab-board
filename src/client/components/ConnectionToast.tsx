@@ -6,6 +6,7 @@ const TOAST_CONFIG: Record<ConnectionState, { label: string; bg: string; border:
   connected: { label: "Connected", bg: "#065f46", border: "#10b981" },
   reconnecting: { label: "Reconnecting...", bg: "#78350f", border: "#f59e0b" },
   disconnected: { label: "Disconnected", bg: "#7f1d1d", border: "#ef4444" },
+  failed: { label: "Connection lost - please refresh", bg: "#7f1d1d", border: "#ef4444" },
 };
 
 export function ConnectionToast({ connectionState }: { connectionState: ConnectionState }) {
