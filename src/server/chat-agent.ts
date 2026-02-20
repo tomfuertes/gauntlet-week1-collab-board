@@ -1810,11 +1810,11 @@ export class ChatAgent extends AIChatAgent<Bindings> {
       });
 
       // Build and persist UIMessage from generateText result
-      const reactiveMessage = this._buildGenerateTextMessage(
-        result,
-        reactivePersona.name,
-        `[${reactivePersona.name}] ...`,
-      );
+      // KEY-DECISION 2026-02-20: No fallback text for reactive persona. If the model
+      // returns only tool calls (placed an object without speaking), that's valid behavior.
+      // Passing "[PERSONA] ..." as fallback caused persistent stuck "..." messages in chat
+      // because generateText is not streaming - the fallback becomes the final text.
+      const reactiveMessage = this._buildGenerateTextMessage(result, reactivePersona.name);
       if (reactiveMessage) {
         this.messages.push(reactiveMessage);
         await this.persistMessages(this.messages);
@@ -2104,11 +2104,8 @@ export class ChatAgent extends AIChatAgent<Bindings> {
         stopWhen: stepCountIs(2),
       });
 
-      const reactionMessage = this._buildGenerateTextMessage(
-        result,
-        reactionPersona.name,
-        `[${reactionPersona.name}] ...`,
-      );
+      // No fallback text - same fix as reactive persona (see KEY-DECISION above)
+      const reactionMessage = this._buildGenerateTextMessage(result, reactionPersona.name);
       if (reactionMessage) {
         this.messages.push(reactionMessage);
         await this.persistMessages(this.messages);
