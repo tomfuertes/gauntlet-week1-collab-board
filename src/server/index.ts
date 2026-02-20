@@ -60,7 +60,7 @@ app.get("/api/boards", async (c) => {
      FROM boards b
      LEFT JOIN board_activity a ON a.board_id = b.id
      LEFT JOIN user_board_seen s ON s.board_id = b.id AND s.user_id = ?1
-     WHERE b.created_by = ?1 OR b.created_by = 'system' OR s.user_id IS NOT NULL
+     WHERE (b.created_by = ?1 OR s.user_id IS NOT NULL) AND b.created_by != 'system'
      ORDER BY b.updated_at DESC`,
   )
     .bind(user.id)
@@ -98,6 +98,7 @@ app.get("/api/boards/public", async (c) => {
        FROM boards b
        JOIN users u ON u.id = b.created_by
        LEFT JOIN board_activity a ON a.board_id = b.id
+       WHERE b.created_by != 'system'
        ORDER BY COALESCE(a.last_activity_at, b.created_at) DESC
        LIMIT 50`,
     ).all<{

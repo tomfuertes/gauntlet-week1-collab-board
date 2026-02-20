@@ -5,7 +5,6 @@ import { BoardList } from "./components/BoardList";
 import { AuthForm } from "./components/AuthForm";
 import { ReplayViewer } from "./components/ReplayViewer";
 import { SpectatorView } from "./components/SpectatorView";
-import { SceneGallery } from "./components/SceneGallery";
 import { LeaderboardPanel } from "./components/LeaderboardPanel";
 import { colors } from "./theme";
 
@@ -78,10 +77,6 @@ function parseWatchId(): string | null {
   return match ? match[1] : null;
 }
 
-function parseGallery(): boolean {
-  return location.hash === "#gallery";
-}
-
 function parseChallenge(): boolean {
   return location.hash === "#challenge";
 }
@@ -133,7 +128,6 @@ function AppContent() {
   const [boardId, setBoardId] = useState<string | null>(parseBoardId);
   const [replayId, setReplayId] = useState<string | null>(parseReplayId);
   const [watchId, setWatchId] = useState<string | null>(parseWatchId);
-  const [showGallery, setShowGallery] = useState(parseGallery);
   const [showChallenge, setShowChallenge] = useState(parseChallenge);
 
   // Sync boardId/replayId with hash changes (back/forward navigation)
@@ -142,7 +136,6 @@ function AppContent() {
       setBoardId(parseBoardId());
       setReplayId(parseReplayId());
       setWatchId(parseWatchId());
-      setShowGallery(parseGallery());
       setShowChallenge(parseChallenge());
     };
     window.addEventListener("hashchange", onHashChange);
@@ -201,18 +194,6 @@ function AppContent() {
         onBack={() => {
           location.hash = "";
           setWatchId(null);
-        }}
-      />
-    );
-  }
-
-  // Gallery is public - before auth gate
-  if (showGallery) {
-    return (
-      <SceneGallery
-        onBack={() => {
-          location.hash = "";
-          setShowGallery(false);
         }}
       />
     );

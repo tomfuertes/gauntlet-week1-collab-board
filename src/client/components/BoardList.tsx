@@ -13,6 +13,157 @@ interface BoardMeta {
   unseen_count: number;
 }
 
+interface SceneMeta {
+  id: string;
+  name: string;
+  game_mode?: string;
+  creator: string;
+  last_activity_at: string;
+  eventCount: number;
+}
+
+const MODE_BADGES: Record<string, { icon: string; label: string }> = {
+  hat: { icon: "\uD83C\uDFA9", label: "Hat" },
+  yesand: { icon: "\uD83D\uDD17", label: "Yes-And" },
+};
+
+function thumbnailGradient(name: string): string {
+  const hash = name.split("").reduce((h, c) => (h * 31 + c.charCodeAt(0)) | 0, 0);
+  const hue1 = Math.abs(hash) % 360;
+  const hue2 = (hue1 + 40) % 360;
+  return `linear-gradient(135deg, hsl(${hue1}, 40%, 20%) 0%, hsl(${hue2}, 50%, 15%) 100%)`;
+}
+
+function SceneCard({ scene }: { scene: SceneMeta }) {
+  const [hovered, setHovered] = useState(false);
+
+  return (
+    <div
+      onClick={() => {
+        location.hash = `replay/${scene.id}`;
+      }}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      style={{
+        background: colors.surface,
+        border: `1px solid ${hovered ? colors.accentLight : colors.border}`,
+        borderRadius: 8,
+        cursor: "pointer",
+        overflow: "hidden",
+        transition: "border-color 0.15s, transform 0.15s",
+        transform: hovered ? "translateY(-2px)" : "none",
+      }}
+    >
+      {/* Thumbnail placeholder */}
+      <div
+        style={{
+          height: 120,
+          background: thumbnailGradient(scene.name),
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          position: "relative",
+        }}
+      >
+        <div
+          style={{
+            fontSize: "0.8rem",
+            color: colors.textDim,
+            opacity: 0.6,
+            userSelect: "none",
+          }}
+        >
+          {scene.eventCount} events
+        </div>
+        {scene.game_mode && MODE_BADGES[scene.game_mode] && (
+          <div
+            style={{
+              position: "absolute",
+              top: 8,
+              right: 8,
+              background: "rgba(0,0,0,0.6)",
+              borderRadius: 6,
+              padding: "2px 6px",
+              fontSize: "0.6875rem",
+              color: colors.textMuted,
+              display: "flex",
+              alignItems: "center",
+              gap: 3,
+            }}
+          >
+            <span>{MODE_BADGES[scene.game_mode].icon}</span>
+            {MODE_BADGES[scene.game_mode].label}
+          </div>
+        )}
+        {/* Play overlay on hover */}
+        {hovered && (
+          <div
+            style={{
+              position: "absolute",
+              inset: 0,
+              background: "rgba(0,0,0,0.4)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            <div
+              style={{
+                width: 48,
+                height: 48,
+                borderRadius: "50%",
+                background: colors.accent,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                boxShadow: `0 0 20px ${colors.accentGlow}`,
+              }}
+            >
+              <svg width="20" height="20" viewBox="0 0 20 20" fill="white">
+                <polygon points="6,3 18,10 6,17" />
+              </svg>
+            </div>
+          </div>
+        )}
+      </div>
+      {/* Card body */}
+      <div style={{ padding: "0.75rem 1rem" }}>
+        <div
+          style={{
+            fontWeight: 600,
+            fontSize: "0.9rem",
+            marginBottom: 4,
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            whiteSpace: "nowrap",
+          }}
+        >
+          {scene.name}
+        </div>
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            fontSize: "0.75rem",
+            color: colors.textDim,
+          }}
+        >
+          <span>{scene.creator}</span>
+          <span>
+            {(() => {
+              // last_activity_at is a D1 datetime string (no timezone suffix); append Z for UTC
+              // COALESCE on the server ensures non-null, but guard here for belt-and-suspenders
+              const d = scene.last_activity_at ? new Date(scene.last_activity_at + "Z") : null;
+              return d && !isNaN(d.getTime()) ? d.toLocaleDateString() : "";
+            })()}
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function BoardList({
   user,
   onSelectBoard,
@@ -27,6 +178,9 @@ export function BoardList({
   const [challenge, setChallenge] = useState<DailyChallenge | null>(null);
   const [challengeLoading, setChallengeLoading] = useState(true);
   const [enteringChallenge, setEnteringChallenge] = useState(false);
+  const [scenes, setScenes] = useState<SceneMeta[]>([]);
+  const [scenesLoading, setScenesLoading] = useState(true);
+  const [scenesError, setScenesError] = useState(false);
 
   const fetchBoards = useCallback((signal?: AbortSignal) => {
     return fetch("/api/boards", { signal })
@@ -67,6 +221,25 @@ export function BoardList({
       })
       .finally(() => {
         if (!ac.signal.aborted) setChallengeLoading(false);
+      });
+    return () => ac.abort();
+  }, []);
+
+  useEffect(() => {
+    const ac = new AbortController();
+    fetch("/api/boards/public", { signal: ac.signal })
+      .then((r) => {
+        if (!r.ok) throw new Error(`${r.status}`);
+        return r.json() as Promise<SceneMeta[]>;
+      })
+      .then(setScenes)
+      .catch((err: unknown) => {
+        if (ac.signal.aborted) return;
+        console.error(JSON.stringify({ event: "community:scenes:fetch:error", error: String(err) }));
+        setScenesError(true);
+      })
+      .finally(() => {
+        if (!ac.signal.aborted) setScenesLoading(false);
       });
     return () => ac.abort();
   }, []);
@@ -153,20 +326,12 @@ export function BoardList({
           >
             Daily Challenge
           </Button>
-          <Button
-            onClick={() => {
-              location.hash = "gallery";
-            }}
-            style={{ color: colors.accentLight }}
-          >
-            Gallery
-          </Button>
           <span>{user.displayName}</span>
           <Button onClick={handleLogout}>Logout</Button>
         </div>
       </div>
 
-      {/* Board grid */}
+      {/* Main content */}
       <div style={{ maxWidth: 960, margin: "0 auto", padding: "2rem 1rem" }}>
         {/* Daily Challenge card */}
         {!challengeLoading && challenge && (
@@ -222,41 +387,41 @@ export function BoardList({
           </div>
         )}
 
+        {/* Create New Board - prominent, full-width, above the board grid */}
+        <Button
+          variant="primary"
+          onClick={handleCreate}
+          style={{
+            width: "100%",
+            padding: "0.875rem",
+            marginBottom: "2rem",
+            borderRadius: 8,
+            fontSize: "1rem",
+            fontWeight: 600,
+            transition: "opacity 0.15s",
+          }}
+          onMouseEnter={(e) => (e.currentTarget.style.opacity = "0.85")}
+          onMouseLeave={(e) => (e.currentTarget.style.opacity = "1")}
+        >
+          + Create New Board
+        </Button>
+
+        {/* Your Boards section */}
         <h2 style={{ fontSize: "1.25rem", fontWeight: 600, marginBottom: "1rem" }}>Your Boards</h2>
 
         {loading ? (
           <p style={{ color: colors.textDim }}>Loading boards...</p>
+        ) : boards.length === 0 ? (
+          <p style={{ color: colors.textDim, marginBottom: "2rem" }}>No boards yet - create one above!</p>
         ) : (
           <div
             style={{
               display: "grid",
               gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))",
               gap: "1rem",
+              marginBottom: "2rem",
             }}
           >
-            {/* New board card */}
-            <div
-              onClick={handleCreate}
-              style={{
-                border: `2px dashed ${colors.borderLight}`,
-                borderRadius: 8,
-                padding: "1.5rem",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                cursor: "pointer",
-                minHeight: 120,
-                color: colors.textMuted,
-                fontSize: "1rem",
-                transition: "border-color 0.15s",
-              }}
-              onMouseEnter={(e) => (e.currentTarget.style.borderColor = colors.accentLight)}
-              onMouseLeave={(e) => (e.currentTarget.style.borderColor = colors.borderLight)}
-            >
-              + New Board
-            </div>
-
-            {/* Existing boards */}
             {boards.map((board) => (
               <div
                 key={board.id}
@@ -307,16 +472,60 @@ export function BoardList({
                     {new Date(board.updated_at + "Z").toLocaleDateString()}
                   </div>
                 </div>
-                {board.created_by !== "system" && (
-                  <Button
-                    variant="danger"
-                    onClick={(e) => handleDelete(e, board.id)}
-                    style={{ alignSelf: "flex-end", fontSize: "0.7rem", padding: "0.2rem 0.5rem", marginTop: 8 }}
-                  >
-                    Delete
-                  </Button>
-                )}
+                <Button
+                  variant="danger"
+                  onClick={(e) => handleDelete(e, board.id)}
+                  style={{ alignSelf: "flex-end", fontSize: "0.7rem", padding: "0.2rem 0.5rem", marginTop: 8 }}
+                >
+                  Delete
+                </Button>
               </div>
+            ))}
+          </div>
+        )}
+
+        {/* Community Scenes section */}
+        <h2 style={{ fontSize: "1.25rem", fontWeight: 600, marginBottom: "0.5rem" }}>Community Scenes</h2>
+        <p style={{ color: colors.textMuted, marginBottom: "1rem", fontSize: "0.875rem" }}>
+          Watch replays of collaborative improv sessions
+        </p>
+
+        {scenesLoading ? (
+          <p style={{ color: colors.textDim }}>Loading scenes...</p>
+        ) : scenesError ? (
+          <div
+            style={{
+              textAlign: "center",
+              padding: "3rem",
+              color: colors.error,
+              border: `1px dashed ${colors.borderLight}`,
+              borderRadius: 8,
+            }}
+          >
+            Failed to load community scenes. Try refreshing the page.
+          </div>
+        ) : scenes.length === 0 ? (
+          <div
+            style={{
+              textAlign: "center",
+              padding: "3rem",
+              color: colors.textDim,
+              border: `1px dashed ${colors.borderLight}`,
+              borderRadius: 8,
+            }}
+          >
+            No scenes yet. Create a board and start improvising!
+          </div>
+        ) : (
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))",
+              gap: "1rem",
+            }}
+          >
+            {scenes.map((scene) => (
+              <SceneCard key={scene.id} scene={scene} />
             ))}
           </div>
         )}
