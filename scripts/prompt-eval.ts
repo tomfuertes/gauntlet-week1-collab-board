@@ -214,7 +214,10 @@ async function runScenario(
       });
     }, SCENARIO_TIMEOUT_MS);
 
-    const ws = new WebSocket(`${WS_BASE}/agents/ChatAgent/${boardId}`, {
+    // KEY-DECISION 2026-02-20: partyserver maps env bindings via camelCaseToKebabCase()
+    // so CHAT_AGENT -> "chat-agent". useAgent() applies the same transform client-side.
+    // Using PascalCase "ChatAgent" causes map lookup to miss -> 400 "Invalid request".
+    const ws = new WebSocket(`${WS_BASE}/agents/chat-agent/${boardId}`, {
       headers: { Cookie: `session=${cookie}` },
     });
 
