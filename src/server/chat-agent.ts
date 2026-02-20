@@ -4,7 +4,7 @@ import type { UIMessage } from "ai";
 import { createWorkersAI } from "workers-ai-provider";
 import { createAnthropic } from "@ai-sdk/anthropic";
 import { createOpenAI } from "@ai-sdk/openai";
-import { createSDKTools, isPlainObject, rectsOverlap } from "./ai-tools-sdk";
+import { createSDKTools, isPlainObject, rectsOverlap, generateImageDataUrl } from "./ai-tools-sdk";
 import { createTracingMiddleware, wrapLanguageModel, Langfuse } from "./tracing-middleware";
 import {
   SYSTEM_PROMPT,
@@ -26,7 +26,7 @@ import type { GameModeState } from "./prompts";
 import { HAT_PROMPTS, getRandomHatPrompt } from "./hat-prompts";
 import type { Bindings } from "./env";
 import { recordBoardActivity } from "./env";
-import type { BoardObject, BoardObjectProps, GameMode, Persona } from "../shared/types";
+import type { BoardObject, BoardObjectProps, BoardStub, GameMode, Persona } from "../shared/types";
 import { SCENE_TURN_BUDGET, DEFAULT_PERSONAS, AI_MODELS, AI_USER_ID } from "../shared/types";
 import { getTemplateById } from "../shared/board-templates";
 
@@ -581,6 +581,30 @@ export class ChatAgent extends AIChatAgent<Bindings> {
       }),
     );
 
+    // Generate stage background on first message (non-blocking, parallel with AI response)
+    if (humanTurns <= 1) {
+      const promptText =
+        this.messages
+          .filter((m) => m.role === "user")
+          .at(-1)
+          ?.parts?.filter((p) => p.type === "text")
+          .map((p) => (p as { type: "text"; text: string }).text)
+          .join("") ?? "";
+      this.ctx.waitUntil(
+        this._generateBackground(promptText, boardStub as unknown as BoardStub, templateDescription).catch(
+          (err: unknown) => {
+            console.error(
+              JSON.stringify({
+                event: "background:error",
+                boardId: this.name,
+                error: String(err),
+              }),
+            );
+          },
+        ),
+      );
+    }
+
     const batchId = crypto.randomUUID();
     const tools = createSDKTools(boardStub, batchId, this.env.AI);
 
@@ -834,6 +858,57 @@ export class ChatAgent extends AIChatAgent<Bindings> {
       await clearPresence();
       throw err;
     }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Stage background generation (non-blocking, fire-and-forget via ctx.waitUntil)
+  // ---------------------------------------------------------------------------
+
+  /** Generate a theatrical backdrop image and place it on the canvas.
+   *  Called via ctx.waitUntil on the first human message - never blocks the AI response.
+   *  Canvas bounds from prompts.ts LAYOUT RULES: (50,60) to (1150,780). */
+  private async _generateBackground(
+    userPrompt: string,
+    boardStub: BoardStub,
+    templateDescription?: string,
+  ): Promise<void> {
+    // Guard: check for existing background to prevent duplicates (page refresh / reconnect)
+    const existingObjects = await boardStub.readObjects();
+    if (existingObjects.some((o: BoardObject) => o.isBackground)) {
+      console.debug(JSON.stringify({ event: "background:skip", reason: "exists", boardId: this.name }));
+      return;
+    }
+
+    // Derive backdrop prompt: use template description when available, otherwise user's message
+    const sceneContext = templateDescription || userPrompt;
+    const imagePrompt = `stage backdrop, theatrical, wide establishing shot, painterly style: ${sceneContext}`;
+
+    const src = await generateImageDataUrl(this.env.AI, imagePrompt);
+
+    const obj: BoardObject = {
+      id: crypto.randomUUID(),
+      type: "image",
+      isBackground: true,
+      x: 50,
+      y: 60,
+      width: 1100,
+      height: 720,
+      rotation: 0,
+      props: { src, prompt: imagePrompt },
+      createdBy: AI_USER_ID,
+      updatedAt: Date.now(),
+    } as BoardObject;
+
+    await boardStub.mutate({ type: "obj:create", obj });
+
+    console.debug(
+      JSON.stringify({
+        event: "background:created",
+        boardId: this.name,
+        id: obj.id,
+        promptLen: imagePrompt.length,
+      }),
+    );
   }
 
   // ---------------------------------------------------------------------------

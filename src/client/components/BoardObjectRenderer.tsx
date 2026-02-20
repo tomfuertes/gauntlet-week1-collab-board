@@ -71,6 +71,7 @@ export interface BoardObjectRendererProps {
   groupProps?: Record<string, unknown>; // drag handlers, ref, etc. (Board-only)
   aiGlow?: boolean; // AI glow effects (Board-only)
   interactive?: boolean; // hitStrokeWidth on lines (Board-only)
+  isBackground?: boolean; // stage backdrop: reduced opacity, non-interactive
 }
 
 export const BoardObjectRenderer = React.memo(function BoardObjectRenderer({
@@ -78,11 +79,12 @@ export const BoardObjectRenderer = React.memo(function BoardObjectRenderer({
   groupProps = {},
   aiGlow = false,
   interactive = false,
+  isBackground = false,
 }: BoardObjectRendererProps) {
   // Merge position from obj with caller's groupProps (interactive overrides like ref, draggable)
   const merged = { x: obj.x, y: obj.y, rotation: obj.rotation, ...groupProps };
-  const glowProps = aiGlow ? { shadowBlur: 12, shadowColor: "rgba(99,102,241,0.5)" } : {};
-  const lineGlowProps = aiGlow ? { shadowBlur: 8, shadowColor: "rgba(99,102,241,0.4)" } : {};
+  const glowProps = aiGlow && !isBackground ? { shadowBlur: 12, shadowColor: "rgba(99,102,241,0.5)" } : {};
+  const lineGlowProps = aiGlow && !isBackground ? { shadowBlur: 8, shadowColor: "rgba(99,102,241,0.4)" } : {};
 
   if (obj.type === "frame") {
     return (
@@ -184,7 +186,7 @@ export const BoardObjectRenderer = React.memo(function BoardObjectRenderer({
   }
   if (obj.type === "image") {
     return (
-      <Group {...merged}>
+      <Group {...merged} opacity={isBackground ? 0.3 : undefined} listening={isBackground ? false : undefined}>
         <ImageRenderer src={obj.props.src || ""} width={obj.width} height={obj.height} aiGlowProps={glowProps} />
       </Group>
     );
