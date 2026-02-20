@@ -23,6 +23,9 @@
 |---------|----------|-------|
 | AI canvas cursor presence | **Shipped** | Purple dot (#a855f7) animates to each AI creation point with lerp + Konva Tween fade. `AiCursor.tsx` + `useAiObjectEffects.ts`. |
 | Per-player persona claims | **Shipped** | Each player claims an AI persona as improv partner. `body.personaId` per-message, `_resolveActivePersona()` in ChatAgent. OnboardModal character picker + ChatPanel inline pill row. |
+| System Prompt v6 | **Shipped** | Modular prompt architecture: BASE_PROMPT (~500 words) + conditional modules (SCENE_SETUP_PROMPT, INTENT_PROMPTS, MOMENTUM_PROMPT). 75% token reduction on mid-scene. Merged from `feat/prompt-v6`. |
+| AI quality audit (post-v6) | High | After v6 merges: (1) Image gen - "draw a penguin", verify SDXL produces recognizable images. (2) Default flow semantic audit - Vampire Dentist + other templates, verify objects are thematically coherent, placed inside frames, contextual follow-ups work. UAT agents, no worktree. |
+| Remove git-crypt | **Done** | Committed b69c555 (not pushed). `git rm --cached` encrypted files, deleted .gitattributes, cleaned worktree.sh + CLAUDE.md. Files remain on disk via .git/info/exclude. |
 | Narrative/relationship state | Medium | Who-hates-whom graph, structural multi-agent memory. Architectural - needs opus worktree. |
 | Improv scene lifecycle | Medium | Tag-out/tap-out, bench/stage personas, join-as-scene-event, multi-scene arc. Natural extensions of per-player persona claims. |
 
