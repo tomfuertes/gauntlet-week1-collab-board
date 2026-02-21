@@ -105,7 +105,14 @@ export function OnboardModal({ onSubmit, onDismiss, personas = [...DEFAULT_PERSO
     }
     const trimmed = value.trim();
     if (trimmed || templateId) {
-      onSubmit(templateId ? BOARD_TEMPLATES.find((t) => t.id === templateId)?.displayText ?? trimmed : trimmed, selectedMode, primaryModel, null, templateId, troupeConfig);
+      onSubmit(
+        templateId ? (BOARD_TEMPLATES.find((t) => t.id === templateId)?.displayText ?? trimmed) : trimmed,
+        selectedMode,
+        primaryModel,
+        null,
+        templateId,
+        troupeConfig,
+      );
     }
   }
 
@@ -153,11 +160,7 @@ export function OnboardModal({ onSubmit, onDismiss, personas = [...DEFAULT_PERSO
         }}
       >
         {step > 0 ? (
-          <Button
-            variant="secondary"
-            onClick={() => setStep((s) => (s - 1) as WizardStep)}
-            style={{ minWidth: 72 }}
-          >
+          <Button variant="secondary" onClick={() => setStep((s) => (s - 1) as WizardStep)} style={{ minWidth: 72 }}>
             Back
           </Button>
         ) : (

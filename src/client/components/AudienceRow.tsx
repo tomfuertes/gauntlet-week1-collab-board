@@ -53,14 +53,7 @@ export function AudienceRow({ spectatorCount }: AudienceRowProps) {
               opacity={opacity}
             />
             {/* Shoulders silhouette */}
-            <Ellipse
-              x={cx}
-              y={AUDIENCE_Y + 20}
-              radiusX={FIGURE_W / 2 + 8}
-              radiusY={10}
-              fill={fill}
-              opacity={opacity}
-            />
+            <Ellipse x={cx} y={AUDIENCE_Y + 20} radiusX={FIGURE_W / 2 + 8} radiusY={10} fill={fill} opacity={opacity} />
           </React.Fragment>
         );
       })}

@@ -204,7 +204,9 @@ app.patch("/api/boards/:boardId", async (c) => {
   if (ownership === "not_found") return c.text("Not found", 404);
   if (ownership === "forbidden") return c.text("Forbidden", 403);
   const body = await c.req.json<{ game_mode?: string }>();
-  const gameMode = ["hat", "yesand", "freeform"].includes(body.game_mode ?? "") ? body.game_mode : "freeform";
+  const gameMode = ["hat", "yesand", "freeform", "freezetag"].includes(body.game_mode ?? "")
+    ? body.game_mode
+    : "freeform";
   await c.env.DB.prepare("UPDATE boards SET game_mode = ? WHERE id = ?").bind(gameMode, boardId).run();
   return c.json({ ok: true });
 });
@@ -255,8 +257,25 @@ app.delete("/api/user", async (c) => {
   const { results: userBoards } = await c.env.DB.prepare("SELECT id FROM boards WHERE created_by = ?")
     .bind(user.id)
     .all();
-  for (const board of userBoards) {
-    await getBoardStub(c.env, board.id as string).deleteBoard();
+  const boardIds = (userBoards as { id: string }[]).map((b) => b.id);
+
+  // Delete child rows before parent rows
+  await c.env.DB.prepare("DELETE FROM webauthn_credentials WHERE user_id = ?").bind(user.id).run();
+  await c.env.DB.prepare("DELETE FROM challenge_entries WHERE user_id = ?").bind(user.id).run();
+  await c.env.DB.prepare("DELETE FROM user_board_seen WHERE user_id = ?").bind(user.id).run();
+  await c.env.DB.prepare("DELETE FROM scene_ratings WHERE user_id = ?").bind(user.id).run();
+
+  // Delete board_personas for this user's boards
+  if (boardIds.length > 0) {
+    const placeholders = boardIds.map(() => "?").join(",");
+    await c.env.DB.prepare(`DELETE FROM board_personas WHERE board_id IN (${placeholders})`)
+      .bind(...boardIds)
+      .run();
+  }
+
+  // Delete DO storage and database records for this user's boards
+  for (const board of userBoards as { id: string }[]) {
+    await getBoardStub(c.env, board.id).deleteBoard();
   }
   await c.env.DB.prepare("DELETE FROM boards WHERE created_by = ?").bind(user.id).run();
 
