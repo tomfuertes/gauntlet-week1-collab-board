@@ -324,7 +324,8 @@ export function Board({
   // Troupe config from OnboardModal - passed to ChatPanel for first-message scene setup
   const [troupeConfig, setTroupeConfig] = useState<TroupeConfig | undefined>();
   // Custom board personas fetched from server (passed to OnboardModal wizard)
-  const [personas, setPersonas] = useState<Persona[]>([]);
+  // Initialize as undefined so OnboardModal's default {...DEFAULT_PERSONAS} takes effect before fetch completes
+  const [personas, setPersonas] = useState<Persona[] | undefined>(undefined);
 
   // "Previously On..." recap narration (null = not ready or not available)
   const [recapNarration, setRecapNarration] = useState<string | null>(null);
