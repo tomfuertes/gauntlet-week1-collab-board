@@ -119,7 +119,15 @@ async function verifyPassword(password: string, stored: string): Promise<boolean
   const salt = hexToBuf(saltHex);
   const key = await deriveKey(password, salt);
   const hash = await crypto.subtle.exportKey("raw", key);
-  return bufToHex(new Uint8Array(hash)) === hashHex;
+  const hashBuf = new Uint8Array(hash);
+  const expectedBuf = hexToBuf(hashHex);
+  // Timing-safe comparison: check all bytes without early exit to prevent timing attacks
+  if (hashBuf.length !== expectedBuf.length) return false;
+  let result = 0;
+  for (let i = 0; i < hashBuf.length; i++) {
+    result |= hashBuf[i]! ^ expectedBuf[i]!;
+  }
+  return result === 0;
 }
 
 async function deriveKey(password: string, salt: Uint8Array): Promise<CryptoKey> {
@@ -142,7 +150,9 @@ function bufToHex(buf: Uint8Array): string {
 }
 
 function hexToBuf(hex: string): Uint8Array {
-  const bytes = hex.match(/.{2}/g)!.map((h) => parseInt(h, 16));
+  const matched = hex.match(/.{2}/g);
+  if (!matched) return new Uint8Array();
+  const bytes = matched.map((h) => parseInt(h, 16));
   return new Uint8Array(bytes);
 }
 

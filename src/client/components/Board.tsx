@@ -339,7 +339,7 @@ export function Board({
 
   // Hydrate game mode from D1 on mount (so returning users get the right mode)
   useEffect(() => {
-    fetch(`/api/boards/${boardId}`)
+    fetch(`/api/boards/${boardId}`, { credentials: "include" })
       .then((r) => {
         if (r.status === 401) {
           onLogout();
@@ -729,7 +729,7 @@ export function Board({
     // KEY-DECISION 2026-02-20: 1-hour TTL so returning users get a recap after stepping away,
     // but rapid board switches don't spam them. Server handles the "enough history" gate.
     if (seenAt > Date.now() - 60 * 60 * 1000) return;
-    fetch(`/api/boards/${boardId}/recap`)
+    fetch(`/api/boards/${boardId}/recap`, { credentials: "include" })
       .then((r) => (r.ok ? (r.json() as Promise<{ available: boolean; narration?: string }>) : null))
       .then((data) => {
         if (data?.available && data.narration) setRecapNarration(data.narration);
@@ -1943,7 +1943,7 @@ export function Board({
   );
 
   const handleLogout = async () => {
-    await fetch("/auth/logout", { method: "POST" });
+    await fetch("/auth/logout", { method: "POST", credentials: "include" });
     onLogout();
   };
 
@@ -2099,6 +2099,7 @@ export function Board({
                   method: "PATCH",
                   headers: { "Content-Type": "application/json" },
                   body: JSON.stringify({ game_mode: mode }),
+                  credentials: "include",
                 }).catch(() => {});
               }
             }}
@@ -2323,6 +2324,7 @@ export function Board({
                 method: "PATCH",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ game_mode: mode }),
+                credentials: "include",
               }).catch(() => {});
             }
           }}
@@ -3396,6 +3398,7 @@ export function Board({
                       method: "POST",
                       headers: { "Content-Type": "application/json" },
                       body: JSON.stringify({ rating: curtainRating }),
+                      credentials: "include",
                     })
                       .then(() => setCurtainRatingSubmitted(true))
                       .catch(() => setCurtainRatingSubmitted(true)); // optimistic: show thanks even on network error
