@@ -4,7 +4,7 @@
  *
  * Env vars:
  *   ANTHROPIC_API_KEY   required for judge scoring
- *   EVAL_JUDGE_MODEL    judge model ID (default: "claude-sonnet-4")
+ *   EVAL_JUDGE_MODEL    judge model ID (default: "claude-sonnet-4-6")
  */
 
 import { generateText } from "ai";
@@ -271,7 +271,7 @@ export async function judgeTranscript(
     );
   }
 
-  const modelId = options?.model ?? process.env.EVAL_JUDGE_MODEL ?? "claude-sonnet-4";
+  const modelId = options?.model ?? process.env.EVAL_JUDGE_MODEL ?? "claude-sonnet-4-6";
   const anthropic = createAnthropic({ apiKey });
 
   // Build transcript text for the judge

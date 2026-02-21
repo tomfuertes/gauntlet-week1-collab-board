@@ -519,9 +519,9 @@ async function runNarrativeScenario(
           if (typeof body === "string") {
             try {
               const bodyParsed = JSON.parse(body) as Record<string, unknown>;
-              // Text delta
-              if (typeof bodyParsed["textDelta"] === "string") {
-                textBuffer += bodyParsed["textDelta"];
+              // Text delta - CF Agents SDK uses AI SDK Data Stream Protocol: { type: "text-delta", delta: "..." }
+              if (bodyParsed["type"] === "text-delta" && typeof bodyParsed["delta"] === "string") {
+                textBuffer += bodyParsed["delta"];
               }
               // Tool call name
               if (typeof bodyParsed["toolName"] === "string") {
