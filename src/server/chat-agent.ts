@@ -332,13 +332,15 @@ export class ChatAgent extends AIChatAgent<Bindings> {
   /** Load effective persona list for this scene.
    *  When a troupeConfig is stored in DO (written on first exchange by _runStageManager),
    *  filters to only the personas named in the troupe. Falls back to all personas.
-   *  KEY-DECISION 2026-02-21: DO storage (not class-level field) so troupe filtering survives
-   *  DO hibernation without client re-sending the full troupeConfig on every message. */
-  private async _getEffectivePersonas(): Promise<Persona[]> {
+   *  KEY-DECISION 2026-02-21: body override for onChatMessage path (avoids ordering issue:
+   *  _getEffectivePersonas runs before _runStageManager writes to DO storage on first exchange).
+   *  Client sends body.troupeConfig on every message (hibernation pattern), so override is always
+   *  available in onChatMessage. Reactive/director paths skip override - they use DO storage. */
+  private async _getEffectivePersonas(override?: TroupeConfig): Promise<Persona[]> {
     const allPersonas = await this._getPersonas();
-    const troupeConfig = await this.ctx.storage.get<TroupeConfig>("troupeConfig");
-    if (!troupeConfig || troupeConfig.members.length === 0) return allPersonas;
-    const troupeIds = new Set(troupeConfig.members.map((m) => m.personaId));
+    const config = override ?? (await this.ctx.storage.get<TroupeConfig>("troupeConfig"));
+    if (!config || config.members.length === 0) return allPersonas;
+    const troupeIds = new Set(config.members.map((m) => m.personaId));
     const filtered = allPersonas.filter((p) => troupeIds.has(p.id));
     return filtered.length > 0 ? filtered : allPersonas;
   }
@@ -715,7 +717,9 @@ export class ChatAgent extends AIChatAgent<Bindings> {
       this._personaClaims.set(body.username as string, body.personaId as string);
     }
 
-    const personas = await this._getEffectivePersonas();
+    // Pass troupeConfig override: client sends it every message (hibernation pattern), so this
+    // is always current. Avoids ordering issue vs. DO storage write (done later in _runStageManager).
+    const personas = await this._getEffectivePersonas(troupeConfig);
     const { activeIndex, activePersona, otherPersona } = this._resolveActivePersona(personas, body?.username);
 
     // Detect tag-out: player switched from one claimed persona to another mid-scene.
