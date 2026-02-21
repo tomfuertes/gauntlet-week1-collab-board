@@ -2,7 +2,7 @@
 name: uat
 description: UAT testing agent for CollabBoard. Use proactively to verify features, smoke test, and validate 2-browser sync. Delegates browser automation so main context stays clean.
 tools: Bash, Read, Grep, Glob
-model: haiku
+model: sonnet
 skills:
   - playwright-cli
 ---
@@ -80,6 +80,21 @@ playwright-cli close-all
 4. Wait for response, screenshot result
 5. Verify object appeared on canvas
 6. Report pass/fail
+
+### Audience Poll Test (requires spectator + player)
+1. Open two sessions: player (`-s=uat-player`) and spectator (`-s=uat-spectator`)
+2. Player navigates to board, spectator opens `#watch/{boardId}`
+3. Player triggers AI to ask audience (e.g. "ask the audience what should happen next")
+4. Verify spectator sees poll overlay with options + countdown
+5. Spectator votes, verify "Vote recorded" state
+6. Wait for poll result, verify both sessions see result
+7. Report pass/fail
+
+### Audience Wave Test (requires 3+ spectators)
+1. Open 3 spectator sessions on same board
+2. All 3 send same emoji reaction within 5 seconds
+3. Verify `audience:wave` effect appears on canvas (confetti for applause, shake for laugh, etc.)
+4. Report pass/fail
 
 ## Reporting
 

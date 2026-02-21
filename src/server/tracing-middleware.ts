@@ -20,7 +20,7 @@ function recordLangfuseGeneration(
   lf: Langfuse,
   ctx: TraceContext & {
     startTime: Date;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
     prompt: any[];
     responseText: string;
     inputTokens: number;
@@ -67,7 +67,7 @@ function recordLangfuseGeneration(
     generation.end({
       output: resolvedOutput,
       usage: { input: ctx.inputTokens, output: ctx.outputTokens, unit: "TOKENS" },
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
       level: (ctx.error ? "ERROR" : "DEFAULT") as any,
       statusMessage: ctx.error,
     });
@@ -100,17 +100,15 @@ export function createTracingMiddleware(ctx: TraceContext, langfuse?: Langfuse |
     // KEY-DECISION 2026-02-21: transformParams fires per-step (catches within-turn invalid inputs).
     // sanitizeMessages() in chat-agent.ts covers the between-turn history sanitization.
     // Together they cover all invalid-input paths to Anthropic.
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
     transformParams: async ({ params }: { params: any }) => {
       const prompt = params.prompt;
       if (!Array.isArray(prompt)) return params;
       const needsFix = prompt.some(
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         (msg: any) =>
           msg.role === "assistant" &&
           Array.isArray(msg.content) &&
           msg.content.some(
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
             (part: any) =>
               part.type === "tool-call" &&
               (typeof part.input !== "object" || part.input === null || Array.isArray(part.input)),
@@ -120,12 +118,12 @@ export function createTracingMiddleware(ctx: TraceContext, langfuse?: Langfuse |
       console.warn(JSON.stringify({ event: "middleware:sanitize-tool-input", boardId: ctx.boardId }));
       return {
         ...params,
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
         prompt: prompt.map((msg: any) => {
           if (msg.role !== "assistant" || !Array.isArray(msg.content)) return msg;
           return {
             ...msg,
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
             content: msg.content.map((part: any) => {
               if (
                 part.type === "tool-call" &&
@@ -143,10 +141,9 @@ export function createTracingMiddleware(ctx: TraceContext, langfuse?: Langfuse |
     // Intercept non-streaming calls (reactive persona + director nudge use generateText)
     wrapGenerate: async ({ doGenerate, params }) => {
       const startTime = new Date();
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
       const prompt = (params as any).prompt ?? [];
 
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       let result: any;
       try {
         result = await doGenerate();
@@ -199,15 +196,13 @@ export function createTracingMiddleware(ctx: TraceContext, langfuse?: Langfuse |
     // observe the finish event without blocking the client-facing stream.
     wrapStream: async ({ doStream, params }) => {
       const startTime = new Date();
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
       const prompt = (params as any).prompt ?? [];
 
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const streamResult = (await doStream()) as any;
 
       if (!langfuse) return streamResult;
 
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const [stream1, stream2]: [ReadableStream<any>, ReadableStream<any>] = streamResult.stream.tee();
 
       // Consume stream2 in background to capture finish event, then write trace.
@@ -218,13 +213,13 @@ export function createTracingMiddleware(ctx: TraceContext, langfuse?: Langfuse |
         let outputTokens = 0;
         let finishReason = "unknown";
         let responseText = "";
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
         const reader = (stream2 as ReadableStream<any>).getReader();
         try {
           while (true) {
             const { done, value } = await reader.read();
             if (done) break;
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
             const chunk = value as any;
             if (chunk?.type === "text-delta") {
               responseText += chunk.delta;

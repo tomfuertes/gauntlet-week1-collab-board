@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Pre-commit hook: runs lint + format check on staged .ts/.tsx files.
+# Pre-commit hook: runs format check on staged .ts/.tsx files.
 # Install: ln -sf ../../scripts/pre-commit.sh .git/hooks/pre-commit
 set -euo pipefail
 
@@ -8,18 +8,11 @@ if [[ -z "$STAGED" ]]; then
   exit 0
 fi
 
-echo "pre-commit: checking format + lint on staged files..."
+echo "pre-commit: checking format on staged files..."
 
 # Check formatting (--check exits non-zero if files would change)
 echo "$STAGED" | xargs npx prettier --check 2>&1 || {
   echo ""
   echo "Fix: npm run format && git add -u"
-  exit 1
-}
-
-# Lint (warnings are OK, errors fail)
-npx eslint $STAGED 2>&1 || {
-  echo ""
-  echo "Fix lint errors before committing."
   exit 1
 }

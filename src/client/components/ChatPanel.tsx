@@ -391,7 +391,6 @@ export function ChatPanel({
   // Fetch personas from API on mount
   useEffect(() => {
     refreshPersonas();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [boardId]);
 
   // Detect mid-scene persona switch and add a local tag-out announcement to chat.
@@ -618,7 +617,7 @@ export function ChatPanel({
     } else if (!initialPrompt) {
       inputRef.current?.focus();
     }
-  }, [initialPrompt, initialTemplateId]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [initialPrompt, initialTemplateId]);
 
   const handleSubmit = () => {
     const text = inputRef.current?.value.trim();

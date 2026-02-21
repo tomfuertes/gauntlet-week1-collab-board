@@ -128,7 +128,7 @@ export function PerfOverlay({
       }
     }, 250);
     return () => clearInterval(id);
-  }, [visible]); // eslint-disable-line react-hooks/exhaustive-deps -- stageRef, lastServerMessageAt are stable refs
+  }, [visible]); // stageRef, lastServerMessageAt are stable refs
 
   if (!visible) return null;
 

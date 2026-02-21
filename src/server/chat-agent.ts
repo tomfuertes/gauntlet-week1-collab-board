@@ -162,7 +162,6 @@ function sanitizeMessages(messages: UIMessage[]): { messages: UIMessage[]; repai
 
     let needsRepair = false;
     const cleanedParts = msg.parts.map((part) => {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const p = part as any;
 
       // Static tool parts (from streamText): type is "tool-<toolName>"
@@ -232,7 +231,7 @@ function getShimmedWorkersAI(env: Bindings, modelId: string): LanguageModelV3 {
           injecting: hasTools,
         }),
       );
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Ai.run() overloads don't accept generic Record<string,unknown> inputs
+      // Ai.run() overloads don't accept generic Record<string,unknown> inputs
       return (env.AI as any).run(model, hasTools ? { ...inputs, tool_choice: "auto" } : inputs, options);
     },
   } as unknown as Ai;
@@ -1263,7 +1262,7 @@ export class ChatAgent extends AIChatAgent<Bindings> {
         finishArg?.steps?.reduce((sum: number, s: { toolCalls?: unknown[] }) => sum + (s.toolCalls?.length ?? 0), 0) ??
         0;
       this._logRequestEnd("chat", activePersona.name, startTime, steps, toolCalls);
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- StepResult<T> toolCalls are narrowly typed; _traceToolFailures accepts the common shape
+      // StepResult<T> toolCalls are narrowly typed; _traceToolFailures accepts the common shape
       this._traceToolFailures("chat", (finishArg?.steps ?? []) as any[]);
 
       // Quality telemetry: per-response layout scoring for prompt tuning
@@ -1408,7 +1407,7 @@ export class ChatAgent extends AIChatAgent<Bindings> {
         system: systemPrompt,
         messages: await convertToModelMessages(sanitizedMsgs),
         tools,
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- base class declares ToolSet; streamText sees specific tool types (variance mismatch, runtime-safe)
+        // base class declares ToolSet; streamText sees specific tool types (variance mismatch, runtime-safe)
         onFinish: wrappedOnFinish as any,
         stopWhen: stepCountIs(5),
         abortSignal: options?.abortSignal,
@@ -1899,7 +1898,7 @@ export class ChatAgent extends AIChatAgent<Bindings> {
     result: {
       text: string;
       steps: {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- toolCalls use AI SDK generics; narrowing here would require re-exporting internal SDK types
+        // toolCalls use AI SDK generics; narrowing here would require re-exporting internal SDK types
         toolCalls: any[];
         toolResults: { toolCallId: string; output: unknown }[];
       }[];
@@ -2179,7 +2178,7 @@ export class ChatAgent extends AIChatAgent<Bindings> {
 
         const totalToolCalls = result.steps.reduce((sum, s) => sum + s.toolCalls.length, 0);
         this._logRequestEnd("reactive", reactivePersona.name, startTime, result.steps.length, totalToolCalls);
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- StepResult<T> toolCalls are narrowly typed; _traceToolFailures accepts the common shape
+        // StepResult<T> toolCalls are narrowly typed; _traceToolFailures accepts the common shape
         this._traceToolFailures("reactive", result.steps as any[]);
       } catch (err) {
         console.error(
@@ -2443,7 +2442,7 @@ export class ChatAgent extends AIChatAgent<Bindings> {
         this._logRequestEnd("sfx-reaction", reactionPersona.name, startTime, result.steps.length, totalToolCalls, {
           labels,
         });
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- StepResult<T> toolCalls are narrowly typed; _traceToolFailures accepts the common shape
+        // StepResult<T> toolCalls are narrowly typed; _traceToolFailures accepts the common shape
         this._traceToolFailures("sfx-reaction", result.steps as any[]);
       } catch (err) {
         console.error(
@@ -2636,7 +2635,7 @@ export class ChatAgent extends AIChatAgent<Bindings> {
           score,
           actionCount: actions.length,
         });
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- StepResult<T> toolCalls are narrowly typed; _traceToolFailures accepts the common shape
+        // StepResult<T> toolCalls are narrowly typed; _traceToolFailures accepts the common shape
         this._traceToolFailures("canvas-action", result.steps as any[]);
 
         // Set 30s cooldown to prevent back-to-back canvas reactions
@@ -2847,7 +2846,7 @@ export class ChatAgent extends AIChatAgent<Bindings> {
         this._logRequestEnd("director", directorPersona.name, startTime, result.steps.length, totalToolCalls, {
           phase,
         });
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- StepResult<T> toolCalls are narrowly typed; _traceToolFailures accepts the common shape
+        // StepResult<T> toolCalls are narrowly typed; _traceToolFailures accepts the common shape
         this._traceToolFailures("director", result.steps as any[]);
 
         directorTriggered = true;

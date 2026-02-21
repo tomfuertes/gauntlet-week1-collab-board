@@ -1,50 +1,55 @@
-# CollabBoard
+# YesAInd
 
-Real-time collaborative whiteboard with AI agent integration.
+Multiplayer improv canvas with AI agent integration. Real-time collaborative whiteboard where players and AI improvise scenes together.
 
-## Live Demo
+## Live
 
-> **https://collabboard.thomas-fuertes.workers.dev**
+> **https://yesaind.com**
 
 ## Stack
 
 | Layer | Technology |
 |-------|-----------|
-| Frontend | React + Vite + react-konva + TypeScript |
-| Backend | Cloudflare Workers + Hono |
-| Real-time | Durable Objects + WebSockets |
-| Auth | Custom (username/password, PBKDF2, D1 sessions) |
+| Frontend | React + Vite 7 + react-konva + TypeScript |
+| Backend | Cloudflare Workers + Hono + Durable Objects |
+| Real-time | WebSockets (Board DO per board, ChatAgent DO per AI session) |
+| Auth | Passkey/WebAuthn primary + password fallback (PBKDF2 timing-safe, D1 sessions) |
 | Database | DO Storage (board state) + D1 (users, sessions, metadata) |
-| AI | Workers AI + function calling |
-| Deploy | Cloudflare (auto-deploy on push) |
+| AI | 8 models across 3 providers (Anthropic, OpenAI, Workers AI) via AI SDK |
+| Deploy | Cloudflare git integration (auto-deploy on push to main) |
+
+## Features
+
+- Real-time collaborative canvas with multi-cursor presence
+- AI-powered scene creation with 19 tools (draw, write, arrange, background, etc.)
+- 3-step troupe builder: pick AI personas, assign models per character
+- Stage Manager: AI sets up scene before first exchange
+- Spectator mode with audience polls and collective wave effects
+- Public scene gallery and replay viewer
+- Emoji reactions, heckles, director notes, keyword prefixes (note:/qa:)
 
 ## Architecture
 
-Each board is a Durable Object instance. All WebSocket connections for a board route to the same DO, which serializes writes and broadcasts to peers. This gives last-write-wins conflict resolution by construction - no CRDTs needed.
+Each board is a Durable Object instance. All WebSocket connections for a board route to the same DO, which serializes writes and broadcasts to peers. LWW conflict resolution by construction - no CRDTs needed.
 
 ```
-Browser ──WebSocket──> CF Worker ──> Durable Object (per board)
+Browser ──WebSocket──> CF Worker ──> Board DO (per board)
                          │                    │
                          │ auth (D1)          │ board state (DO Storage)
-                         │                    │ cursor positions (memory)
-                         │                    │ presence (memory)
+                         │                    │ cursors, polls, waves (memory)
                          │
-                         └── AI commands ──> Workers AI ──> mutations back to DO
+                         └── AI chat ──> ChatAgent DO ──> streamText + tools ──> Board DO RPC
 ```
 
 ## Local Development
 
 ```bash
-npm install
-npm run dev          # wrangler dev (backend + frontend)
+npm ci
+npm run dev          # build + wrangler dev
 ```
 
 Requires: Node.js 20+, Cloudflare account with Workers Paid plan ($5/mo for DOs).
 
 ## Documentation
 
-See `CLAUDE.md` for architecture and conventions.
-
-Submission deliverables:
-- [AI Development Log](docs/ai-dev-log.md) - AI-first development methodology
-- [AI Cost Analysis](docs/ai-cost-analysis.md) - Unit economics and scaling projections
+See `CLAUDE.md` for architecture, conventions, and agent delegation patterns.

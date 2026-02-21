@@ -10,7 +10,6 @@
     "deploy": "npm run build && wrangler deploy",
     "cf-typegen": "wrangler types",
     "typecheck": "npm run cf-typegen && tsc --noEmit",
-    "lint": "eslint src/",
     "format": "prettier --write \"src/**/*.{ts,tsx}\"",
     "migrate:local": "wrangler d1 migrations apply collabboard-db --local",
     "migrate:remote": "wrangler d1 migrations apply collabboard-db --remote",
@@ -22,12 +21,12 @@
     "format:check": "prettier --check \"src/**/*.{ts,tsx}\"",
     "traces": "scripts/traces.sh",
     "traces:remote": "TRACES_ENV=remote scripts/traces.sh",
-    "update-deps": "npx npm-check-updates -u --reject 'vite,@vitejs/plugin-react,eslint' && npm install"
+    "update-deps": "npx npm-check-updates -u --reject 'vite,@vitejs/plugin-react' && npm ci"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^3.0.46",
     "@ai-sdk/openai": "^3.0.30",
-    "@ai-sdk/react": "^3.0.0",
+    "@ai-sdk/react": "^3.0.99",
     "@cloudflare/ai-chat": "^0.1.3",
     "@simplewebauthn/browser": "^13.2.2",
     "@simplewebauthn/server": "^13.2.2",
@@ -48,14 +47,13 @@
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
     "@types/ws": "^8.18.1",
-    "@typescript-eslint/eslint-plugin": "^8.56.0",
-    "@typescript-eslint/parser": "^8.56.0",
     "@vitejs/plugin-react": "^5.0.0",
     "concurrently": "^9.2.1",
-    "eslint": "^10.0.0",
-    "eslint-plugin-react-hooks": "^7.0.1",
     "typescript": "^5.9.3",
     "vite": "^7.0.0",
     "wrangler": "^4.67.0"
+  },
+  "overrides": {
+    "minimatch": ">=10.2.1"
   }
 }

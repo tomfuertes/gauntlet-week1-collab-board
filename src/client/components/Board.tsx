@@ -508,7 +508,6 @@ export function Board({
     return () => {
       if (spotlightTimerRef.current) clearTimeout(spotlightTimerRef.current);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [spotlightState?.id]);
 
   // Animate blackout: fade in (0.5s) → hold 1.5s → fade out (0.5s) → remove
@@ -2777,7 +2776,7 @@ export function Board({
               listening={false}
               sceneFunc={(konvaCtx) => {
                 if (!spotlightState) return;
-                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
                 const ctx = (konvaCtx as any)._context as CanvasRenderingContext2D;
                 const visX = -stagePos.x / scale;
                 const visY = -stagePos.y / scale;
@@ -2804,7 +2803,6 @@ export function Board({
             <Shape
               listening={false}
               sceneFunc={(konvaCtx) => {
-                // eslint-disable-next-line @typescript-eslint/no-explicit-any
                 const ctx = (konvaCtx as any)._context as CanvasRenderingContext2D;
                 const visX = -stagePos.x / scale;
                 const visY = -stagePos.y / scale;

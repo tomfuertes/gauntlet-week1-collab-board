@@ -75,7 +75,7 @@ export function AiCursor({ target }: AiCursorProps) {
         // Snap to final value so StrictMode double-invocation doesn't leave partial opacity.
         // groupRef.current is intentionally read in cleanup (not a stale capture) - we need the
         // live node to reset opacity even if the ref has been reassigned by React.
-        // eslint-disable-next-line react-hooks/exhaustive-deps
+
         groupRef.current?.opacity(1);
       };
     } else {

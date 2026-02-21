@@ -93,7 +93,7 @@ export function SpectatorView({ boardId, onBack }: SpectatorViewProps) {
   // Reset vote state on new poll
   useEffect(() => {
     if (activePoll) setVotedOptionId(null);
-  }, [activePoll?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [activePoll?.id]);
 
   // Auto-dismiss poll result after 5s
   useEffect(() => {

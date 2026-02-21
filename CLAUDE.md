@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project
 
-YesAInd - multiplayer improv canvas with AI agent integration. Real-time collaborative whiteboard where players and AI improvise scenes together. Solo dev with AI-first methodology (Claude Code + Cursor). See `docs/new-north-star.md` for creative direction.
+YesAInd - multiplayer improv canvas with AI agent integration. Real-time collaborative whiteboard where players and AI improvise scenes together. Solo dev with AI-first methodology (Claude Code + Cursor).
 
 ## Stack
 
@@ -15,12 +15,12 @@ React + Vite + react-konva + TypeScript | Cloudflare Workers + Hono + Durable Ob
 | File | What it does |
 |------|-------------|
 | `src/server/index.ts` | Hono routes, board CRUD, DO exports, WS upgrade, persona/replay/gallery APIs |
-| `src/server/chat-agent.ts` | ChatAgent DO - AI chat, per-player persona claims, game modes, scene budgets, director nudges |
-| `src/server/ai-tools-sdk.ts` | 18 AI tools (Zod schemas, batchExecute meta-tool) |
+| `src/server/chat-agent.ts` | ChatAgent DO - AI chat, troupe config, stage manager, audience polls/waves, persona claims, director nudges |
+| `src/server/ai-tools-sdk.ts` | 19 AI tools incl. askAudience (Zod schemas, batchExecute meta-tool) |
 | `src/server/prompts.ts` | System prompt assembly, persona identity, scene phases, PROMPT_VERSION |
 | `src/server/tracing-middleware.ts` | AI SDK middleware -> D1 traces + optional Langfuse |
-| `src/server/auth.ts` | Passkey/WebAuthn primary auth + password fallback (PBKDF2, D1 sessions, rate limiting) |
-| `src/shared/types.ts` | Persona, BoardObject, GameMode, AIModel, AI_MODELS, DEFAULT_PERSONAS |
+| `src/server/auth.ts` | Passkey/WebAuthn primary auth + password fallback (PBKDF2 timing-safe, D1 sessions, rate limiting) |
+| `src/shared/types.ts` | Persona, BoardObject, GameMode, AIModel, AI_MODELS, TroupeConfig, Poll, WaveEffect, canvas bounds constants |
 | `src/shared/board-templates.ts` | Template registry: typed BoardObject arrays, displayText, `getTemplateById()` for server-side seeding |
 
 **Key client files:**
@@ -29,7 +29,7 @@ React + Vite + react-konva + TypeScript | Cloudflare Workers + Hono + Durable Ob
 |------|-------------|
 | `src/client/components/Board.tsx` | Canvas + chat integration, mobile layout, model/persona state |
 | `src/client/components/ChatPanel.tsx` | AI chat sidebar, persona claim pills, intent chips, useAgentChat |
-| `src/client/components/OnboardModal.tsx` | Scene-start dialog: game mode + character picker + model selector |
+| `src/client/components/OnboardModal.tsx` | 3-step wizard: troupe builder (per-character model select) + invite + the get |
 | `src/client/components/AuthForm.tsx` | Passkey/WebAuthn registration + login UI with password fallback |
 
 **AI architecture (gotchas that will bite you):**
@@ -37,8 +37,8 @@ React + Vite + react-konva + TypeScript | Cloudflare Workers + Hono + Durable Ob
 - Per-player persona claims via `body.personaId` (same per-message pattern). Fallback: round-robin.
 - Reactive persona fires via `ctx.waitUntil` after each response. First exchange unreliable (timing gap).
 - Class-level state resets on DO hibernation. Client re-sends model/gameMode/personaId each message.
-- `tool_choice: "auto"` shim in workers-ai-provider (CF issue #404). Belt-and-suspenders.
-- Canvas bounds (50,60)-(1150,780) in prompts.ts LAYOUT RULES - keep in sync with quality telemetry.
+- `tool_choice: "auto"` shim extracted to `getShimmedWorkersAI()` helper in chat-agent.ts (CF issue #404). Single call site.
+- Canvas bounds exported as `CANVAS_MIN_X/Y`, `CANVAS_MAX_X/Y` from shared/types.ts. Used in prompts.ts, index.ts, chat-agent.ts.
 - Default model is Claude Haiku 4.5. GLM available but degrades by exchange 3+.
 - Deploy via `git push` to main (CF git integration). Never `wrangler deploy` manually.
 
@@ -65,13 +65,16 @@ npx tsx scripts/prompt-eval.ts            # run all scenarios, output pass/fail 
 # EVAL_USERNAME/EVAL_PASSWORD/EVAL_MODEL env vars override defaults (eval/eval123/glm-4.7-flash)
 # JSON reports written to scripts/eval-results/<timestamp>.json (gitignored)
 
-# Lint & Format
-npm run lint             # eslint
+# Format & Audit
 npm run format           # prettier --write
+/audit                   # on-demand code quality checks (replaced ESLint)
 
 # Type Check (always use npm run typecheck, not bare tsc)
 npm run typecheck        # wrangler types + tsc --noEmit (generates CF Workers bindings first)
 # NEVER use bare `npx tsc --noEmit` - it skips wrangler types and shows false CF type errors
+
+# Dependency Updates
+npm run update-deps      # bumps all deps except vite/plugin-react (major), then npm ci
 ```
 
 ## Git Worktrees
@@ -140,7 +143,7 @@ npx playwright test --reporter=dot     # minimal output (default 'list' floods c
 
 **Two agent tiers by task size:**
 
-**Lightweight (single-file, <20 lines):** Delegate to haiku subagent (fastest, cheapest). implement -> typecheck -> lint -> commit. No UAT, no PR review. Trust the types.
+**Lightweight (single-file, <20 lines):** Delegate to haiku subagent (fastest, cheapest). implement -> typecheck -> commit. No UAT, no PR review. Trust the types.
 
 **Standard (multi-file or behavioral):** Delegate to sonnet teammate in worktree. implement -> PR review (Skill) -> fix issues -> UAT if behavioral -> commit. **The branch MUST be clean-committed when the agent finishes.**
 
@@ -172,10 +175,11 @@ src/
       ChatPanel.tsx     # AI chat sidebar, persona claim pills, intent chips
       CanvasPreview.tsx # Mobile read-only canvas strip
       ReplayViewer.tsx  # Public scene replay (no auth)
-      SpectatorView.tsx # Public live view + emoji reactions (no auth)
+      SpectatorView.tsx # Public live view + emoji reactions + poll voting (no auth)
       SceneGallery.tsx  # Public gallery grid (#gallery)
       PerfOverlay.tsx   # FPS/connection overlay (Shift+P)
       AiCursor.tsx      # Purple dot animating to AI creation points
+      WaveEffect.tsx    # Audience wave canvas effects (confetti, shake, glow, etc.)
       # Also: Button, Modal, TextInput, ConnectionToast, ConfettiBurst, BoardGrid
     hooks/
       useWebSocket.ts        # Board DO WebSocket state
@@ -186,7 +190,7 @@ src/
     styles/
       animations.css    # Shared keyframes
   server/               # (see Stack tables above for server files)
-  shared/types.ts       # BoardObject, WSMessage, Persona, GameMode, AIModel
+  shared/types.ts       # BoardObject, WSMessage, Persona, GameMode, AIModel, TroupeConfig, Poll, WaveEffect
 migrations/             # D1 SQL (npm run migrate)
 ```
 
@@ -200,15 +204,15 @@ migrations/             # D1 SQL (npm run migrate)
 6. AI: client WS to ChatAgent DO (`/agents/ChatAgent/<boardId>`) -> `streamText()` with tools -> Board DO RPC for canvas mutations
 7. Replay: DO records mutations as `evt:{ts}:{rand}` keys (max 2000). Public `GET /api/boards/:id/replay`
 8. Gallery: Public `GET /api/boards/public` (D1 join). `#gallery` -> `#replay/{id}`
-9. Spectator: `GET /ws/watch/:boardId` (no auth). Read-only + cursor/reactions only
+9. Spectator: `GET /ws/watch/:boardId` (no auth). Read-only + cursor/reactions/poll votes
 10. Eval API: `GET /api/boards/:boardId/objects` returns objects + quality metrics
 
 ### WebSocket Protocol
 
 ```
 Player -> DO:    cursor | obj:create | obj:update | obj:delete | batch:undo | reaction
-Spectator -> DO: cursor | reaction (all other messages silently dropped)
-DO -> Client:    cursor | obj:create | obj:update | obj:delete | presence | init | reaction
+Spectator -> DO: cursor | reaction | poll:vote (all other messages silently dropped)
+DO -> Client:    cursor | obj:create | obj:update | obj:delete | presence | init | reaction | poll:start | poll:result | audience:wave
 ```
 
 DO echoes mutations to OTHER clients only (sender already applied optimistically). Presence messages include `spectatorCount` (number of anonymous spectator connections). Reactions are broadcast to ALL clients (including sender - no optimistic apply). Reaction emoji whitelist + 1/sec rate limit enforced server-side.
@@ -230,7 +234,7 @@ Each object stored as separate DO Storage key (`obj:{uuid}`, ~200 bytes). LWW vi
 ## Key Constraints
 
 - Deploy via `git push` to main (CF git integration). Never `wrangler deploy` manually.
-- Rate check must happen BEFORE claiming `_isGenerating` mutex - see comment in `onChatMessage`.
+- `_isGenerating` mutex uses `withGenerating()` try/finally wrapper. `onChatMessage` extends its try block manually (streaming outlives function scope). Rate check must happen BEFORE claiming mutex.
 - Never expose API keys to client bundle - all AI calls server-side.
 - `getUserColor(userId)` is hash-based (not array-index). Same palette in Board.tsx and Cursors.tsx.
 - Dev: `scripts/dev.sh` raises `ulimit -n 10240` (macOS default 256 causes EMFILE in multi-worktree).
@@ -241,7 +245,7 @@ Each object stored as separate DO Storage key (`obj:{uuid}`, ~200 bytes). LWW vi
 - **Task list is the single source of truth** for backlog, loose ends, tech debt, and unshipped features. Use `TaskCreate`/`TaskList`/`TaskUpdate`. Not notes.md, not GitHub issues (unless external collaboration needed).
 - **CLAUDE.md:** Update only when file map, key constraints, or gotchas change. Not a changelog.
 - **KEY-DECISION comments:** Non-obvious decisions go in code, not docs. `// KEY-DECISION <date>: <rationale>`
-- **No session notes files.** `docs/sessions/` is deprecated. Task list + git log is the source of truth.
+- **No session notes or docs/ files.** `docs/` directory was removed. Task list + git log is the source of truth.
 
 ## Custom Agents (Delegation)
 
@@ -271,7 +275,7 @@ Never run playwright-cli sessions or full test suites in main Opus context. Alwa
 
 - TypeScript strict mode
 - camelCase variables/functions, PascalCase components/types, kebab-case utility files
-- ESLint + Prettier enforced
+- Prettier enforced; /audit skill for on-demand code quality checks
 - Feature-based organization on client side
 - Vertical slices - each increment delivers user-visible behavior
 - Never break sync - every commit should pass the 2-browser test
