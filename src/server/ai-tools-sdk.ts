@@ -400,22 +400,31 @@ export function createSDKTools(
     obj.x = Math.max(CANVAS_MIN_X, Math.min(obj.x, CANVAS_MAX_X - obj.width));
     obj.y = Math.max(CANVAS_MIN_Y, Math.min(obj.y, CANVAS_MAX_Y - obj.height));
 
-    // 3. Overlap nudge - shift right, wrap to next row on OOB, max 20 iterations
-    const NUDGE_STEP = 20;
-    for (let i = 0; i < 20; i++) {
-      if (!aiCreatedBounds.some((b) => overlapFraction(obj, b) > 0.2)) break;
-      const newX = obj.x + NUDGE_STEP;
-      if (newX + obj.width <= CANVAS_MAX_X) {
-        obj.x = newX;
-      } else {
-        obj.x = CANVAS_MIN_X;
-        obj.y = Math.min(obj.y + obj.height + 20, CANVAS_MAX_Y - obj.height);
+    // 3. Overlap nudge - enforce zero overlap for non-line objects.
+    // KEY-DECISION 2026-02-21: v22 - zero-tolerance overlap enforcement in code instead of
+    // prompt-based spatial hints. LLMs can't reliably reason about 2D layout; code can.
+    // Lines/connectors skip this (they intentionally cross objects).
+    if (obj.type !== "line") {
+      const GAP = 16; // px gap between objects
+      for (let i = 0; i < 30; i++) {
+        if (!aiCreatedBounds.some((b) => overlapFraction(obj, b) > 0)) break;
+        const newX = obj.x + obj.width + GAP;
+        if (newX + obj.width <= CANVAS_MAX_X) {
+          obj.x = newX;
+        } else {
+          // Wrap to next row
+          obj.x = CANVAS_MIN_X;
+          obj.y = Math.min(obj.y + obj.height + GAP, CANVAS_MAX_Y - obj.height);
+        }
       }
     }
 
     const result = await createAndMutate(stub, obj);
     if (!("error" in result)) {
-      aiCreatedBounds.push({ x: obj.x, y: obj.y, width: obj.width, height: obj.height });
+      // Lines/connectors don't occupy space for overlap purposes
+      if (obj.type !== "line") {
+        aiCreatedBounds.push({ x: obj.x, y: obj.y, width: obj.width, height: obj.height });
+      }
       aiCreateCount++;
     }
     return result;
