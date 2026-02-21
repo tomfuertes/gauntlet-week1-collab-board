@@ -33,6 +33,7 @@ import {
   buildSfxReactionPrompt,
   buildDirectorNotePrompt,
   buildQACommandPrompt,
+  buildStageManagerPrompt,
 } from "./prompts";
 import type { GameModeState } from "./prompts";
 import { HAT_PROMPTS, getRandomHatPrompt } from "./hat-prompts";
@@ -47,6 +48,7 @@ import type {
   GameMode,
   Persona,
   SceneLifecyclePhase,
+  TroupeConfig,
 } from "../shared/types";
 import { SCENE_TURN_BUDGET, DEFAULT_PERSONAS, AI_MODELS, AI_USER_ID } from "../shared/types";
 import { getTemplateById } from "../shared/board-templates";
@@ -325,6 +327,20 @@ export class ChatAgent extends AIChatAgent<Bindings> {
       );
       return [...DEFAULT_PERSONAS];
     }
+  }
+
+  /** Load effective persona list for this scene.
+   *  When a troupeConfig is stored in DO (written on first exchange by _runStageManager),
+   *  filters to only the personas named in the troupe. Falls back to all personas.
+   *  KEY-DECISION 2026-02-21: DO storage (not class-level field) so troupe filtering survives
+   *  DO hibernation without client re-sending the full troupeConfig on every message. */
+  private async _getEffectivePersonas(): Promise<Persona[]> {
+    const allPersonas = await this._getPersonas();
+    const troupeConfig = await this.ctx.storage.get<TroupeConfig>("troupeConfig");
+    if (!troupeConfig || troupeConfig.members.length === 0) return allPersonas;
+    const troupeIds = new Set(troupeConfig.members.map((m) => m.personaId));
+    const filtered = allPersonas.filter((p) => troupeIds.has(p.id));
+    return filtered.length > 0 ? filtered : allPersonas;
   }
 
   /** Resolve which persona should respond to the current message.
@@ -625,6 +641,12 @@ export class ChatAgent extends AIChatAgent<Bindings> {
     const doId = this.env.BOARD.idFromName(this.name);
     const boardStub = this.env.BOARD.get(doId);
 
+    // Extract troupeConfig early - used to gate stage manager and skip SCENE_SETUP_PROMPT
+    const troupeConfig =
+      body?.troupeConfig && typeof body.troupeConfig === "object" && !Array.isArray(body.troupeConfig)
+        ? (body.troupeConfig as TroupeConfig)
+        : undefined;
+
     // KEY-DECISION 2026-02-19: Server-side template seeding. When body.templateId is present,
     // create all template objects via Board DO RPC (guaranteed count), rewrite the user message
     // to displayText, and set a flag so the system prompt injects the template description
@@ -693,7 +715,7 @@ export class ChatAgent extends AIChatAgent<Bindings> {
       this._personaClaims.set(body.username as string, body.personaId as string);
     }
 
-    const personas = await this._getPersonas();
+    const personas = await this._getEffectivePersonas();
     const { activeIndex, activePersona, otherPersona } = this._resolveActivePersona(personas, body?.username);
 
     // Detect tag-out: player switched from one claimed persona to another mid-scene.
@@ -813,8 +835,9 @@ export class ChatAgent extends AIChatAgent<Bindings> {
       }),
     );
 
-    // Generate stage background on first message (non-blocking, parallel with AI response)
-    if (humanTurns <= 1) {
+    // Generate stage background on first message (non-blocking, parallel with AI response).
+    // Skipped when troupeConfig is present - stage manager handles backdrop via generateImage tool.
+    if (humanTurns <= 1 && !troupeConfig) {
       const promptText =
         this.messages
           .filter((m) => m.role === "user")
@@ -1057,10 +1080,11 @@ export class ChatAgent extends AIChatAgent<Bindings> {
       );
     }
 
-    // Scene setup: inject template description (if template was seeded) or generic scene structure
+    // Scene setup: inject template description (if template was seeded) or generic scene structure.
+    // Skip SCENE_SETUP_PROMPT when troupeConfig is present - stage manager already set the stage.
     if (templateDescription) {
       systemPrompt += `\n\nSCENE ALREADY SET: The canvas has been populated with the scene. Here's what's there:\n${templateDescription}\nReact to what's on the canvas. Do NOT recreate these objects - they already exist. Riff on the scene in character.`;
-    } else if (humanTurns <= 1) {
+    } else if (humanTurns <= 1 && !troupeConfig) {
       systemPrompt += `\n\n${SCENE_SETUP_PROMPT}`;
     }
 
@@ -1297,6 +1321,19 @@ export class ChatAgent extends AIChatAgent<Bindings> {
     // Reset the director inactivity timer on every user message
     this._resetDirectorTimer();
 
+    // Stage Manager: synchronous scene setup on first exchange when troupe is configured.
+    // Awaited so the canvas is populated before the main streamText response begins streaming.
+    if (humanTurns <= 1 && troupeConfig) {
+      const sceneOpener =
+        this.messages
+          .filter((m) => m.role === "user")
+          .at(-1)
+          ?.parts?.filter((p) => p.type === "text")
+          .map((p) => (p as { type: "text"; text: string }).text)
+          .join("") ?? "";
+      await this._runStageManager(troupeConfig, boardStub as unknown as BoardStub, sceneOpener, personas);
+    }
+
     try {
       const { messages: sanitizedMsgs, repairedCount } = sanitizeMessages(this.messages);
       if (repairedCount > 0) this._traceSanitizeRepair("chat", repairedCount);
@@ -1371,6 +1408,89 @@ export class ChatAgent extends AIChatAgent<Bindings> {
         promptLen: imagePrompt.length,
       }),
     );
+  }
+
+  // ---------------------------------------------------------------------------
+  // Stage Manager (synchronous pre-flight on first exchange with troupeConfig)
+  // ---------------------------------------------------------------------------
+
+  /** Set up the canvas before the first player exchange using the Stage Manager persona.
+   *  Called synchronously (awaited) so the stage exists when the main response is streaming.
+   *  Uses generateText (not streamText) - no output goes to chat history.
+   *  KEY-DECISION 2026-02-21: ~3-5s latency on first exchange is acceptable for scene start.
+   *  Separate system prompt (not an injection) because the stage manager is a silent technician,
+   *  not an improv character - it must not produce chat text. */
+  private async _runStageManager(
+    troupeConfig: TroupeConfig,
+    boardStub: BoardStub,
+    sceneOpener: string,
+    personas: Persona[],
+  ): Promise<void> {
+    // Persist for troupe-aware persona rotation on subsequent messages (survives DO hibernation)
+    await this.ctx.storage.put("troupeConfig", troupeConfig);
+
+    const startTime = Date.now();
+    this._logRequestStart("stage-manager", "StageManager");
+
+    // Build persona placement guidance: display names + colors so stage manager places correct characters
+    const troupeDescription = troupeConfig.members
+      .map((m) => {
+        const persona = personas.find((p) => p.id === m.personaId);
+        const displayName = m.nickname || persona?.name || m.personaId;
+        const color = persona?.color || "#ffffff";
+        return `${displayName} (color: ${color})`;
+      })
+      .join("\n");
+
+    const stageManagerSystem = buildStageManagerPrompt(sceneOpener, troupeDescription);
+
+    // Model selection: stageManagerModel if specified, else fall through to current _getModel()
+    let model = this._getModel();
+    if (troupeConfig.stageManagerModel) {
+      const entry = AI_MODELS.find((m) => m.id === troupeConfig.stageManagerModel);
+      if (entry) {
+        if (entry.provider === "openai" && this.env.OPENAI_API_KEY) {
+          model = createOpenAI({ apiKey: this.env.OPENAI_API_KEY })(entry.modelId);
+        } else if (entry.provider === "anthropic" && this.env.ANTHROPIC_API_KEY) {
+          model = createAnthropic({ apiKey: this.env.ANTHROPIC_API_KEY })(entry.modelId);
+        }
+        // workers-ai: fall through to _getModel() which already handles workers-ai models
+      }
+    }
+
+    const batchId = crypto.randomUUID();
+    const tools = createSDKTools(boardStub, batchId, this.env.AI, this.ctx.storage);
+
+    try {
+      const result = await generateText({
+        model,
+        system: stageManagerSystem,
+        // Pass only the scene opener - stage manager is a standalone setup call, not a chat continuation
+        messages: [{ role: "user" as const, content: sceneOpener }],
+        tools,
+        stopWhen: stepCountIs(6),
+      });
+
+      const totalToolCalls = result.steps.reduce((sum, s) => sum + s.toolCalls.length, 0);
+      this._logRequestEnd("stage-manager", "StageManager", startTime, result.steps.length, totalToolCalls);
+      console.debug(
+        JSON.stringify({
+          event: "stage-manager:complete",
+          boardId: this.name,
+          toolCalls: totalToolCalls,
+          durationMs: Date.now() - startTime,
+        }),
+      );
+    } catch (err) {
+      // Non-fatal: stage setup failure doesn't block the main response
+      console.error(
+        JSON.stringify({
+          event: "stage-manager:error",
+          boardId: this.name,
+          error: String(err),
+        }),
+      );
+    }
   }
 
   // ---------------------------------------------------------------------------
@@ -1867,11 +1987,11 @@ export class ChatAgent extends AIChatAgent<Bindings> {
     }
 
     // Load personas if not passed in (director nudge path).
-    // Guard: _getPersonas() is documented to never throw, but wrap anyway -
+    // Guard: _getEffectivePersonas() is documented to never throw, but wrap anyway -
     // any unexpected throw here would leave _isGenerating stuck at true for the DO lifetime.
     let effectivePersonas: Persona[];
     try {
-      effectivePersonas = personas ?? (await this._getPersonas());
+      effectivePersonas = personas ?? (await this._getEffectivePersonas());
     } catch (err) {
       this._isGenerating = false;
       console.error(
@@ -2158,7 +2278,7 @@ export class ChatAgent extends AIChatAgent<Bindings> {
 
     this._isGenerating = true;
     const startTime = Date.now();
-    const personas = await this._getPersonas();
+    const personas = await this._getEffectivePersonas();
     const reactionIndex = this._activePersonaIndex % personas.length;
     const reactionPersona = personas[reactionIndex];
     const reactionOther = personas.length > 1 ? personas[(reactionIndex + 1) % personas.length] : undefined;
@@ -2336,7 +2456,7 @@ export class ChatAgent extends AIChatAgent<Bindings> {
     // React!
     this._isGenerating = true;
     const startTime = Date.now();
-    const reactionPersonas = await this._getPersonas();
+    const reactionPersonas = await this._getEffectivePersonas();
     const reactionIndex = this._activePersonaIndex % reactionPersonas.length;
     const reactionPersona = reactionPersonas[reactionIndex];
     const reactionOther =
@@ -2495,7 +2615,7 @@ export class ChatAgent extends AIChatAgent<Bindings> {
 
     this._isGenerating = true;
     const startTime = Date.now();
-    const directorPersonas = await this._getPersonas();
+    const directorPersonas = await this._getEffectivePersonas();
     const directorIndex = this._activePersonaIndex % directorPersonas.length;
     const directorPersona = directorPersonas[directorIndex];
     const directorOther =

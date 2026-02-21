@@ -12,6 +12,7 @@ import type {
   AIModel,
   TransientEffect,
   TransientEffectType,
+  TroupeConfig,
 } from "@shared/types";
 import { findSnapTarget, computeConnectedLineGeometry, getEdgePoint } from "@shared/connection-geometry";
 import { AI_MODELS } from "@shared/types";
@@ -318,6 +319,8 @@ export function Board({
   const [aiModel, setAIModel] = useState<AIModel>("claude-haiku-4.5");
   // Per-player persona claim - set via OnboardModal or ChatPanel inline picker
   const [claimedPersonaId, setClaimedPersonaId] = useState<string | null>(null);
+  // Troupe config from OnboardModal - passed to ChatPanel for first-message scene setup
+  const [troupeConfig, setTroupeConfig] = useState<TroupeConfig | undefined>();
 
   // "Previously On..." recap narration (null = not ready or not available)
   const [recapNarration, setRecapNarration] = useState<string | null>(null);
@@ -2074,6 +2077,7 @@ export function Board({
             mobileMode={true}
             claimedPersonaId={claimedPersonaId}
             onClaimChange={setClaimedPersonaId}
+            troupeConfig={troupeConfig}
             personObjects={personObjects}
             heckleEvents={heckleEvents}
             onChatSend={handleChatSend}
@@ -2083,10 +2087,11 @@ export function Board({
         {/* Onboard modal - rendered on top when board is empty (mobile-sized, full modal) */}
         {showMobileOnboard && (
           <OnboardModal
-            onSubmit={(prompt, mode, model, personaId) => {
+            onSubmit={(prompt, mode, model, personaId, _templateId, tc) => {
               setGameMode(mode);
               setAIModel(model);
               setClaimedPersonaId(personaId);
+              setTroupeConfig(tc);
               setBoardGenStarted(true);
               setChatInitialPrompt(prompt);
               if (mode !== "freeform") {
@@ -2303,10 +2308,11 @@ export function Board({
       {/* Onboard modal - shown on empty boards until user starts a scene or dismisses */}
       {initialized && objects.size === 0 && !boardGenStarted && !chatOpen && (
         <OnboardModal
-          onSubmit={(prompt, mode, model, personaId, templateId) => {
+          onSubmit={(prompt, mode, model, personaId, templateId, tc) => {
             setGameMode(mode);
             setAIModel(model);
             setClaimedPersonaId(personaId);
+            setTroupeConfig(tc);
             setBoardGenStarted(true);
             setChatInitialPrompt(prompt);
             setChatInitialTemplateId(templateId);
@@ -3077,6 +3083,7 @@ export function Board({
           onAIComplete={handleAIComplete}
           claimedPersonaId={claimedPersonaId}
           onClaimChange={setClaimedPersonaId}
+          troupeConfig={troupeConfig}
           onMessagesChange={setRecentChatMessages}
           personObjects={personObjects}
           heckleEvents={heckleEvents}

@@ -190,6 +190,19 @@ export const PERSONA_COLORS: Record<string, string> = Object.fromEntries(
   DEFAULT_PERSONAS.map((p) => [p.name, p.color]),
 );
 
+/** One AI persona slot in the troupe with its assigned model */
+export interface TroupeMember {
+  personaId: string;
+  model: AIModel;
+  nickname?: string;
+}
+
+/** Player-configured AI cast for a scene - set at scene start via OnboardModal */
+export interface TroupeConfig {
+  members: TroupeMember[];
+  stageManagerModel?: AIModel;
+}
+
 /** Max human turns per scene before AI wraps up */
 export const SCENE_TURN_BUDGET = 20;
 

@@ -7,7 +7,7 @@ import { colors, getUserColor } from "../theme";
 import { Button } from "./Button";
 import { Modal } from "./Modal";
 import { SCENE_TURN_BUDGET, DEFAULT_PERSONAS } from "../../shared/types";
-import type { BoardObject, GameMode, Persona, AIModel, SceneLifecyclePhase } from "../../shared/types";
+import type { BoardObject, GameMode, Persona, AIModel, SceneLifecyclePhase, TroupeConfig } from "../../shared/types";
 import "../styles/animations.css";
 import { BOARD_TEMPLATES } from "../../shared/board-templates";
 import type { ToolName } from "../../server/ai-tools-sdk";
@@ -39,6 +39,8 @@ interface ChatPanelProps {
   heckleEvents?: HeckleEvent[];
   /** Called when performer sends a chat message - used to broadcast canvas speech bubble */
   onChatSend?: (text: string) => void;
+  /** Troupe config from OnboardModal - sent in body on the first message only (scene start) */
+  troupeConfig?: TroupeConfig;
 }
 
 // ---------------------------------------------------------------------------
@@ -338,6 +340,7 @@ export function ChatPanel({
   mobileMode = false,
   claimedPersonaId,
   onClaimChange,
+  troupeConfig,
   onMessagesChange,
   personObjects = [],
   heckleEvents = [],
@@ -509,6 +512,10 @@ export function ChatPanel({
       personaId: claimedPersonaId ?? undefined,
       intent: pendingIntent,
       templateId: pendingTemplateId,
+      // KEY-DECISION 2026-02-21: troupeConfig sent on every message (small payload).
+      // Server-side ChatAgent uses it on first exchange only; subsequent reads are no-ops.
+      // Can't gate by uiMessages.length here - uiMessages is useAgentChat's own return value.
+      troupeConfig,
     },
   });
 
