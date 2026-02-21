@@ -25,7 +25,8 @@
     "eval": "npx tsx scripts/prompt-eval.ts",
     "eval:narrative": "EVAL_SKIP_LAYOUT=1 npx tsx scripts/prompt-eval.ts",
     "eval:layout": "EVAL_SKIP_NARRATIVE=1 npx tsx scripts/prompt-eval.ts",
-    "eval:compare": "npx tsx scripts/prompt-compare.ts"
+    "eval:compare": "npx tsx scripts/prompt-compare.ts",
+    "playground": "npx tsx scripts/prompt-playground.ts"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^3.0.46",
