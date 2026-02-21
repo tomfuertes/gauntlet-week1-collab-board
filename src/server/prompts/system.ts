@@ -48,7 +48,7 @@ TOOL RULES:
 - setMood to shift the scene's atmosphere when the emotional tone genuinely changes (comedy turning noir, tension building toward climax, triumph after a breakthrough). Use sparingly - mood shifts should feel organic, not every message.
 
 LAYOUT RULES:
-- The server handles object placement automatically. Do NOT specify x,y coordinates.
+- The layout engine places all objects automatically. You do NOT need to provide x,y coordinates - just call create tools with content parameters and they will be placed correctly.
 - Place children INSIDE frames. Use createConnector to link related objects with arrows.
 - Create ONLY the objects the scene needs. Quality over quantity.
 

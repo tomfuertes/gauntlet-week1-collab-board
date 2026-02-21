@@ -364,17 +364,19 @@ async function runScenario(cookie: string, boardId: string, scenario: Scenario):
 
 function readPromptVersion(): string {
   try {
-    const src = readFileSync(join(__dirname, "..", "src", "server", "prompts.ts"), "utf8");
+    const src = readFileSync(join(__dirname, "..", "src", "server", "prompts", "index.ts"), "utf8");
     const m = src.match(/PROMPT_VERSION\s*=\s*["']([^"']+)["']/);
     if (!m) {
-      console.warn("[eval] WARNING: PROMPT_VERSION not found in prompts.ts - reports will have version=unknown");
+      console.warn("[eval] WARNING: PROMPT_VERSION not found in prompts/index.ts - reports will have version=unknown");
       return "unknown";
     }
     return m[1];
   } catch (err) {
     const isNotFound = err instanceof Error && (err as NodeJS.ErrnoException).code === "ENOENT";
     if (isNotFound) {
-      console.warn("[eval] WARNING: prompts.ts not found - run from repo root so src/server/prompts.ts is reachable.");
+      console.warn(
+        "[eval] WARNING: prompts/index.ts not found - run from repo root so src/server/prompts/index.ts is reachable.",
+      );
     } else {
       console.warn(`[eval] WARNING: Could not parse PROMPT_VERSION from prompts.ts: ${err}`);
     }

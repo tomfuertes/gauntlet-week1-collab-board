@@ -476,7 +476,8 @@ export function createSDKTools(
       description:
         "Create a sticky note (colored card) on the whiteboard. Use ONLY for action words, exclamations, " +
         "or status callouts that benefit from the colored card background (e.g. 'BANG!', 'DUCK!', 'DANGER!'). " +
-        "For dialogue, narration, labels, and descriptions, use createText instead (it's the default for text content).",
+        "For dialogue, narration, labels, and descriptions, use createText instead (it's the default for text content). " +
+        "Position is auto-placed by the layout engine - just specify text and optional color.",
       inputSchema: z.object({
         text: z.string().describe("The text content of the sticky note"),
         color: z
@@ -509,7 +510,8 @@ export function createSDKTools(
         "Place a character (stick figure) on the canvas with a name label above their head. " +
         "Use for scene characters, players, NPCs, and crowd members. " +
         "Use persona colors for AI characters: SPARK=#fb923c, SAGE=#4ade80. " +
-        "Prefer createPerson over drawScene for human characters.",
+        "Prefer createPerson over drawScene for human characters. " +
+        "Position is auto-placed by the layout engine - just specify name and optional color.",
       inputSchema: z.object({
         name: z.string().describe("Character name shown above the figure (e.g. 'Dr. Fang', 'The Patient', 'Nurse')"),
         color: z
@@ -539,7 +541,8 @@ export function createSDKTools(
     // 3. createShape (rect, circle, line)
     createShape: tool({
       description:
-        "Create a shape on the whiteboard. Use shape='rect' for rectangle, 'circle' for circle, 'line' for line.",
+        "Create a shape on the whiteboard. Use shape='rect' for rectangle, 'circle' for circle, 'line' for line. " +
+        "Position is auto-placed by the layout engine - just specify shape type and optional dimensions/colors.",
       inputSchema: z.object({
         shape: z.string().describe("Shape type: 'rect', 'circle', or 'line'"),
         width: z
@@ -592,7 +595,8 @@ export function createSDKTools(
     // 3. createFrame
     createFrame: tool({
       description:
-        "Create a frame (labeled container/region) on the whiteboard to group or organize objects. Frames render behind other objects.",
+        "Create a frame (labeled container/region) on the whiteboard to group or organize objects. Frames render behind other objects. " +
+        "Position is auto-placed by the layout engine - just specify title and optional dimensions.",
       inputSchema: z.object({
         title: z.string().describe("The frame title/label"),
         width: z.number().optional().describe("Width in pixels (default: 400)"),
@@ -854,7 +858,8 @@ export function createSDKTools(
       description:
         "Create a text label on the whiteboard. DEFAULT for dialogue, narration, labels, descriptions, captions, " +
         "character speech, scene text, and names. Prefer this over createStickyNote for virtually all text content. " +
-        "Only use createStickyNote when the colored card background adds visual meaning (action words, exclamations).",
+        "Only use createStickyNote when the colored card background adds visual meaning (action words, exclamations). " +
+        "Position is auto-placed by the layout engine - just specify text and optional color.",
       inputSchema: z.object({
         text: z.string().describe("The text content"),
         color: z.string().optional().describe("Text color hex (default: #1a1a2e)"),
@@ -1025,6 +1030,7 @@ export function createSDKTools(
       description:
         "Compose a visual character or object from 2-10 shapes in a bounding box. Uses proportional " +
         "coordinates (0-1) so you think in relative positions, not pixels. Auto-creates a text label. " +
+        "Canvas position is auto-placed - you only specify the bounding box size (width/height) and relative part positions. " +
         "Example snowman at (300,200) 150x250: " +
         'parts:[{shape:"circle",relX:0.5,relY:0.75,relW:0.9,relH:0.35,fill:"#fff"},' +
         '{shape:"circle",relX:0.5,relY:0.4,relW:0.6,relH:0.25,fill:"#fff"},' +
