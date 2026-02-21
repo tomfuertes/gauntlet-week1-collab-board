@@ -221,7 +221,7 @@ export type AIModel =
   | "mistral-small-3.1"
   | "gpt-4o-mini"
   | "gpt-4o"
-  | "gpt-5.1-mini"
+  | "gpt-5-mini"
   | "claude-haiku-4.5"
   | "claude-sonnet-4"
   | "claude-sonnet-4.6";
@@ -256,7 +256,7 @@ export const AI_MODELS = [
   },
   { id: "gpt-4o-mini" as const, label: "GPT-4o Mini", provider: "openai" as const, modelId: "gpt-4o-mini" },
   { id: "gpt-4o" as const, label: "GPT-4o", provider: "openai" as const, modelId: "gpt-4o" },
-  { id: "gpt-5.1-mini" as const, label: "GPT-5.1 Mini", provider: "openai" as const, modelId: "gpt-5.1-mini" },
+  { id: "gpt-5-mini" as const, label: "GPT-5 Mini", provider: "openai" as const, modelId: "gpt-5-mini" },
   {
     id: "claude-haiku-4.5" as const,
     label: "Claude Haiku 4.5",
@@ -273,7 +273,7 @@ export const AI_MODELS = [
     id: "claude-sonnet-4.6" as const,
     label: "Claude Sonnet 4.6",
     provider: "anthropic" as const,
-    modelId: "claude-sonnet-4-6-20250514",
+    modelId: "claude-sonnet-4-6",
   },
 ] as const;
 

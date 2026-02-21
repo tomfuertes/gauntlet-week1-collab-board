@@ -86,6 +86,10 @@ function parseGallery(): boolean {
   return location.hash === "#gallery";
 }
 
+function parsePrivacy(): boolean {
+  return location.hash === "#privacy";
+}
+
 function PrivacyPolicy() {
   const sectionHead: CSSProperties = {
     fontSize: "1.125rem",
@@ -175,6 +179,7 @@ function AppContent() {
   const [watchId, setWatchId] = useState<string | null>(parseWatchId);
   const [showChallenge, setShowChallenge] = useState(parseChallenge);
   const [showGallery, setShowGallery] = useState(parseGallery);
+  const [showPrivacy, setShowPrivacy] = useState(parsePrivacy);
 
   // Sync route state with hash changes (back/forward navigation)
   useEffect(() => {
@@ -184,6 +189,7 @@ function AppContent() {
       setWatchId(parseWatchId());
       setShowChallenge(parseChallenge());
       setShowGallery(parseGallery());
+      setShowPrivacy(parsePrivacy());
     };
     window.addEventListener("hashchange", onHashChange);
     return () => window.removeEventListener("hashchange", onHashChange);
@@ -214,7 +220,7 @@ function AppContent() {
     );
   }
 
-  if (location.hash === "#privacy") {
+  if (showPrivacy) {
     return <PrivacyPolicy />;
   }
 

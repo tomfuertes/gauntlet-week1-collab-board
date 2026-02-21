@@ -95,7 +95,7 @@ When working in a worktree, use absolute paths for file tools. Run git commands 
 
 The `playwright-cli` skill is available for automated browser testing. **Use it proactively** for UAT, smoke tests, and verifying features - don't stop to ask, just run it.
 
-**UAT and quality exploration swarms should target production** (`https://collabboard.thomas-fuertes.workers.dev`, future: `https://yesaind.com`), not localhost. Prod is what real users see and avoids wrangler dev quirks (DO cold starts, WS flakiness, single-IP rate limit buckets). Only use localhost for testing uncommitted code changes.
+**UAT and quality exploration swarms should target production** (`https://yesaind.com`), not localhost. Prod is what real users see and avoids wrangler dev quirks (DO cold starts, WS flakiness, single-IP rate limit buckets). Only use localhost for testing uncommitted code changes.
 
 ```bash
 # Basic flow
@@ -136,11 +136,13 @@ npx playwright test --reporter=dot     # minimal output (default 'list' floods c
 
 ### Agent Conventions
 
+**The orchestrator (main context) does ZERO implementation.** Every code change - even a 1-line fix - gets delegated to a teammate or haiku subagent. The lead's job: triage, task creation, agent spawning, merging. If you find yourself reaching for Edit/Write on a source file, stop and delegate instead.
+
 **Two agent tiers by task size:**
 
-**Lightweight (single-file, <20 lines):** implement -> typecheck -> lint -> commit. No UAT, no PR review. Trust the types.
+**Lightweight (single-file, <20 lines):** Delegate to haiku subagent (fastest, cheapest). implement -> typecheck -> lint -> commit. No UAT, no PR review. Trust the types.
 
-**Standard (multi-file or behavioral):** implement -> PR review (Skill) -> fix issues -> UAT if behavioral -> commit. **The branch MUST be clean-committed when the agent finishes.**
+**Standard (multi-file or behavioral):** Delegate to sonnet teammate in worktree. implement -> PR review (Skill) -> fix issues -> UAT if behavioral -> commit. **The branch MUST be clean-committed when the agent finishes.**
 
 **Task atomicity:** Pre-split complex tasks (3+ files or server+client) into atomic units. Each touches one concern. Orchestrator checks in every 3 minutes on long-running agents - if stuck, redirect or break smaller.
 
