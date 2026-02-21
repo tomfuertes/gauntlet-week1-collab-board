@@ -37,6 +37,8 @@ interface ChatPanelProps {
   personObjects?: BoardObject[];
   /** Heckle events from audience spectators - displayed distinctly in the chat area */
   heckleEvents?: HeckleEvent[];
+  /** Called when performer sends a chat message - used to broadcast canvas speech bubble */
+  onChatSend?: (text: string) => void;
 }
 
 // ---------------------------------------------------------------------------
@@ -339,6 +341,7 @@ export function ChatPanel({
   onMessagesChange,
   personObjects = [],
   heckleEvents = [],
+  onChatSend,
 }: ChatPanelProps) {
   const selectedIdsArray = useMemo(() => (selectedIds?.size ? [...selectedIds] : undefined), [selectedIds]);
 
@@ -613,6 +616,8 @@ export function ChatPanel({
     if (!text || loading) return;
     inputRef.current!.value = "";
     sendMessage(text);
+    // Notify Board so it can broadcast a canvas speech bubble to spectators
+    onChatSend?.(text);
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {

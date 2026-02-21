@@ -7,6 +7,10 @@ const FIGURE_W = 28;
 const GAP = 36;
 const MAX_VISIBLE = 28;
 const FIGURE_FILL = "rgba(8,12,28,0.88)";
+// KEY-DECISION 2026-02-21: Ghost fill is lighter (dark navy vs near-black) and drawn at 0.2 opacity
+// so 3 default silhouettes always convey "audience" without competing with stage content.
+const GHOST_FILL = "rgba(30,40,70,0.6)";
+const DEFAULT_AUDIENCE = 3; // always show this many ghost seats
 
 export const AUDIENCE_Y = 740; // world-space y of audience head centers
 const CANVAS_LEFT = 50;
@@ -26,21 +30,40 @@ interface AudienceRowProps {
 }
 
 export function AudienceRow({ spectatorCount }: AudienceRowProps) {
-  if (spectatorCount === 0) return null;
-
-  const xs = getAudienceFigureXs(spectatorCount);
-  const overflow = spectatorCount - xs.length;
+  // Always show at least 3 default ghost seats so the stage always has an "audience".
+  const displayCount = Math.max(DEFAULT_AUDIENCE, spectatorCount);
+  const xs = getAudienceFigureXs(displayCount);
+  const overflow = spectatorCount - Math.min(spectatorCount, MAX_VISIBLE);
 
   return (
-    <Layer listening={false} opacity={0.75}>
-      {xs.map((cx, i) => (
-        <React.Fragment key={i}>
-          {/* Head silhouette */}
-          <Ellipse x={cx} y={AUDIENCE_Y} radiusX={FIGURE_W / 2} radiusY={FIGURE_W / 2 + 2} fill={FIGURE_FILL} />
-          {/* Shoulders silhouette */}
-          <Ellipse x={cx} y={AUDIENCE_Y + 20} radiusX={FIGURE_W / 2 + 8} radiusY={10} fill={FIGURE_FILL} />
-        </React.Fragment>
-      ))}
+    <Layer listening={false}>
+      {xs.map((cx, i) => {
+        const isReal = i < spectatorCount;
+        const fill = isReal ? FIGURE_FILL : GHOST_FILL;
+        const opacity = isReal ? 0.75 : 0.2;
+        return (
+          <React.Fragment key={i}>
+            {/* Head silhouette */}
+            <Ellipse
+              x={cx}
+              y={AUDIENCE_Y}
+              radiusX={FIGURE_W / 2}
+              radiusY={FIGURE_W / 2 + 2}
+              fill={fill}
+              opacity={opacity}
+            />
+            {/* Shoulders silhouette */}
+            <Ellipse
+              x={cx}
+              y={AUDIENCE_Y + 20}
+              radiusX={FIGURE_W / 2 + 8}
+              radiusY={10}
+              fill={fill}
+              opacity={opacity}
+            />
+          </React.Fragment>
+        );
+      })}
       {overflow > 0 && (
         <KonvaText
           x={xs[xs.length - 1] + GAP}

@@ -9,6 +9,16 @@ export interface HeckleEvent {
   ts: number;
 }
 
+/** A transient speech bubble on the canvas - from either a heckle or performer chat message */
+export interface CanvasBubble {
+  id: string;
+  userId: string;
+  username: string;
+  text: string;
+  ts: number;
+  isHeckle: boolean;
+}
+
 interface UseSpectatorSocketReturn {
   connectionState: ConnectionState;
   initialized: boolean;
@@ -18,6 +28,7 @@ interface UseSpectatorSocketReturn {
   spectatorCount: number;
   reactions: Reaction[];
   heckleEvents: HeckleEvent[];
+  canvasBubbles: CanvasBubble[];
   sendCursor: (x: number, y: number) => void;
   sendReaction: (emoji: string, x: number, y: number) => void;
   sendHeckle: (text: string) => void;
@@ -38,6 +49,7 @@ export function useSpectatorSocket(boardId: string): UseSpectatorSocketReturn {
   const [spectatorCount, setSpectatorCount] = useState(0);
   const [reactions, setReactions] = useState<Reaction[]>([]);
   const [heckleEvents, setHeckleEvents] = useState<HeckleEvent[]>([]);
+  const [canvasBubbles, setCanvasBubbles] = useState<CanvasBubble[]>([]);
 
   useEffect(() => {
     let intentionalClose = false;
@@ -147,6 +159,30 @@ export function useSpectatorSocket(boardId: string): UseSpectatorSocketReturn {
               ...prev,
               { id: crypto.randomUUID(), userId: msg.userId, text: msg.text, ts: Date.now() },
             ]);
+            setCanvasBubbles((prev) => [
+              ...prev,
+              {
+                id: crypto.randomUUID(),
+                userId: msg.userId,
+                username: "Audience",
+                text: msg.text,
+                ts: Date.now(),
+                isHeckle: true,
+              },
+            ]);
+            break;
+          case "chat:bubble":
+            setCanvasBubbles((prev) => [
+              ...prev,
+              {
+                id: crypto.randomUUID(),
+                userId: msg.userId,
+                username: msg.username,
+                text: msg.text,
+                ts: Date.now(),
+                isHeckle: false,
+              },
+            ]);
             break;
           case "board:deleted":
             intentionalClose = true;
@@ -171,12 +207,19 @@ export function useSpectatorSocket(boardId: string): UseSpectatorSocketReturn {
     };
   }, [boardId]);
 
-  // Clean up expired reactions
+  const BUBBLE_TTL_MS = 5000;
+
+  // Clean up expired reactions and canvas bubbles
   useEffect(() => {
     const id = setInterval(() => {
       const cutoff = Date.now() - REACTION_TTL_MS;
+      const bubbleCutoff = Date.now() - BUBBLE_TTL_MS;
       setReactions((prev) => {
         const next = prev.filter((r) => r.ts > cutoff);
+        return next.length === prev.length ? prev : next;
+      });
+      setCanvasBubbles((prev) => {
+        const next = prev.filter((b) => b.ts > bubbleCutoff);
         return next.length === prev.length ? prev : next;
       });
     }, 500);
@@ -210,6 +253,7 @@ export function useSpectatorSocket(boardId: string): UseSpectatorSocketReturn {
     spectatorCount,
     reactions,
     heckleEvents,
+    canvasBubbles,
     sendCursor,
     sendReaction,
     sendHeckle,

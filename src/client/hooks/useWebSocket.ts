@@ -8,7 +8,7 @@ import type {
   TransientEffect,
 } from "@shared/types";
 import { SFX_EFFECTS } from "@shared/types";
-import type { HeckleEvent } from "./useSpectatorSocket";
+import type { HeckleEvent, CanvasBubble } from "./useSpectatorSocket";
 
 export type ConnectionState = "connecting" | "connected" | "reconnecting" | "disconnected" | "failed";
 
@@ -52,6 +52,7 @@ interface UseWebSocketReturn {
   spectatorCount: number;
   reactions: Reaction[];
   heckleEvents: HeckleEvent[];
+  canvasBubbles: CanvasBubble[];
   curtainCall: CurtainCallData | null;
   clearCurtainCall: () => void;
   send: (msg: WSClientMessage) => void;
@@ -121,6 +122,7 @@ export function useWebSocket(
   const [spectatorCount, setSpectatorCount] = useState(0);
   const [reactions, setReactions] = useState<Reaction[]>([]);
   const [heckleEvents, setHeckleEvents] = useState<HeckleEvent[]>([]);
+  const [canvasBubbles, setCanvasBubbles] = useState<CanvasBubble[]>([]);
   const [curtainCall, setCurtainCall] = useState<CurtainCallData | null>(null);
 
   useEffect(() => {
@@ -291,6 +293,30 @@ export function useWebSocket(
               ...prev,
               { id: crypto.randomUUID(), userId: msg.userId, text: msg.text, ts: Date.now() },
             ]);
+            setCanvasBubbles((prev) => [
+              ...prev,
+              {
+                id: crypto.randomUUID(),
+                userId: msg.userId,
+                username: "Audience",
+                text: msg.text,
+                ts: Date.now(),
+                isHeckle: true,
+              },
+            ]);
+            break;
+          case "chat:bubble":
+            setCanvasBubbles((prev) => [
+              ...prev,
+              {
+                id: crypto.randomUUID(),
+                userId: msg.userId,
+                username: msg.username,
+                text: msg.text,
+                ts: Date.now(),
+                isHeckle: false,
+              },
+            ]);
             break;
           case "sfx": {
             const sfxDef = SFX_EFFECTS.find((e) => e.id === msg.effect);
@@ -351,12 +377,17 @@ export function useWebSocket(
     return () => clearInterval(id);
   }, []);
 
-  // Clean up expired reactions (3s TTL)
+  // Clean up expired reactions (3s TTL) and canvas bubbles (5s TTL)
   useEffect(() => {
     const id = setInterval(() => {
-      const cutoff = Date.now() - 3000;
+      const reactionCutoff = Date.now() - 3000;
+      const bubbleCutoff = Date.now() - 5000;
       setReactions((prev) => {
-        const next = prev.filter((r) => r.ts > cutoff);
+        const next = prev.filter((r) => r.ts > reactionCutoff);
+        return next.length === prev.length ? prev : next;
+      });
+      setCanvasBubbles((prev) => {
+        const next = prev.filter((b) => b.ts > bubbleCutoff);
         return next.length === prev.length ? prev : next;
       });
     }, 500);
@@ -443,6 +474,7 @@ export function useWebSocket(
     spectatorCount,
     reactions,
     heckleEvents,
+    canvasBubbles,
     curtainCall,
     clearCurtainCall,
     send,

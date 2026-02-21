@@ -35,6 +35,7 @@ import { OnboardModal } from "./OnboardModal";
 import { ConfettiBurst } from "./ConfettiBurst";
 import { BoardGrid } from "./BoardGrid";
 import { AudienceRow, getAudienceFigureXs, AUDIENCE_Y } from "./AudienceRow";
+import { CanvasSpeechBubbles } from "./CanvasSpeechBubbles";
 import { PerfOverlay } from "./PerfOverlay";
 import { PostcardModal } from "./PostcardModal";
 import { RecapOverlay } from "./RecapOverlay";
@@ -628,6 +629,7 @@ export function Board({
     spectatorCount,
     reactions,
     heckleEvents,
+    canvasBubbles,
     curtainCall,
     clearCurtainCall,
     send,
@@ -755,6 +757,14 @@ export function Board({
   const [copied, setCopied] = useState(false);
   const undoAiTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const processedBatchIds = useRef(new Set<string>());
+
+  /** Send chat:bubble WS event so spectators see performer dialogue as a canvas speech bubble */
+  const handleChatSend = useCallback(
+    (text: string) => {
+      send({ type: "chat:bubble", text });
+    },
+    [send],
+  );
 
   /** Called when ChatPanel AI response completes - find batch objects and register for undo */
   const handleAIComplete = useCallback(() => {
@@ -2044,6 +2054,7 @@ export function Board({
             onClaimChange={setClaimedPersonaId}
             personObjects={personObjects}
             heckleEvents={heckleEvents}
+            onChatSend={handleChatSend}
           />
         </div>
 
@@ -2985,6 +2996,7 @@ export function Board({
           onMessagesChange={setRecentChatMessages}
           personObjects={personObjects}
           heckleEvents={heckleEvents}
+          onChatSend={handleChatSend}
         />
       )}
 
@@ -3146,6 +3158,15 @@ export function Board({
           </span>
         );
       })}
+
+      {/* Canvas speech bubbles - heckle shouts above audience + performer chat visible to spectators */}
+      <CanvasSpeechBubbles
+        bubbles={canvasBubbles}
+        spectatorCount={spectatorCount}
+        scale={scale}
+        stagePos={stagePos}
+        headerH={0}
+      />
 
       {/* Performance overlay (Shift+P or backtick to toggle) */}
       <PerfOverlay

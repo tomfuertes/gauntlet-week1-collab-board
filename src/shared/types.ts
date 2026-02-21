@@ -117,6 +117,7 @@ export type WSClientMessage =
   | { type: "batch:undo"; batchId: string }
   | { type: "reaction"; emoji: string; x: number; y: number }
   | { type: "heckle"; text: string }
+  | { type: "chat:bubble"; text: string }
   | { type: "obj:effect"; id: string; effect: EffectType }
   | { type: "obj:transient"; effect: TransientEffect }
   | { type: "obj:sequence"; steps: ChoreographyStep[] }
@@ -137,6 +138,7 @@ export type WSServerMessage =
   | { type: "text:blur"; userId: string; objectId: string }
   | { type: "reaction"; userId: string; emoji: string; x: number; y: number }
   | { type: "heckle"; userId: string; text: string }
+  | { type: "chat:bubble"; userId: string; username: string; text: string }
   | { type: "obj:effect"; id: string; effect: EffectType }
   | { type: "obj:transient"; effect: TransientEffect }
   | { type: "obj:sequence"; steps: ChoreographyStep[] }

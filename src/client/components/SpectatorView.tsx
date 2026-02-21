@@ -7,6 +7,8 @@ import { Button } from "./Button";
 import { BoardObjectRenderer } from "./BoardObjectRenderer";
 import { Cursors } from "./Cursors";
 import { BoardGrid } from "./BoardGrid";
+import { AudienceRow } from "./AudienceRow";
+import { CanvasSpeechBubbles } from "./CanvasSpeechBubbles";
 import "../styles/animations.css";
 
 const HECKLE_COST = 5;
@@ -38,6 +40,7 @@ export function SpectatorView({ boardId, onBack }: SpectatorViewProps) {
     presence,
     spectatorCount,
     reactions,
+    canvasBubbles,
     sendCursor,
     sendReaction,
     sendHeckle,
@@ -309,6 +312,8 @@ export function SpectatorView({ boardId, onBack }: SpectatorViewProps) {
             ))}
             <Cursors cursors={cursors} />
           </Layer>
+          {/* Audience silhouettes - always show 3 ghost seats, more when spectators present */}
+          <AudienceRow spectatorCount={spectatorCount} />
         </Stage>
 
         {/* Floating reactions overlay */}
@@ -322,6 +327,15 @@ export function SpectatorView({ boardId, onBack }: SpectatorViewProps) {
             </span>
           );
         })}
+
+        {/* Canvas speech bubbles - heckles above audience seats + performer chat on stage */}
+        <CanvasSpeechBubbles
+          bubbles={canvasBubbles}
+          spectatorCount={spectatorCount}
+          scale={scale}
+          stagePos={stagePos}
+          headerH={0}
+        />
       </div>
 
       {/* Heckle input (shown when active) */}

@@ -333,6 +333,14 @@ export class Board extends DurableObject<Bindings> {
       return;
     }
 
+    if (msg.type === "chat:bubble" && meta.role === "player") {
+      const text = typeof msg.text === "string" ? msg.text.trim().slice(0, 200) : "";
+      if (!text) return;
+      // Broadcast to ALL clients (players + spectators) so the stage chat is visible to audience
+      this.broadcast({ type: "chat:bubble", userId: meta.userId, username: meta.username, text });
+      return;
+    }
+
     if (msg.type === "sfx" && meta.role === "player") {
       // Validate effect against whitelist
       const sfxDef = SFX_EFFECTS.find((e) => e.id === msg.effect);
