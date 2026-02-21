@@ -16,7 +16,7 @@ playwright-report/
 .claude-prompt
 .dev.vars
 worker-configuration.d.ts
-# eval results tracked in git for scoring history
+scripts/eval-results/
 .claude/worktrees/
 plans/
 .ref/

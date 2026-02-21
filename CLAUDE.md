@@ -64,7 +64,7 @@ npm run migrate:remote       # apply pending to remote only
 # IMPORTANT: source .dev.vars first - eval/judge scripts need API keys as shell env vars
 source .dev.vars && EVAL_MODEL=claude-haiku-4.5 npm run eval   # run all scenarios
 # EVAL_USERNAME/EVAL_PASSWORD/EVAL_MODEL env vars override defaults (eval/eval1234/glm-4.7-flash)
-# JSON reports written to scripts/eval-results/<timestamp>.json (tracked in git for scoring history)
+# JSON reports written to scripts/eval-results/<timestamp>.json (gitignored, kept on disk for reference)
 
 # Format & Audit
 npm run format           # prettier --write
