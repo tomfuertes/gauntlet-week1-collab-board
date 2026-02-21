@@ -85,13 +85,6 @@ After worktree creation, run `npm ci` to install deps (lockfile-only, fast).
 
 When working in a worktree, use absolute paths for file tools. Run git commands directly (not `git -C`) - the working directory is already the repo/worktree.
 
-**Model selection by task complexity:**
-- `model: "opus"` - Thought-heavy: architectural design, complex decisions, ambiguous debugging, multi-system reasoning
-- `model: "sonnet"` - Default workhorse: scoped implementation, plan execution, long-form exploration
-- `model: "haiku"` - Only for truly mechanical zero-reasoning tasks: bulk renames, single config value changes. If it requires any logic or unclear scope, use sonnet.
-
-**Check-in cadence:** Ping long-running agents every 3 minutes for status. If no response or no commits after 2 check-ins, kill and re-split smaller. Idle notifications between turns are normal - don't react unless overdue.
-
 **NEVER delegate merging to sub-agents.** Always merge worktree branches in main context (the orchestrator). Worktree branches fork from a point-in-time snapshot of main. If other branches merge first, a sub-agent's squash merge will silently revert the intervening changes. The orchestrator must: (1) check `git diff main..feat/<branch>` for unexpected reversions, (2) rebase onto current main if needed, (3) resolve conflicts with full project context, (4) typecheck after merge.
 
 ## Browser Testing (playwright-cli)
@@ -136,27 +129,6 @@ npx playwright test --reporter=dot     # minimal output (default 'list' floods c
 - **Reactive persona UAT timing:** SAGE/reactive persona reliably triggers on the 2nd+ exchange, not the 1st (timing gap: `ctx.waitUntil` fires before base class adds the new assistant message to `this.messages`). GLM reactive `generateText` takes 30-40s. UAT must send a follow-up message before testing SAGE, then wait 45-60s.
 - **WS flakiness in local dev is expected.** First WS connection often drops with wrangler dev (DO cold start during WS handshake). The app reconnects but E2E/UAT tests must account for this. **After navigating to a board, always wait for `[data-state="connected"]` before interacting.** This selector is on the connection status dot in the header. Use `createObjectsViaWS()` helper (in `e2e/helpers.ts`) instead of UI double-click for reliable object creation. `wsRef.current` can be null after a drop even when React state shows "connected".
 - **HMR hook-order false positive:** "React has detected a change in the order of Hooks called by Board" during dev = Vite HMR artifact, not a real bug. Full page reload fixes it. Never investigate this error in a live dev session.
-
-### Agent Conventions
-
-**The orchestrator (main context) does ZERO implementation.** Every code change - even a 1-line fix - gets delegated to a teammate or haiku subagent. The lead's job: triage, task creation, agent spawning, merging. If you find yourself reaching for Edit/Write on a source file, stop and delegate instead.
-
-**Two agent tiers by task size:**
-
-**Lightweight (single-file, <20 lines):** Delegate to haiku subagent (fastest, cheapest). implement -> typecheck -> commit. No UAT, no PR review. Trust the types.
-
-**Standard (multi-file or behavioral):** Delegate to sonnet teammate in worktree. implement -> PR review (Skill) -> fix issues -> UAT if behavioral -> commit. **The branch MUST be clean-committed when the agent finishes.**
-
-**Task atomicity:** Pre-split complex tasks (3+ files or server+client) into atomic units. Each touches one concern. Orchestrator checks in every 3 minutes on long-running agents - if stuck, redirect or break smaller.
-
-Agent prompts must explicitly mention:
-- **Dev server startup** (only if UAT needed): `npm run dev` with `run_in_background: true` and `dangerouslyDisableSandbox: true`. Then `npm run health` to wait.
-- `scripts/localcurl.sh` instead of `curl`
-- "Read CLAUDE.md and relevant source files before implementing"
-- "Commit all changes to the feature branch. Do not open a PR."
-- **KEY-DECISION comments**: `// KEY-DECISION <YYYY-MM-DD>: <rationale>` at the code location.
-- `"Write your implementation plan to $TMPDIR/plan-{task-id}.md before coding"` - if the agent runs out of context, the orchestrator can read the plan to assess progress and hand off cleanly.
-- Agents should prefer atomic tool calls over exploratory browsing to conserve context window.
 
 ## Architecture
 
@@ -249,7 +221,7 @@ Each object stored as separate DO Storage key (`obj:{uuid}`, ~200 bytes). LWW vi
 
 ## Custom Agents (Delegation)
 
-Main context is the orchestrator. Delegate aggressively - keep main context for decisions, not execution. **Default to agent teams** (`TeamCreate`) for all multi-agent work. In a swarm/team context, even "atomic" tasks (eval harness, test suite) should be team members so they can report via `SendMessage` and cross-reference findings. Background tasks (`run_in_background: true`) only for truly independent one-shots outside a team context (e.g. a single build while the user waits).
+See `~/.claude/CLAUDE.md` for agent workflow, model selection, and team conventions. Below is project-specific delegation config.
 
 | Task | Agent | Model | Mode | How |
 |------|-------|-------|------|-----|
@@ -267,7 +239,14 @@ Main context is the orchestrator. Delegate aggressively - keep main context for 
 
 **UAT uses teams, not background tasks.** Each test scenario gets a teammate that reports failures immediately via `SendMessage`. The lead triages and fixes while other flows still run. Before spawning UAT, enumerate scenarios as a numbered list for the user.
 
-**Agent bash rules:** Agents must keep shell commands simple and direct. No clever variable capture patterns (`LATEST=$(ls -t ... | head -1)`), no chained subshells, no heredoc gymnastics. If a command needs more than one pipe, break it into separate tool calls. Simple commands are readable, debuggable, and don't trigger unnecessary permission prompts.
+**Agent prompts must explicitly mention:**
+- **Dev server startup** (only if UAT needed): `npm run dev` with `run_in_background: true` and `dangerouslyDisableSandbox: true`. Then `npm run health` to wait.
+- `scripts/localcurl.sh` instead of `curl`
+- "Read CLAUDE.md and relevant source files before implementing"
+- "Commit all changes to the feature branch. Do not open a PR."
+- **KEY-DECISION comments**: `// KEY-DECISION <YYYY-MM-DD>: <rationale>` at the code location.
+- `"Write your implementation plan to $TMPDIR/plan-{task-id}.md before coding"` - if the agent runs out of context, the orchestrator can read the plan to assess progress and hand off cleanly.
+- Agents should prefer atomic tool calls over exploratory browsing to conserve context window.
 
 Never run playwright-cli sessions or full test suites in main Opus context. Always delegate.
 
