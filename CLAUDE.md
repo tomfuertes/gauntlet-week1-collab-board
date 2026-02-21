@@ -52,6 +52,7 @@ React + Vite + react-konva + TypeScript | Cloudflare Workers + Hono + Durable Ob
 - **v20 baseline (Haiku):** 4/10 layout pass, avg overlap 3.5, OOB=0. Narrative 3.2/5 (first clean judge run). Server-side enforcement eliminated OOB entirely.
 - **v21 fixes:** (1) Judge pipeline now includes toolCalls in transcript (was blind to tool_usage). (2) Visual tool mandate - createPerson/drawScene required, createText restricted to dialogue. (3) maxCreates parameterized per call site (was 4 per closure x 6 closures = uncapped). (4) Game mode restructure: hat/freezetag removed, Harold added.
 - **v22 fix:** Zero-tolerance overlap enforcement in `enforcedCreate()`. Threshold 0.2->0, nudge step 20px->objectWidth+16px gap, lines/connectors exempted. LLMs can't do spatial reasoning; code handles it.
+- **v23 architecture:** Server-side auto-layout engine. LLMs no longer specify x,y - `flowPlace()` in `createSDKTools` closure reads existing board state (lazy-init, cached per closure) and shelf-packs new objects left-to-right, top-to-bottom with 16px gaps. Frame-aware: objects created after a frame go inside it. `drawScene` compositions bypass per-part count cap (entire composition = 1 create). `enforcedCreate()` simplified to count cap + OOB clamping only (no nudge loop). Tool schemas stripped of x,y params.
 - **Eval command:** `set -a && source .dev.vars && set +a && EVAL_MODEL=claude-haiku-4.5 npm run eval` (must use `set -a` to export vars to child processes).
 
 ## Commands

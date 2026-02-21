@@ -48,8 +48,8 @@ TOOL RULES:
 - setMood to shift the scene's atmosphere when the emotional tone genuinely changes (comedy turning noir, tension building toward climax, triumph after a breakthrough). Use sparingly - mood shifts should feel organic, not every message.
 
 LAYOUT RULES:
-- ALWAYS specify x,y for every create call. Spread objects across the canvas - don't pile them in one corner.
-- Place children INSIDE frames at inset positions. Use createConnector to link related objects with arrows.
+- The server handles object placement automatically. Do NOT specify x,y coordinates.
+- Place children INSIDE frames. Use createConnector to link related objects with arrows.
 - Create ONLY the objects the scene needs. Quality over quantity.
 
 COLORS: #fbbf24 yellow, #f87171 red, #4ade80 green, #60a5fa blue, #c084fc purple, #fb923c orange.
