@@ -588,6 +588,7 @@ export function Board({
     y: number;
     width: number;
     height: number;
+    startObjectId?: string;
     snapTarget?: { objectId: string; snapPoint: { x: number; y: number } };
   } | null>(null);
   const shapeDraftRef = useRef(shapeDraft);
@@ -1457,17 +1458,21 @@ export function Board({
           updatedAt: Date.now(),
         });
       } else if (ds.toolMode === "connector") {
+        // Use snap point as start if click landed on/near an object; otherwise center on click
+        const lineStartX = ds.startSnapPoint?.x ?? cx - 100;
+        const lineStartY = ds.startSnapPoint?.y ?? cy;
         createObject({
           id: crypto.randomUUID(),
           type: "line",
-          x: cx - 100,
-          y: cy,
+          x: lineStartX,
+          y: lineStartY,
           width: 200,
           height: 0,
           rotation: 0,
           props: { stroke: "#94a3b8", arrow: "end" },
           createdBy: user.id,
           updatedAt: Date.now(),
+          startObjectId: ds.startObjectId,
         });
       } else if (ds.toolMode === "text") {
         const id = crypto.randomUUID();
@@ -2405,6 +2410,18 @@ export function Board({
                   pointerWidth={10 / scale}
                   listening={false}
                 />
+                {/* Snap indicator at start */}
+                {shapeDraft.startObjectId && (
+                  <KonvaCircle
+                    x={shapeDraft.x}
+                    y={shapeDraft.y}
+                    radius={6 / scale}
+                    fill="rgba(99,102,241,0.4)"
+                    stroke="#6366f1"
+                    strokeWidth={2 / scale}
+                    listening={false}
+                  />
+                )}
                 {/* Snap indicator at end */}
                 {shapeDraft.snapTarget && (
                   <KonvaCircle
