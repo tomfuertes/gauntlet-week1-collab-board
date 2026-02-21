@@ -21,7 +21,11 @@
     "format:check": "prettier --check \"src/**/*.{ts,tsx}\"",
     "traces": "scripts/traces.sh",
     "traces:remote": "TRACES_ENV=remote scripts/traces.sh",
-    "update-deps": "npx npm-check-updates -u --reject 'vite,@vitejs/plugin-react' && npm ci"
+    "update-deps": "npx npm-check-updates -u --reject 'vite,@vitejs/plugin-react' && npm ci",
+    "eval": "npx tsx scripts/prompt-eval.ts",
+    "eval:narrative": "EVAL_SKIP_LAYOUT=1 npx tsx scripts/prompt-eval.ts",
+    "eval:layout": "EVAL_SKIP_NARRATIVE=1 npx tsx scripts/prompt-eval.ts",
+    "eval:compare": "npx tsx scripts/prompt-compare.ts"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^3.0.46",

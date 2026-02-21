@@ -1,0 +1,92 @@
+[
+  {
+    "id": "scene-arc-dentist",
+    "description": "Full dramatic arc: vampire dentist scene with escalation and callback",
+    "gameMode": "freeform",
+    "turns": [
+      { "text": "A vampire walks into a dentist's office", "waitForToolCalls": true },
+      { "text": "I'm terrified of garlic toothpaste", "waitForToolCalls": true },
+      { "text": "Plot twist!", "intent": "Plot twist!", "waitForToolCalls": true },
+      {
+        "text": "Wrap it up - the dental hygienist just walked in and she's Van Helsing's daughter",
+        "waitForToolCalls": true
+      }
+    ],
+    "primaryDimensions": ["yes_and_quality", "dramatic_arc", "audience_engagement"],
+    "minExpectedObjects": 3,
+    "notes": "Tests whether AI builds on each offer, escalates through complications, and attempts a satisfying resolution. The Van Helsing callback should tie back to the vampire premise."
+  },
+  {
+    "id": "character-consistency",
+    "description": "Tests persona voice stability across conflicting offers",
+    "gameMode": "freeform",
+    "personaId": "default-spark",
+    "turns": [
+      { "text": "We're in a library that's secretly a spy headquarters", "waitForToolCalls": true },
+      {
+        "text": "The librarian shushes us but she's clearly speaking into her collar",
+        "waitForToolCalls": true
+      },
+      {
+        "text": "note: keep your character voice strong, don't slip into narrator mode",
+        "waitForToolCalls": false
+      },
+      { "text": "A group of kindergartners on a field trip just walked in", "waitForToolCalls": true }
+    ],
+    "primaryDimensions": ["character_voice", "yes_and_quality"],
+    "minExpectedObjects": 2,
+    "notes": "Tests SPARK voice consistency. The kindergartners offer is a tonal shift - does SPARK stay bold/chaotic or revert to generic AI? The director note mid-scene tests whether the AI adjusts without breaking character."
+  },
+  {
+    "id": "tool-narrative-sync",
+    "description": "Tests whether canvas objects serve the narrative or just fill space",
+    "gameMode": "freeform",
+    "turns": [
+      {
+        "text": "We're at a cooking competition. The secret ingredient is... revenge.",
+        "waitForToolCalls": true
+      },
+      {
+        "text": "The judge tastes the dish and his face goes through seven emotions",
+        "waitForToolCalls": true
+      },
+      {
+        "text": "Meanwhile, elsewhere...",
+        "intent": "Meanwhile, elsewhere...",
+        "waitForToolCalls": true
+      }
+    ],
+    "primaryDimensions": ["tool_usage", "audience_engagement"],
+    "minExpectedObjects": 4,
+    "notes": "Tests tool usage quality: does the AI use frames for locations, persons for characters, text for dialogue, effects for dramatic moments? The 'meanwhile elsewhere' intent should create a parallel frame. Canvas should tell a visual story, not just be text dumps."
+  },
+  {
+    "id": "yesand-chain",
+    "description": "Yes-And Chain mode: tests escalation discipline and beat-by-beat building",
+    "gameMode": "yesand",
+    "turns": [
+      { "text": "There's a penguin in the break room", "waitForToolCalls": true },
+      { "text": "Yes, and he's wearing a tiny business suit", "waitForToolCalls": true },
+      { "text": "Yes, and he just got promoted to VP of Antarctic Operations", "waitForToolCalls": true },
+      {
+        "text": "Yes, and the other VPs are jealous because he has the corner igloo",
+        "waitForToolCalls": true
+      }
+    ],
+    "primaryDimensions": ["yes_and_quality", "dramatic_arc", "character_voice"],
+    "minExpectedObjects": 2,
+    "notes": "Tests Yes-And Chain mode rules: does every AI response start with 'Yes, and...'? Does escalation happen in controlled increments (one notch, not ten)? By turn 4 the scene should have built a coherent mini-world, not a random pile of non-sequiturs."
+  },
+  {
+    "id": "audience-engagement-cold",
+    "description": "Cold open with a vague prompt - tests AI's ability to make something from nothing",
+    "gameMode": "freeform",
+    "turns": [
+      { "text": "Something weird is happening", "waitForToolCalls": true },
+      { "text": "Make it weirder", "waitForToolCalls": true }
+    ],
+    "primaryDimensions": ["audience_engagement", "tool_usage", "dramatic_arc"],
+    "minExpectedObjects": 2,
+    "notes": "Deliberately vague prompts. A strong AI makes bold, specific choices that create a world. A weak AI hedges with generic responses. Two turns only - tests density of interesting content per exchange. The best responses will commit to something concrete and surprising on turn 1, then escalate on turn 2."
+  }
+]

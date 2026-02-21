@@ -4,10 +4,14 @@
  * Requires a running dev server (npm run dev + npm run health).
  *
  * Env vars:
- *   EVAL_USERNAME   login username (default: "eval")
- *   EVAL_PASSWORD   login password (default: "eval1234")
- *   EVAL_MODEL      AI model ID (default: "glm-4.7-flash")
- *   EVAL_PORT       override server port (default: 8787)
+ *   EVAL_USERNAME      login username (default: "eval")
+ *   EVAL_PASSWORD      login password (default: "eval1234")
+ *   EVAL_MODEL         AI model ID (default: "glm-4.7-flash")
+ *   EVAL_PORT          override server port (default: 8787)
+ *   EVAL_JUDGE_MODEL   judge model ID (default: "claude-sonnet-4")
+ *   EVAL_SKIP_JUDGE    set to "1" to skip judge scoring (transcript-only mode)
+ *   EVAL_SKIP_LAYOUT   set to "1" to skip layout scenarios
+ *   EVAL_SKIP_NARRATIVE set to "1" to skip narrative scenarios
  */
 
 import { readFileSync, existsSync, mkdirSync, writeFileSync } from "fs";
@@ -17,6 +21,7 @@ import { fileURLToPath } from "url";
 import { WebSocket } from "ws";
 // langfuse is a direct dependency (already in package.json)
 import { Langfuse } from "langfuse";
+import { judgeTranscript, type JudgeResult } from "./judge-rubric.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -31,6 +36,7 @@ const USERNAME = process.env.EVAL_USERNAME ?? "eval";
 const PASSWORD = process.env.EVAL_PASSWORD ?? "eval1234";
 const MODEL = process.env.EVAL_MODEL ?? "glm-4.7-flash";
 const SCENARIO_TIMEOUT_MS = 30_000;
+const NARRATIVE_TURN_TIMEOUT_MS = 45_000;
 
 // Cloudflare Agents SDK WS message types (from @cloudflare/ai-chat/dist/types.js)
 const CF_AGENT_USE_CHAT_REQUEST = "cf_agent_use_chat_request";
@@ -64,6 +70,43 @@ interface ScenarioResult {
   objectCount: number;
   expectedMinObjects: number;
   typesMatch: boolean | null;
+  latencyMs: number;
+  error?: string;
+}
+
+interface NarrativeScenario {
+  id: string;
+  description: string;
+  gameMode: string;
+  personaId?: string;
+  turns: {
+    text: string;
+    intent?: string;
+    waitForToolCalls: boolean;
+  }[];
+  primaryDimensions: string[];
+  minExpectedObjects: number;
+  notes?: string;
+}
+
+interface TranscriptEntry {
+  role: "player" | "ai";
+  text: string;
+  toolCalls?: string[];
+  turnIndex: number;
+  timestampMs: number;
+}
+
+interface NarrativeScenarioResult {
+  id: string;
+  description: string;
+  transcript: TranscriptEntry[];
+  judgeResult: JudgeResult | null; // null if judge call failed or skipped
+  layoutMetrics: {
+    objectCount: number;
+    overlapScore: number;
+    outOfBounds: number;
+  };
   latencyMs: number;
   error?: string;
 }
@@ -333,6 +376,254 @@ function readPromptVersion(): string {
 }
 
 // ---------------------------------------------------------------------------
+// Narrative scenario runner (multi-turn)
+// ---------------------------------------------------------------------------
+
+/**
+ * Run a multi-turn narrative scenario. Sends messages sequentially,
+ * collecting the full AI response text + tool calls for each turn.
+ *
+ * Key differences from single-turn runScenario():
+ * - Does NOT clear chat between turns (multi-turn conversation)
+ * - Captures AI response text from CF_AGENT_USE_CHAT_RESPONSE frames
+ * - Waits for done:true between turns when waitForToolCalls is true
+ * - Accumulates transcript for judge submission
+ * - Clears chat only at scenario START (fresh conversation)
+ */
+async function runNarrativeScenario(
+  cookie: string,
+  boardId: string,
+  scenario: NarrativeScenario,
+): Promise<NarrativeScenarioResult> {
+  const scenarioStart = Date.now();
+  const transcript: TranscriptEntry[] = [];
+
+  // Build up the messages array across turns (mirrors how ChatPanel.tsx accumulates history)
+  const accumulatedMessages: {
+    id: string;
+    role: string;
+    parts: { type: string; text: string }[];
+    createdAt: string;
+  }[] = [];
+
+  let scenarioError: string | undefined;
+
+  // Process each turn sequentially via a single persistent WS connection
+  const ws = new WebSocket(`${WS_BASE}/agents/chat-agent/${boardId}`, {
+    headers: { Cookie: `session=${cookie}` },
+  });
+
+  try {
+    await new Promise<void>((resolveOpen, rejectOpen) => {
+      const openTimeout = setTimeout(() => rejectOpen(new Error("WS open timeout (10s)")), 10_000);
+      ws.on("open", () => {
+        clearTimeout(openTimeout);
+        // Clear chat history at scenario start for fresh conversation
+        ws.send(JSON.stringify({ type: CF_AGENT_CHAT_CLEAR }));
+        resolveOpen();
+      });
+      ws.on("error", (err: Error) => {
+        clearTimeout(openTimeout);
+        rejectOpen(err);
+      });
+    });
+
+    for (let turnIndex = 0; turnIndex < scenario.turns.length; turnIndex++) {
+      const turn = scenario.turns[turnIndex];
+      const turnStart = Date.now();
+      const requestId = nanoid8();
+
+      // Build the user message for this turn
+      const userMessage = {
+        id: nanoid8(),
+        role: "user",
+        parts: [{ type: "text", text: turn.text }],
+        createdAt: new Date().toISOString(),
+      };
+      accumulatedMessages.push(userMessage);
+
+      // Record player transcript entry
+      transcript.push({
+        role: "player",
+        text: turn.text,
+        turnIndex,
+        timestampMs: turnStart - scenarioStart,
+      });
+
+      // Send the turn
+      const requestBody: Record<string, unknown> = {
+        messages: accumulatedMessages,
+        gameMode: scenario.gameMode,
+        model: MODEL,
+      };
+      if (scenario.personaId) requestBody["personaId"] = scenario.personaId;
+      if (turn.intent) requestBody["intent"] = turn.intent;
+
+      ws.send(
+        JSON.stringify({
+          id: requestId,
+          init: {
+            method: "POST",
+            body: JSON.stringify(requestBody),
+          },
+          type: CF_AGENT_USE_CHAT_REQUEST,
+        }),
+      );
+
+      // For turns that don't wait for tool calls, skip listening for response
+      if (!turn.waitForToolCalls) {
+        continue;
+      }
+
+      // Wait for the done frame, collecting text deltas and tool calls
+      const { aiText, toolCallNames } = await new Promise<{
+        aiText: string;
+        toolCallNames: string[];
+      }>((resolveTurn, rejectTurn) => {
+        let textBuffer = "";
+        const toolNames: string[] = [];
+        let turnSettled = false;
+
+        const turnTimeout = setTimeout(() => {
+          if (!turnSettled) {
+            turnSettled = true;
+            rejectTurn(new Error(`Turn ${turnIndex} timeout (45s)`));
+          }
+        }, NARRATIVE_TURN_TIMEOUT_MS);
+
+        const onMessage = (raw: Buffer) => {
+          if (turnSettled) return;
+          let data: Record<string, unknown>;
+          try {
+            data = JSON.parse(raw.toString());
+          } catch {
+            return; // Non-JSON frames are normal during handshake
+          }
+
+          if (data["type"] !== CF_AGENT_USE_CHAT_RESPONSE) return;
+          if (data["id"] !== requestId) return;
+
+          // Collect text deltas from streaming response
+          const body = data["body"];
+          if (typeof body === "string") {
+            try {
+              const bodyParsed = JSON.parse(body) as Record<string, unknown>;
+              // Text delta
+              if (typeof bodyParsed["textDelta"] === "string") {
+                textBuffer += bodyParsed["textDelta"];
+              }
+              // Tool call name
+              if (typeof bodyParsed["toolName"] === "string") {
+                const toolName = bodyParsed["toolName"] as string;
+                if (!toolNames.includes(toolName)) toolNames.push(toolName);
+              }
+            } catch {
+              // body may not always be JSON - ignore
+            }
+          }
+
+          if (!data["done"]) return;
+
+          // Turn complete
+          clearTimeout(turnTimeout);
+          turnSettled = true;
+          ws.off("message", onMessage);
+          resolveTurn({ aiText: textBuffer, toolCallNames: toolNames });
+        };
+
+        ws.on("message", onMessage);
+      });
+
+      // Record AI transcript entry
+      transcript.push({
+        role: "ai",
+        text: aiText,
+        toolCalls: toolCallNames.length > 0 ? toolCallNames : undefined,
+        turnIndex,
+        timestampMs: Date.now() - scenarioStart,
+      });
+
+      // Add AI response to accumulated messages for next turn context
+      accumulatedMessages.push({
+        id: nanoid8(),
+        role: "assistant",
+        parts: [{ type: "text", text: aiText }],
+        createdAt: new Date().toISOString(),
+      });
+    }
+  } catch (err) {
+    scenarioError = String(err);
+  } finally {
+    try {
+      ws.close();
+    } catch {
+      /* already closed */
+    }
+  }
+
+  // Fetch board state for layout metrics
+  let layoutMetrics = { objectCount: 0, overlapScore: 0, outOfBounds: 0 };
+  try {
+    const { metrics } = await getBoardObjects(cookie, boardId);
+    layoutMetrics = {
+      objectCount: metrics.total,
+      overlapScore: metrics.overlapScore,
+      outOfBounds: metrics.outOfBounds,
+    };
+  } catch {
+    // non-fatal - layout metrics are best-effort
+  }
+
+  // Judge the transcript (unless skipped)
+  let judgeResult: JudgeResult | null = null;
+  if (!scenarioError && process.env.EVAL_SKIP_JUDGE !== "1" && transcript.length > 0) {
+    try {
+      judgeResult = await judgeTranscript(
+        transcript.map((t) => ({ role: t.role, text: t.text })),
+        scenario.id,
+      );
+    } catch (err) {
+      console.warn(`\n[eval] Judge failed for ${scenario.id}: ${err}`);
+    }
+  }
+
+  return {
+    id: scenario.id,
+    description: scenario.description,
+    transcript,
+    judgeResult,
+    layoutMetrics,
+    latencyMs: Date.now() - scenarioStart,
+    error: scenarioError,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Narrative result console output
+// ---------------------------------------------------------------------------
+
+function printNarrativeResult(result: NarrativeScenarioResult): void {
+  const status = result.error ? "ERROR" : result.judgeResult ? "JUDGED" : "TRANSCRIPT";
+  const overall = result.judgeResult ? `overall=${result.judgeResult.overallScore.toFixed(1)}` : "no-judge";
+  const errStr = result.error ? ` (${result.error})` : "";
+
+  console.log(`\n  ${result.id}`);
+  console.log(
+    `    ${status}  ${overall}  objects=${result.layoutMetrics.objectCount}` +
+      `  ${(result.latencyMs / 1000).toFixed(1)}s${errStr}`,
+  );
+
+  if (result.judgeResult) {
+    for (const dim of result.judgeResult.dimensions) {
+      console.log(`    ${dim.dimension.padEnd(22)} ${dim.score}/5  ${dim.reasoning}`);
+    }
+    console.log(`    summary: ${result.judgeResult.summary}`);
+  }
+
+  console.log(`    turns: ${result.transcript.filter((t) => t.role === "player").length}`);
+}
+
+// ---------------------------------------------------------------------------
 // Main
 // ---------------------------------------------------------------------------
 
@@ -374,108 +665,223 @@ async function main() {
     process.exit(1);
   }
 
-  // Load scenarios
-  const scenariosPath = join(__dirname, "scenarios.json");
-  if (!existsSync(scenariosPath)) {
-    console.error(`[eval] scenarios.json not found at: ${scenariosPath}`);
-    console.error("[eval] Create scripts/scenarios.json with an array of Scenario objects (see scenarios.json for the format).");
-    process.exit(1);
-  }
-  const scenarios: Scenario[] = JSON.parse(readFileSync(scenariosPath, "utf8"));
-  console.log(`[eval] Running ${scenarios.length} scenarios...\n`);
+  // ---------------------------------------------------------------------------
+  // Phase 1: Layout scenarios
+  // ---------------------------------------------------------------------------
 
-  // Run each scenario sequentially (WS connections, board state checks)
-  const results: ScenarioResult[] = [];
-  for (const scenario of scenarios) {
-    process.stdout.write(`  ${scenario.id.padEnd(22)}`);
+  const layoutResults: ScenarioResult[] = [];
 
-    try {
-      await clearBoard(cookie, boardId);
-    } catch (err) {
-      console.error(`\n[eval] clearBoard failed for ${scenario.id}: ${err} - skipping`);
-      results.push({
-        id: scenario.id, description: scenario.description ?? "", pass: false,
-        overlapScore: 0, outOfBounds: 0, objectCount: 0,
-        expectedMinObjects: scenario.expectedMinObjects ?? 1, typesMatch: null,
-        latencyMs: 0, error: `clearBoard failed: ${String(err)}`,
-      });
-      continue;
+  if (process.env.EVAL_SKIP_LAYOUT !== "1") {
+    const scenariosPath = join(__dirname, "scenarios.json");
+    if (!existsSync(scenariosPath)) {
+      console.error(`[eval] scenarios.json not found at: ${scenariosPath}`);
+      console.error("[eval] Create scripts/scenarios.json with an array of Scenario objects.");
+      process.exit(1);
     }
-    const result = await runScenario(cookie, boardId, scenario);
-    results.push(result);
+    const scenarios: Scenario[] = JSON.parse(readFileSync(scenariosPath, "utf8"));
+    console.log(`[eval] Running ${scenarios.length} layout scenarios...\n`);
 
-    // Push scores to Langfuse if configured. Each scenario gets its own trace so metrics
-    // are queryable per-scenario, per-model, and per-promptVersion in the Langfuse dashboard.
-    if (langfuse) {
-      const trace = langfuse.trace({
-        name: "eval:scenario",
-        metadata: { scenarioId: result.id, description: result.description, promptVersion, model: MODEL },
-        tags: ["eval", `scenario:${result.id}`, `model:${MODEL}`, `promptVersion:${promptVersion}`],
-      });
-      const scoreEntries: { name: string; value: number }[] = [
-        { name: "pass", value: result.pass ? 1 : 0 },
-        { name: "overlapScore", value: result.overlapScore },
-        { name: "outOfBounds", value: result.outOfBounds },
-        { name: "objectCount", value: result.objectCount },
-        { name: "latencyMs", value: result.latencyMs },
-      ];
-      if (result.typesMatch !== null) {
-        scoreEntries.push({ name: "typesMatch", value: result.typesMatch ? 1 : 0 });
+    for (const scenario of scenarios) {
+      process.stdout.write(`  ${scenario.id.padEnd(22)}`);
+
+      try {
+        await clearBoard(cookie, boardId);
+      } catch (err) {
+        console.error(`\n[eval] clearBoard failed for ${scenario.id}: ${err} - skipping`);
+        layoutResults.push({
+          id: scenario.id, description: scenario.description ?? "", pass: false,
+          overlapScore: 0, outOfBounds: 0, objectCount: 0,
+          expectedMinObjects: scenario.expectedMinObjects ?? 1, typesMatch: null,
+          latencyMs: 0, error: `clearBoard failed: ${String(err)}`,
+        });
+        continue;
       }
-      for (const { name, value } of scoreEntries) {
-        langfuse.score({ traceId: trace.id, name, value });
+      const result = await runScenario(cookie, boardId, scenario);
+      layoutResults.push(result);
+
+      // Push scores to Langfuse if configured
+      if (langfuse) {
+        const trace = langfuse.trace({
+          name: "eval:scenario",
+          metadata: { scenarioId: result.id, description: result.description, promptVersion, model: MODEL },
+          tags: ["eval", `scenario:${result.id}`, `model:${MODEL}`, `promptVersion:${promptVersion}`],
+        });
+        const scoreEntries: { name: string; value: number }[] = [
+          { name: "pass", value: result.pass ? 1 : 0 },
+          { name: "overlapScore", value: result.overlapScore },
+          { name: "outOfBounds", value: result.outOfBounds },
+          { name: "objectCount", value: result.objectCount },
+          { name: "latencyMs", value: result.latencyMs },
+        ];
+        if (result.typesMatch !== null) {
+          scoreEntries.push({ name: "typesMatch", value: result.typesMatch ? 1 : 0 });
+        }
+        for (const { name, value } of scoreEntries) {
+          langfuse.score({ traceId: trace.id, name, value });
+        }
       }
+
+      const status = result.pass ? "PASS" : "FAIL";
+      const typeStr = result.typesMatch === null ? "" : ` types=${result.typesMatch ? "ok" : "mismatch"}`;
+      const errStr = result.error ? ` (${result.error})` : "";
+      console.log(
+        `${status}  overlap=${result.overlapScore}  oob=${result.outOfBounds}` +
+        `  objects=${result.objectCount}/${result.expectedMinObjects}${typeStr}` +
+        `  ${(result.latencyMs / 1000).toFixed(1)}s${errStr}`,
+      );
     }
 
-    const status = result.pass ? "PASS" : "FAIL";
-    const typeStr = result.typesMatch === null ? "" : ` types=${result.typesMatch ? "ok" : "mismatch"}`;
-    const errStr = result.error ? ` (${result.error})` : "";
+    // Layout summary
+    const passed = layoutResults.filter((r) => r.pass).length;
+    const avgOverlap = layoutResults.reduce((s, r) => s + r.overlapScore, 0) / (layoutResults.length || 1);
+    const avgOob = layoutResults.reduce((s, r) => s + r.outOfBounds, 0) / (layoutResults.length || 1);
+    const avgLatency = layoutResults.reduce((s, r) => s + r.latencyMs, 0) / (layoutResults.length || 1);
+
+    console.log(`\n=== Layout Scenarios (PROMPT_VERSION=${promptVersion}, model=${MODEL}) ===`);
+    console.log("═══════════════════════════════════════════════════════════════");
+    for (const r of layoutResults) {
+      const status = r.pass ? "PASS" : "FAIL";
+      const typeStr = r.typesMatch === null ? "" : ` types=${r.typesMatch ? "ok" : "mismatch"}`;
+      const errStr = r.error ? ` (${r.error})` : "";
+      console.log(
+        `  ${r.id.padEnd(22)} ${status}  overlap=${r.overlapScore}  oob=${r.outOfBounds}` +
+        `  objects=${r.objectCount}/${r.expectedMinObjects}${typeStr}` +
+        `  ${(r.latencyMs / 1000).toFixed(1)}s${errStr}`,
+      );
+    }
+    console.log("───────────────────────────────────────────────────────────────");
     console.log(
-      `${status}  overlap=${result.overlapScore}  oob=${result.outOfBounds}` +
-      `  objects=${result.objectCount}/${result.expectedMinObjects}${typeStr}` +
-      `  ${(result.latencyMs / 1000).toFixed(1)}s${errStr}`,
+      `  Aggregate: ${passed}/${layoutResults.length} pass | ` +
+      `avg overlap: ${avgOverlap.toFixed(1)} | ` +
+      `avg oob: ${avgOob.toFixed(1)} | ` +
+      `avg latency: ${(avgLatency / 1000).toFixed(1)}s`,
     );
+  } else {
+    console.log("[eval] Skipping layout scenarios (EVAL_SKIP_LAYOUT=1)");
   }
 
-  // Summary report
-  const passed = results.filter((r) => r.pass).length;
-  const avgOverlap = results.reduce((s, r) => s + r.overlapScore, 0) / results.length;
-  const avgOob = results.reduce((s, r) => s + r.outOfBounds, 0) / results.length;
-  const avgLatency = results.reduce((s, r) => s + r.latencyMs, 0) / results.length;
+  // ---------------------------------------------------------------------------
+  // Phase 2: Narrative scenarios
+  // ---------------------------------------------------------------------------
 
-  console.log(`\nPrompt Eval Report (PROMPT_VERSION=${promptVersion}, model=${MODEL})`);
-  console.log("═══════════════════════════════════════════════════════════════");
-  for (const r of results) {
-    const status = r.pass ? "PASS" : "FAIL";
-    const typeStr = r.typesMatch === null ? "" : ` types=${r.typesMatch ? "ok" : "mismatch"}`;
-    const errStr = r.error ? ` (${r.error})` : "";
-    console.log(
-      `  ${r.id.padEnd(22)} ${status}  overlap=${r.overlapScore}  oob=${r.outOfBounds}` +
-      `  objects=${r.objectCount}/${r.expectedMinObjects}${typeStr}` +
-      `  ${(r.latencyMs / 1000).toFixed(1)}s${errStr}`,
-    );
+  const narrativeResults: NarrativeScenarioResult[] = [];
+  const judgeModel = process.env.EVAL_JUDGE_MODEL ?? "claude-sonnet-4";
+
+  if (process.env.EVAL_SKIP_NARRATIVE !== "1") {
+    const narrativePath = join(__dirname, "narrative-scenarios.json");
+    if (!existsSync(narrativePath)) {
+      console.warn("[eval] narrative-scenarios.json not found - skipping narrative phase");
+    } else {
+      const narrativeScenarios: NarrativeScenario[] = JSON.parse(readFileSync(narrativePath, "utf8"));
+      const skipJudge = process.env.EVAL_SKIP_JUDGE === "1";
+      console.log(
+        `\n[eval] Running ${narrativeScenarios.length} narrative scenarios` +
+          (skipJudge ? " (judge disabled)" : ` with judge model=${judgeModel}`) +
+          "...",
+      );
+
+      for (const scenario of narrativeScenarios) {
+        try {
+          await clearBoard(cookie, boardId);
+        } catch (err) {
+          console.error(`[eval] clearBoard failed for narrative ${scenario.id}: ${err} - skipping`);
+          narrativeResults.push({
+            id: scenario.id, description: scenario.description, transcript: [],
+            judgeResult: null, layoutMetrics: { objectCount: 0, overlapScore: 0, outOfBounds: 0 },
+            latencyMs: 0, error: `clearBoard failed: ${String(err)}`,
+          });
+          continue;
+        }
+
+        const result = await runNarrativeScenario(cookie, boardId, scenario);
+        narrativeResults.push(result);
+        printNarrativeResult(result);
+
+        // Push narrative judge scores to Langfuse
+        if (langfuse && result.judgeResult) {
+          const trace = langfuse.trace({
+            name: "eval:narrative",
+            metadata: { scenarioId: result.id, description: result.description, promptVersion, model: MODEL, judgeModel },
+            tags: ["eval", "narrative", `scenario:${result.id}`, `model:${MODEL}`, `judgeModel:${judgeModel}`],
+          });
+          langfuse.score({ traceId: trace.id, name: "overallScore", value: result.judgeResult.overallScore });
+          for (const dim of result.judgeResult.dimensions) {
+            langfuse.score({ traceId: trace.id, name: dim.dimension, value: dim.score });
+          }
+        }
+      }
+
+      // Narrative summary
+      const judged = narrativeResults.filter((r) => r.judgeResult !== null);
+      if (judged.length > 0) {
+        const avgOverall = judged.reduce((s, r) => s + (r.judgeResult?.overallScore ?? 0), 0) / judged.length;
+        console.log(`\n=== Narrative Summary: avg overall score ${avgOverall.toFixed(1)}/5 ===`);
+      }
+    }
+  } else {
+    console.log("[eval] Skipping narrative scenarios (EVAL_SKIP_NARRATIVE=1)");
   }
-  console.log("───────────────────────────────────────────────────────────────");
-  console.log(
-    `  Aggregate: ${passed}/${results.length} pass | ` +
-    `avg overlap: ${avgOverlap.toFixed(1)} | ` +
-    `avg oob: ${avgOob.toFixed(1)} | ` +
-    `avg latency: ${(avgLatency / 1000).toFixed(1)}s`,
-  );
 
-  // Write JSON report
+  // ---------------------------------------------------------------------------
+  // Phase 3: Write combined v2 report
+  // ---------------------------------------------------------------------------
+
   const resultsDir = join(__dirname, "eval-results");
   mkdirSync(resultsDir, { recursive: true });
   const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
   const reportPath = join(resultsDir, `${timestamp}.json`);
-  writeFileSync(
-    reportPath,
-    JSON.stringify(
-      { promptVersion, model: MODEL, timestamp: new Date().toISOString(), passed, total: results.length, avgOverlap, avgOob, avgLatencyMs: avgLatency, results },
-      null,
-      2,
-    ),
-  );
+
+  // Build layout section (compatible with v1 schema)
+  const layoutPassed = layoutResults.filter((r) => r.pass).length;
+  const layoutAvgOverlap = layoutResults.length
+    ? layoutResults.reduce((s, r) => s + r.overlapScore, 0) / layoutResults.length
+    : 0;
+  const layoutAvgOob = layoutResults.length
+    ? layoutResults.reduce((s, r) => s + r.outOfBounds, 0) / layoutResults.length
+    : 0;
+  const layoutAvgLatency = layoutResults.length
+    ? layoutResults.reduce((s, r) => s + r.latencyMs, 0) / layoutResults.length
+    : 0;
+
+  // Build narrative section
+  const judgedNarrative = narrativeResults.filter((r) => r.judgeResult !== null);
+  const narrativeAvgOverall = judgedNarrative.length
+    ? judgedNarrative.reduce((s, r) => s + (r.judgeResult?.overallScore ?? 0), 0) / judgedNarrative.length
+    : 0;
+
+  const dimensionNames = ["yes_and_quality", "character_voice", "dramatic_arc", "tool_usage", "audience_engagement"];
+  const avgDimensions: Record<string, number> = {};
+  for (const dim of dimensionNames) {
+    const scores = judgedNarrative
+      .map((r) => r.judgeResult?.dimensions.find((d) => d.dimension === dim)?.score ?? null)
+      .filter((s): s is number => s !== null);
+    avgDimensions[dim] = scores.length
+      ? Math.round((scores.reduce((a, b) => a + b, 0) / scores.length) * 10) / 10
+      : 0;
+  }
+
+  const report = {
+    $schema: "eval-report-v2",
+    promptVersion,
+    model: MODEL,
+    judgeModel,
+    timestamp: new Date().toISOString(),
+    layout: {
+      passed: layoutPassed,
+      total: layoutResults.length,
+      avgOverlap: layoutAvgOverlap,
+      avgOob: layoutAvgOob,
+      avgLatencyMs: layoutAvgLatency,
+      results: layoutResults,
+    },
+    narrative: {
+      avgOverallScore: Math.round(narrativeAvgOverall * 10) / 10,
+      avgDimensions,
+      results: narrativeResults,
+    },
+  };
+
+  writeFileSync(reportPath, JSON.stringify(report, null, 2));
   console.log(`\n[eval] Full report: ${reportPath}`);
 
   if (langfuse) {
