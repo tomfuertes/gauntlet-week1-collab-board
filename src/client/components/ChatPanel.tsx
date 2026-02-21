@@ -7,7 +7,7 @@ import { colors, getUserColor } from "../theme";
 import { Button } from "./Button";
 import { Modal } from "./Modal";
 import { SCENE_TURN_BUDGET, DEFAULT_PERSONAS } from "../../shared/types";
-import type { BoardObject, GameMode, Persona, AIModel, SceneLifecyclePhase, TroupeConfig } from "../../shared/types";
+import type { GameMode, Persona, AIModel, SceneLifecyclePhase, TroupeConfig } from "../../shared/types";
 import "../styles/animations.css";
 import { BOARD_TEMPLATES } from "../../shared/board-templates";
 import type { ToolName } from "../../server/ai-tools-sdk";
@@ -33,8 +33,6 @@ interface ChatPanelProps {
   onClaimChange?: (personaId: string | null) => void;
   /** Called whenever the chat message list changes - used by PostcardModal to pull recent quotes */
   onMessagesChange?: (messages: UIMessage[]) => void;
-  /** Person-type canvas objects - used by freeze tag character picker */
-  personObjects?: BoardObject[];
   /** Heckle events from audience spectators - displayed distinctly in the chat area */
   heckleEvents?: HeckleEvent[];
   /** Called when performer sends a chat message - used to broadcast canvas speech bubble */
@@ -177,10 +175,10 @@ const CATEGORY_COLORS: Record<IntentChip["category"], string> = {
 };
 
 // Mode-specific intent chips
-const HAT_INTENTS: IntentChip[] = [
-  { prompt: "[NEXT-HAT-PROMPT]", category: "scene" },
-  { prompt: "Plot twist!", category: "scene" },
-  { prompt: "A stranger walks in", category: "character" },
+const HAROLD_INTENTS: IntentChip[] = [
+  { prompt: "Callback!", category: "scene" },
+  { prompt: "New scene!", category: "scene" },
+  { prompt: "Heighten the game", category: "chaos" },
 ];
 
 const YESAND_INTENTS: IntentChip[] = [
@@ -209,7 +207,7 @@ function computeClientLifecyclePhase(userMessageCount: number): SceneLifecyclePh
 /** Pick intent chips based on user message count and game mode */
 function getIntentChips(userMessageCount: number, gameMode?: GameMode): IntentChip[] {
   if (userMessageCount <= 0) return []; // empty state uses templates instead
-  if (gameMode === "hat") return HAT_INTENTS;
+  if (gameMode === "harold") return HAROLD_INTENTS;
   if (gameMode === "yesand") return YESAND_INTENTS;
   if (userMessageCount <= 2) return SCENE_SET_INTENTS;
   if (userMessageCount <= 5) return MID_SCENE_INTENTS;
@@ -344,7 +342,6 @@ export function ChatPanel({
   onClaimChange,
   troupeConfig,
   onMessagesChange,
-  personObjects = [],
   heckleEvents = [],
   onChatSend,
 }: ChatPanelProps) {
@@ -364,12 +361,6 @@ export function ChatPanel({
 
   // Plot Twist button: one use per scene. Reset when messages clear (new scene).
   const [plotTwistUsed, setPlotTwistUsed] = useState(false);
-
-  // Freeze Tag state: cooldown tracks when FREEZE was last used (30s), picker shows characters.
-  // KEY-DECISION 2026-02-20: Cooldown enforced client-side only - server doesn't need to gate it
-  // since [FREEZE] without a scene just produces a narrative no-op. UX clarity over server complexity.
-  const [freezeCooldownUntil, setFreezeCooldownUntil] = useState(0);
-  const [showFreezeCharacterPicker, setShowFreezeCharacterPicker] = useState(false);
 
   // Persona management state
   const [personas, setPersonas] = useState<Persona[]>([...DEFAULT_PERSONAS]);
@@ -546,12 +537,10 @@ export function ChatPanel({
     }
   }, [pendingIntent, sendMessage]);
 
-  // Reset plot twist gate and freeze state when scene resets (messages cleared via clearHistory)
+  // Reset plot twist gate when scene resets (messages cleared via clearHistory)
   useEffect(() => {
     if (uiMessages.length === 0) {
       setPlotTwistUsed(false);
-      setFreezeCooldownUntil(0);
-      setShowFreezeCharacterPicker(false);
     }
   }, [uiMessages.length]);
 
@@ -735,7 +724,7 @@ export function ChatPanel({
               {budgetLabel}
             </span>
           )}
-          {lifecyclePhase && lifecycleColor && gameMode !== "hat" && gameMode !== "yesand" && (
+          {lifecyclePhase && lifecycleColor && gameMode !== "yesand" && (
             <span
               style={{
                 fontSize: "0.6875rem",
@@ -750,19 +739,6 @@ export function ChatPanel({
               {lifecyclePhase}
             </span>
           )}
-          {gameMode === "hat" && (
-            <span
-              style={{
-                fontSize: "0.6875rem",
-                color: colors.warning,
-                border: `1px solid ${colors.warning}44`,
-                borderRadius: 8,
-                padding: "1px 6px",
-              }}
-            >
-              Hat
-            </span>
-          )}
           {gameMode === "yesand" && (
             <span
               style={{
@@ -774,19 +750,6 @@ export function ChatPanel({
               }}
             >
               Beat {Math.min(userMessageCount, 10)}/10
-            </span>
-          )}
-          {gameMode === "freezetag" && (
-            <span
-              style={{
-                fontSize: "0.6875rem",
-                color: "#60a5fa",
-                border: "1px solid rgba(96,165,250,0.28)",
-                borderRadius: 8,
-                padding: "1px 6px",
-              }}
-            >
-              Freeze Tag
             </span>
           )}
         </div>
@@ -1173,7 +1136,7 @@ export function ChatPanel({
             alignItems: "center",
           }}
         >
-          {uiMessages.length === 0 ? (
+          {uiMessages.length === 0 && gameMode === "yesand" ? (
             BOARD_TEMPLATES.map((t) => (
               <ChipButton
                 key={t.id}
@@ -1190,15 +1153,15 @@ export function ChatPanel({
               {getIntentChips(userMessageCount, gameMode).map((chip) => (
                 <ChipButton
                   key={chip.prompt}
-                  label={chip.prompt === "[NEXT-HAT-PROMPT]" ? "Next prompt" : chip.prompt}
+                  label={chip.prompt}
                   color={CATEGORY_COLORS[chip.category]}
                   borderRadius={16}
                   disabled={loading || isSceneOver}
                   mobile={mobileMode}
                   onClick={() => {
-                    // Hat/yesand mode chips have no INTENT_PROMPTS server-side entry - send direct.
+                    // Yesand/harold chips send directly (no server-side INTENT_PROMPTS entry).
                     // Freeform chips route through pendingIntent so body.intent reaches the server.
-                    if (gameMode === "hat" || gameMode === "yesand") {
+                    if (gameMode === "yesand" || gameMode === "harold") {
                       sendMessage(chip.prompt);
                     } else {
                       setPendingIntent(chip.prompt);
@@ -1219,78 +1182,8 @@ export function ChatPanel({
                   sendMessage("[PLOT TWIST]");
                 }}
               />
-              {/* Freeze Tag: FREEZE button with 30s cooldown. Sends [FREEZE] marker then shows
-                      character picker for [TAKEOVER: name] selection. */}
-              {gameMode === "freezetag" && (
-                <ChipButton
-                  label="🥶 FREEZE!"
-                  color="#60a5fa"
-                  borderRadius={16}
-                  disabled={loading || isSceneOver || Date.now() < freezeCooldownUntil}
-                  mobile={mobileMode}
-                  onClick={() => {
-                    setFreezeCooldownUntil(Date.now() + 30_000);
-                    setShowFreezeCharacterPicker(true);
-                    sendMessage("[FREEZE]");
-                  }}
-                />
-              )}
             </>
           )}
-        </div>
-      )}
-
-      {/* Freeze Tag character picker - shown after FREEZE is called until a takeover is selected */}
-      {gameMode === "freezetag" && showFreezeCharacterPicker && !isSceneOver && (
-        <div
-          style={{
-            padding: "0.375rem 0.75rem",
-            borderTop: "1px solid #1e293b",
-            flexShrink: 0,
-            display: "flex",
-            gap: 6,
-            alignItems: "center",
-            overflowX: "auto",
-            background: "rgba(96,165,250,0.06)",
-          }}
-        >
-          <span style={{ fontSize: "0.6875rem", color: "#60a5fa", flexShrink: 0, fontWeight: 600 }}>Take over:</span>
-          {personObjects.length === 0 ? (
-            <span style={{ fontSize: "0.6875rem", color: "#475569" }}>No characters on stage yet</span>
-          ) : (
-            personObjects.map((obj) => {
-              const charName = (obj.props as { text?: string }).text || "Character";
-              return (
-                <ChipButton
-                  key={obj.id}
-                  label={charName}
-                  color="#60a5fa"
-                  borderRadius={20}
-                  disabled={loading}
-                  mobile={mobileMode}
-                  onClick={() => {
-                    setShowFreezeCharacterPicker(false);
-                    sendMessage(`[TAKEOVER: ${charName}]`);
-                  }}
-                />
-              );
-            })
-          )}
-          <button
-            onClick={() => setShowFreezeCharacterPicker(false)}
-            style={{
-              background: "none",
-              border: "none",
-              color: "#475569",
-              cursor: "pointer",
-              fontSize: "0.75rem",
-              padding: "2px 6px",
-              marginLeft: "auto",
-              flexShrink: 0,
-            }}
-          >
-            ✕
-          </button>
         </div>
       )}
 

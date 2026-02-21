@@ -1,6 +1,6 @@
 /**
  * Improv challenge prompts for the daily challenge feature.
- * Richer than hat-prompts.ts: 63 entries, optional board template mapping, mixed game modes.
+ * 63 entries, optional board template mapping, mixed game modes.
  *
  * KEY-DECISION 2026-02-20: Deterministic rotation via daysSinceEpoch % count - all users see the
  * same challenge every day without server state. Template IDs reference BOARD_TEMPLATES in
@@ -25,27 +25,22 @@ export const CHALLENGE_PROMPTS: ChallengePromptDef[] = [
   // --- Template-backed scenes (pre-seeded canvas) ---
   {
     prompt: "A vampire is trying to run a respectable dental practice",
-    templateId: "vampire-dentist",
     gameMode: "freeform",
   },
   {
     prompt: "Job interviews in zero gravity on the moon",
-    templateId: "moon-job-interview",
     gameMode: "freeform",
   },
   {
     prompt: "Cats attempt to open a restaurant despite misunderstanding hospitality entirely",
-    templateId: "cat-restaurant",
     gameMode: "freeform",
   },
   {
     prompt: "An alien visits a grocery store and takes everything too literally",
-    templateId: "alien-grocery",
     gameMode: "freeform",
   },
   {
     prompt: "A cafe where every customer is from a different era of history",
-    templateId: "time-travel-cafe",
     gameMode: "freeform",
   },
   {
@@ -62,7 +57,7 @@ export const CHALLENGE_PROMPTS: ChallengePromptDef[] = [
   // --- Workplace absurdity ---
   {
     prompt: "Things you should never say at a job interview but somehow say anyway",
-    gameMode: "hat",
+    gameMode: "freeform",
   },
   {
     prompt: "The all-hands meeting where the CEO admits they have absolutely no idea what they're doing",
@@ -74,7 +69,7 @@ export const CHALLENGE_PROMPTS: ChallengePromptDef[] = [
   },
   {
     prompt: "If your office printer could voice its grievances at a union meeting",
-    gameMode: "hat",
+    gameMode: "freeform",
   },
   {
     prompt: "The world's most passive-aggressive coworker has their retirement party",
@@ -96,7 +91,7 @@ export const CHALLENGE_PROMPTS: ChallengePromptDef[] = [
   // --- Sci-fi / space ---
   {
     prompt: "Customer service at a space station that has a strict no-refunds policy",
-    gameMode: "hat",
+    gameMode: "freeform",
   },
   {
     prompt: "The first Mars colony is exactly like Earth but with dramatically worse parking",
@@ -130,7 +125,7 @@ export const CHALLENGE_PROMPTS: ChallengePromptDef[] = [
   // --- Fantasy / magic ---
   {
     prompt: "The worst wizard spells you would actually use in everyday life",
-    gameMode: "hat",
+    gameMode: "freeform",
   },
   {
     prompt: "A dragon discovers there is a mortgage on their treasure hoard",
@@ -164,7 +159,7 @@ export const CHALLENGE_PROMPTS: ChallengePromptDef[] = [
   // --- Animals / nature ---
   {
     prompt: "If animals had corporate jobs and took them extremely seriously",
-    gameMode: "hat",
+    gameMode: "freeform",
   },
   {
     prompt: "A nature documentary about humans narrated by a deeply confused penguin",
@@ -190,7 +185,7 @@ export const CHALLENGE_PROMPTS: ChallengePromptDef[] = [
   // --- Historical / time ---
   {
     prompt: "Things overheard at a pirate HR meeting about maritime harassment policy",
-    gameMode: "hat",
+    gameMode: "freeform",
   },
   {
     prompt: "Historical figures get access to a group chat and immediately start unnecessary drama",
@@ -216,7 +211,7 @@ export const CHALLENGE_PROMPTS: ChallengePromptDef[] = [
   // --- Relationship / social ---
   {
     prompt: "Bad ways to propose marriage",
-    gameMode: "hat",
+    gameMode: "freeform",
   },
   {
     prompt: "Two strangers realize they have been accidentally living each other's calendar for an entire week",
@@ -224,7 +219,7 @@ export const CHALLENGE_PROMPTS: ChallengePromptDef[] = [
   },
   {
     prompt: "The rejected greeting card message that somehow found its exact perfect recipient",
-    gameMode: "hat",
+    gameMode: "freeform",
   },
   {
     prompt: "A first date at a restaurant where the waiter clearly knows too much about both of them",
@@ -236,7 +231,7 @@ export const CHALLENGE_PROMPTS: ChallengePromptDef[] = [
   },
   {
     prompt: "Things you think but never say while stuck in an elevator",
-    gameMode: "hat",
+    gameMode: "freeform",
   },
   {
     prompt: "Two nemeses discover they are each other's closest online friend",
@@ -250,7 +245,7 @@ export const CHALLENGE_PROMPTS: ChallengePromptDef[] = [
   // --- Absurd / surreal ---
   {
     prompt: "Secret thoughts of a traffic cone who has seen far too much",
-    gameMode: "hat",
+    gameMode: "freeform",
   },
   {
     prompt: "The person who invented the word moist is on trial and the courtroom has opinions",
@@ -258,7 +253,7 @@ export const CHALLENGE_PROMPTS: ChallengePromptDef[] = [
   },
   {
     prompt: "A haunted house ghost is exhausted and files for a workplace accommodation",
-    gameMode: "hat",
+    gameMode: "freeform",
   },
   {
     prompt: "The committee tasked with inventing the number eight cannot agree on its final shape",
@@ -266,7 +261,7 @@ export const CHALLENGE_PROMPTS: ChallengePromptDef[] = [
   },
   {
     prompt: "Rejected theme park ride concepts from a theme park that is willing to take any risk",
-    gameMode: "hat",
+    gameMode: "freeform",
   },
   {
     prompt: "The thing at the back of the refrigerator becomes sentient and demands recognition",

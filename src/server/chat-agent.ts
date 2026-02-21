@@ -884,8 +884,8 @@ export class ChatAgent extends AIChatAgent<Bindings> {
     }
 
     // Detect [PLOT TWIST] trigger in the last user message.
-    // KEY-DECISION 2026-02-20: Message-text detection (not body.intent) matches the [NEXT-HAT-PROMPT]
-    // pattern and keeps the server as the authority on twist selection - client just sends the signal.
+    // KEY-DECISION 2026-02-20: Message-text detection (not body.intent) keeps the server as the
+    // authority on twist selection - client sends the [PLOT TWIST] signal, server picks the twist.
     const lastUserMsgRaw = this.messages[this.messages.length - 1];
     const lastUserTextRaw =
       lastUserMsgRaw?.parts

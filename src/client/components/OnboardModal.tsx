@@ -47,18 +47,17 @@ export function OnboardModal({ onSubmit, onDismiss, personas = [...DEFAULT_PERSO
 
   // Step 2: The Get
   const [value, setValue] = useState("");
-  const [selectedMode, setSelectedMode] = useState<GameMode>("freeform");
+  const [selectedMode, setSelectedMode] = useState<GameMode>("yesand");
   const inputRef = useRef<HTMLInputElement>(null);
-  const isHat = selectedMode === "hat";
   const hasValue = value.trim().length > 0;
 
-  // Focus input on step 2 (The Get) when not hat mode
+  // Focus input on step 2 (The Get)
   useEffect(() => {
-    if (step === 2 && !isHat) {
+    if (step === 2) {
       const t = setTimeout(() => inputRef.current?.focus(), 100);
       return () => clearTimeout(t);
     }
-  }, [step, isHat]);
+  }, [step]);
 
   const canAdvanceFromStep0 = troupeModels.size >= 1;
 
@@ -95,17 +94,6 @@ export function OnboardModal({ onSubmit, onDismiss, personas = [...DEFAULT_PERSO
     // Use first member's model as the Board-level aiModel for backward compat
     const primaryModel = troupeConfig.members[0]?.model ?? "claude-haiku-4.5";
 
-    if (isHat) {
-      onSubmit(
-        "Start a Scenes From a Hat game. Draw the first prompt and set the scene.",
-        "hat",
-        primaryModel,
-        null,
-        undefined,
-        troupeConfig,
-      );
-      return;
-    }
     const trimmed = value.trim();
     if (trimmed || templateId) {
       onSubmit(
@@ -503,108 +491,101 @@ export function OnboardModal({ onSubmit, onDismiss, personas = [...DEFAULT_PERSO
                 <span style={{ fontSize: "1.5rem" }}>{gm.icon}</span>
                 <span style={{ fontWeight: 600, fontSize: "0.8125rem" }}>{gm.label}</span>
                 <span style={{ fontSize: "0.6875rem", color: colors.textDim }}>{gm.description}</span>
+                <span
+                  style={{
+                    fontSize: "0.5625rem",
+                    fontWeight: 600,
+                    color: active ? colors.accentLight : colors.textSubtle,
+                    letterSpacing: "0.05em",
+                    textTransform: "uppercase",
+                  }}
+                >
+                  {gm.difficulty}
+                </span>
               </button>
             );
           })}
         </div>
 
-        {/* Input row or hat mode CTA */}
-        {isHat ? (
-          <div style={{ textAlign: "center", marginBottom: 20 }}>
-            <Button
-              variant="primary"
-              onClick={() => submit()}
-              style={{
-                background: colors.accent,
-                borderRadius: 12,
-                padding: "0.875rem 2rem",
-                fontSize: "0.9375rem",
-                fontWeight: 600,
-              }}
-            >
-              Draw from the hat
-            </Button>
-          </div>
-        ) : (
-          <>
-            <div style={{ display: "flex", gap: 8, marginBottom: 20 }}>
-              <TextInput
-                ref={inputRef}
-                value={value}
-                onChange={(e) => setValue(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") submit();
-                  if (e.key !== "Escape") e.stopPropagation();
-                }}
-                onKeyUp={(e) => {
-                  if (e.key !== "Escape") e.stopPropagation();
-                }}
-                placeholder="A detective who solves crimes by smell..."
+        {/* Input row */}
+        <div style={{ display: "flex", gap: 8, marginBottom: 20 }}>
+          <TextInput
+            ref={inputRef}
+            value={value}
+            onChange={(e) => setValue(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") submit();
+              if (e.key !== "Escape") e.stopPropagation();
+            }}
+            onKeyUp={(e) => {
+              if (e.key !== "Escape") e.stopPropagation();
+            }}
+            placeholder="A detective who solves crimes by smell..."
+            style={{
+              flex: 1,
+              background: "rgba(30, 41, 59, 0.8)",
+              borderRadius: 12,
+              padding: "0.875rem 1rem",
+              fontSize: "0.9375rem",
+              fontFamily: "inherit",
+              transition: "border-color 0.2s",
+            }}
+          />
+          <Button
+            variant="primary"
+            onClick={() => submit()}
+            disabled={!hasValue}
+            style={{
+              background: hasValue ? colors.accent : colors.accentDark,
+              borderRadius: 12,
+              padding: "0 1.5rem",
+              fontSize: "0.9375rem",
+              fontWeight: 600,
+              flexShrink: 0,
+              transition: "opacity 0.2s, background 0.2s",
+            }}
+          >
+            Go
+          </Button>
+        </div>
+
+        {/* Template chips - only shown for yesand (beginner) mode */}
+        {selectedMode === "yesand" && (
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 8, justifyContent: "center" }}>
+            {BOARD_TEMPLATES.map((chip, i) => (
+              <button
+                key={chip.id}
+                onClick={() => submit(chip.id)}
                 style={{
-                  flex: 1,
-                  background: "rgba(30, 41, 59, 0.8)",
-                  borderRadius: 12,
-                  padding: "0.875rem 1rem",
-                  fontSize: "0.9375rem",
-                  fontFamily: "inherit",
-                  transition: "border-color 0.2s",
+                  background: "rgba(30, 41, 59, 0.6)",
+                  border: `1px solid ${colors.border}`,
+                  borderRadius: 20,
+                  padding: "8px 16px",
+                  color: colors.textMuted,
+                  fontSize: "0.8125rem",
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 6,
+                  transition: "border-color 0.2s, color 0.2s, background 0.2s",
+                  animation: `cb-chip-in 0.3s ease-out ${0.15 + i * 0.04}s both`,
                 }}
-              />
-              <Button
-                variant="primary"
-                onClick={() => submit()}
-                disabled={!hasValue}
-                style={{
-                  background: hasValue ? colors.accent : colors.accentDark,
-                  borderRadius: 12,
-                  padding: "0 1.5rem",
-                  fontSize: "0.9375rem",
-                  fontWeight: 600,
-                  flexShrink: 0,
-                  transition: "opacity 0.2s, background 0.2s",
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.borderColor = colors.accent;
+                  e.currentTarget.style.color = colors.text;
+                  e.currentTarget.style.background = colors.accentSubtle;
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.borderColor = colors.border;
+                  e.currentTarget.style.color = colors.textMuted;
+                  e.currentTarget.style.background = "rgba(30, 41, 59, 0.6)";
                 }}
               >
-                Go
-              </Button>
-            </div>
-
-            {/* Template chips */}
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 8, justifyContent: "center" }}>
-              {BOARD_TEMPLATES.map((chip, i) => (
-                <button
-                  key={chip.id}
-                  onClick={() => submit(chip.id)}
-                  style={{
-                    background: "rgba(30, 41, 59, 0.6)",
-                    border: `1px solid ${colors.border}`,
-                    borderRadius: 20,
-                    padding: "8px 16px",
-                    color: colors.textMuted,
-                    fontSize: "0.8125rem",
-                    cursor: "pointer",
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 6,
-                    transition: "border-color 0.2s, color 0.2s, background 0.2s",
-                    animation: `cb-chip-in 0.3s ease-out ${0.15 + i * 0.04}s both`,
-                  }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.borderColor = colors.accent;
-                    e.currentTarget.style.color = colors.text;
-                    e.currentTarget.style.background = colors.accentSubtle;
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.borderColor = colors.border;
-                    e.currentTarget.style.color = colors.textMuted;
-                    e.currentTarget.style.background = "rgba(30, 41, 59, 0.6)";
-                  }}
-                >
-                  <span style={{ fontSize: "1rem" }}>{chip.icon}</span>
-                  {chip.label}
-                </button>
-              ))}
-            </div>
-          </>
+                <span style={{ fontSize: "1rem" }}>{chip.icon}</span>
+                {chip.label}
+              </button>
+            ))}
+          </div>
         )}
 
         <NavRow />

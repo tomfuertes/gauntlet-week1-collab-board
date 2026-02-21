@@ -200,9 +200,7 @@ app.patch("/api/boards/:boardId", async (c) => {
   if (ownership === "not_found") return c.text("Not found", 404);
   if (ownership === "forbidden") return c.text("Forbidden", 403);
   const body = await c.req.json<{ game_mode?: string }>();
-  const gameMode = ["hat", "yesand", "freeform", "freezetag"].includes(body.game_mode ?? "")
-    ? body.game_mode
-    : "freeform";
+  const gameMode = ["yesand", "freeform", "harold"].includes(body.game_mode ?? "") ? body.game_mode : "freeform";
   await c.env.DB.prepare("UPDATE boards SET game_mode = ? WHERE id = ?").bind(gameMode, boardId).run();
   return c.json({ ok: true });
 });

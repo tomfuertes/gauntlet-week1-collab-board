@@ -353,7 +353,7 @@ export function Board({
         return r.ok ? (r.json() as Promise<{ game_mode?: string; name?: string }>) : null;
       })
       .then((data) => {
-        if (data?.game_mode && ["hat", "yesand"].includes(data.game_mode)) {
+        if (data?.game_mode && ["yesand", "freeform", "harold"].includes(data.game_mode)) {
           setGameMode(data.game_mode as GameMode);
         }
         if (data?.name) setBoardName(data.name);
@@ -741,9 +741,6 @@ export function Board({
   // Stable refs to avoid recreating callbacks on every state change
   const objectsRef = useRef(objects);
   objectsRef.current = objects;
-
-  // Derive person-type objects for freeze tag character picker in ChatPanel
-  const personObjects = useMemo(() => [...objects.values()].filter((o) => o.type === "person"), [objects]);
 
   // "Previously On..." recap: fetch once per hour after WS init, show if available
   useEffect(() => {
@@ -2109,7 +2106,6 @@ export function Board({
             claimedPersonaId={claimedPersonaId}
             onClaimChange={setClaimedPersonaId}
             troupeConfig={troupeConfig}
-            personObjects={personObjects}
             heckleEvents={heckleEvents}
             onChatSend={handleChatSend}
           />
@@ -3124,7 +3120,6 @@ export function Board({
           onClaimChange={setClaimedPersonaId}
           troupeConfig={troupeConfig}
           onMessagesChange={setRecentChatMessages}
-          personObjects={personObjects}
           heckleEvents={heckleEvents}
           onChatSend={handleChatSend}
         />
