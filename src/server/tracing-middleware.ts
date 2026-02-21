@@ -94,6 +94,52 @@ export function createTracingMiddleware(ctx: TraceContext, langfuse?: Langfuse |
   return {
     specificationVersion: "v3",
 
+    // Sanitize tool-call inputs before every API call (including each step within a multi-step
+    // streamText). Prevents Anthropic API error: "tool_use.input: Input should be a valid dictionary"
+    // when the model generates null/string/array inputs.
+    // KEY-DECISION 2026-02-21: transformParams fires per-step (catches within-turn invalid inputs).
+    // sanitizeMessages() in chat-agent.ts covers the between-turn history sanitization.
+    // Together they cover all invalid-input paths to Anthropic.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    transformParams: async ({ params }: { params: any }) => {
+      const prompt = params.prompt;
+      if (!Array.isArray(prompt)) return params;
+      const needsFix = prompt.some(
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (msg: any) =>
+          msg.role === "assistant" &&
+          Array.isArray(msg.content) &&
+          msg.content.some(
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            (part: any) =>
+              part.type === "tool-call" &&
+              (typeof part.input !== "object" || part.input === null || Array.isArray(part.input)),
+          ),
+      );
+      if (!needsFix) return params;
+      console.warn(JSON.stringify({ event: "middleware:sanitize-tool-input", boardId: ctx.boardId }));
+      return {
+        ...params,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        prompt: prompt.map((msg: any) => {
+          if (msg.role !== "assistant" || !Array.isArray(msg.content)) return msg;
+          return {
+            ...msg,
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            content: msg.content.map((part: any) => {
+              if (
+                part.type === "tool-call" &&
+                (typeof part.input !== "object" || part.input === null || Array.isArray(part.input))
+              ) {
+                return { ...part, input: {} };
+              }
+              return part;
+            }),
+          };
+        }),
+      };
+    },
+
     // Intercept non-streaming calls (reactive persona + director nudge use generateText)
     wrapGenerate: async ({ doGenerate, params }) => {
       const startTime = new Date();
