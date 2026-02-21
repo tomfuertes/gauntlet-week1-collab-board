@@ -1363,20 +1363,20 @@ export class ChatAgent extends AIChatAgent<Bindings> {
     // Reset the director inactivity timer on every user message
     this._resetDirectorTimer();
 
-    // Stage Manager: synchronous scene setup on first exchange when troupe is configured.
-    // Awaited so the canvas is populated before the main streamText response begins streaming.
-    if (humanTurns <= 1 && troupeConfig) {
-      const sceneOpener =
-        this.messages
-          .filter((m) => m.role === "user")
-          .at(-1)
-          ?.parts?.filter((p) => p.type === "text")
-          .map((p) => (p as { type: "text"; text: string }).text)
-          .join("") ?? "";
-      await this._runStageManager(troupeConfig, boardStub as unknown as BoardStub, sceneOpener, personas);
-    }
-
     try {
+      // Stage Manager: synchronous scene setup on first exchange when troupe is configured.
+      // Awaited so the canvas is populated before the main streamText response begins streaming.
+      if (humanTurns <= 1 && troupeConfig) {
+        const sceneOpener =
+          this.messages
+            .filter((m) => m.role === "user")
+            .at(-1)
+            ?.parts?.filter((p) => p.type === "text")
+            .map((p) => (p as { type: "text"; text: string }).text)
+            .join("") ?? "";
+        await this._runStageManager(troupeConfig, boardStub as unknown as BoardStub, sceneOpener, personas);
+      }
+
       const { messages: sanitizedMsgs, repairedCount } = sanitizeMessages(this.messages);
       if (repairedCount > 0) this._traceSanitizeRepair("chat", repairedCount);
       const result = streamText({
@@ -1733,6 +1733,21 @@ export class ChatAgent extends AIChatAgent<Bindings> {
   }
 
   // ---------------------------------------------------------------------------
+  // Mutex helper
+  // ---------------------------------------------------------------------------
+
+  /** Claim the _isGenerating mutex for the duration of fn(), releasing it in a
+   *  finally block regardless of how fn() exits (return, throw, or early return). */
+  private async withGenerating<T>(fn: () => Promise<T>): Promise<T> {
+    this._isGenerating = true;
+    try {
+      return await fn();
+    } finally {
+      this._isGenerating = false;
+    }
+  }
+
+  // ---------------------------------------------------------------------------
   // Multi-agent persona helpers
   // ---------------------------------------------------------------------------
 
@@ -2009,167 +2024,169 @@ export class ChatAgent extends AIChatAgent<Bindings> {
     }
 
     // Claim mutex BEFORE the delay to prevent TOCTOU races
-    this._isGenerating = true;
     this._autonomousExchangeCount++;
+    await this.withGenerating(async () => {
+      // UX delay - let the active persona's message settle before the reaction
+      await new Promise((r) => setTimeout(r, 2000));
 
-    // UX delay - let the active persona's message settle before the reaction
-    await new Promise((r) => setTimeout(r, 2000));
-
-    // Re-check: human may have interrupted during the delay (onChatMessage resets count)
-    if (this._autonomousExchangeCount === 0) {
-      this._isGenerating = false;
-      console.debug(
-        JSON.stringify({
-          event: "reactive:skip",
-          reason: "human-interrupted",
-          boardId: this.name,
-        }),
-      );
-      return;
-    }
-
-    // Load personas if not passed in (director nudge path).
-    // Guard: _getEffectivePersonas() is documented to never throw, but wrap anyway -
-    // any unexpected throw here would leave _isGenerating stuck at true for the DO lifetime.
-    let effectivePersonas: Persona[];
-    try {
-      effectivePersonas = personas ?? (await this._getEffectivePersonas());
-    } catch (err) {
-      this._isGenerating = false;
-      console.error(
-        JSON.stringify({
-          event: "reactive:personas-error",
-          boardId: this.name,
-          error: String(err),
-        }),
-      );
-      return;
-    }
-    // Skip reactive if only 1 persona (can't react to yourself)
-    if (effectivePersonas.length <= 1) {
-      this._isGenerating = false;
-      console.debug(
-        JSON.stringify({
-          event: "reactive:skip",
-          reason: "single-persona",
-          boardId: this.name,
-        }),
-      );
-      return;
-    }
-    const boundActive = activeIndex % effectivePersonas.length;
-    const reactiveIndex = (boundActive + 1) % effectivePersonas.length;
-    const reactivePersona = effectivePersonas[reactiveIndex];
-    const activePersona = effectivePersonas[boundActive];
-    const startTime = Date.now();
-    this._logRequestStart("reactive", reactivePersona.name);
-
-    const doId = this.env.BOARD.idFromName(this.name);
-    const boardStub = this.env.BOARD.get(doId);
-    const batchId = crypto.randomUUID();
-    const tools = createSDKTools(boardStub, batchId, this.env.AI, this.ctx.storage);
-
-    // Pass the same game mode block to the reactive persona
-    const reactiveGameModeState: GameModeState = {
-      hatPrompt: this._hatPromptIndex >= 0 ? HAT_PROMPTS[this._hatPromptIndex] : undefined,
-      hatExchangeCount: this._hatExchangeCount,
-      hatPromptOffset: Math.min(50 + this._hatPromptCount * 600, 650),
-      yesAndCount: this._yesAndCount,
-    };
-    const reactiveGameModeBlock = buildGameModePromptBlock(this._gameMode, reactiveGameModeState);
-
-    // Extract what the active persona just created for context injection
-    const lastActionSummary = this._describeLastAction();
-
-    // Load scene relationships for reactive persona context
-    const reactiveRelationships =
-      (await this.ctx.storage.get<CharacterRelationship[]>("narrative:relationships")) ?? [];
-    const reactiveRelBlock = buildRelationshipBlock(reactiveRelationships);
-
-    // Load lifecycle phase for reactive persona (same storage key)
-    const reactiveStoredPhase = await this.ctx.storage.get<SceneLifecyclePhase>("scene:lifecyclePhase");
-    const reactiveLifecyclePhase = computeLifecyclePhase(
-      this.messages.filter((m) => m.role === "user").length,
-      reactiveStoredPhase ?? undefined,
-    );
-
-    const reactiveLifecycleBlock = this._gameMode !== "hat" ? `\n\n${buildLifecycleBlock(reactiveLifecyclePhase)}` : "";
-    const reactiveSystem =
-      buildPersonaSystemPrompt(reactivePersona, activePersona, SYSTEM_PROMPT, reactiveGameModeBlock, reactiveRelBlock) +
-      reactiveLifecycleBlock +
-      `\n\n[REACTIVE MODE] ${activePersona.name} just placed: ${lastActionSummary || "objects on the canvas"}. ` +
-      `React in character with exactly 1 spoken sentence (required - always produce text). ` +
-      `Optionally place 1 canvas object that BUILDS on theirs (same area, related content) - do NOT use batchExecute.`;
-
-    const reactiveScenePhase = computeScenePhase(this.messages.filter((m) => m.role === "user").length);
-    const model = this._getTracedModel("reactive", reactivePersona.name, {
-      gameMode: this._gameMode,
-      scenePhase: reactiveScenePhase,
-    });
-
-    // Show AI presence while generating
-    await boardStub.setAiPresence(true).catch((err: unknown) => {
-      console.debug(
-        JSON.stringify({
-          event: "ai:presence:start-error",
-          trigger: "reactive",
-          error: String(err),
-        }),
-      );
-    });
-
-    try {
-      const { messages: sanitizedMsgs, repairedCount } = sanitizeMessages(this.messages);
-      if (repairedCount > 0) this._traceSanitizeRepair("reactive", repairedCount);
-      const result = await generateText({
-        model,
-        system: reactiveSystem,
-        messages: await convertToModelMessages(sanitizedMsgs),
-        tools,
-        stopWhen: stepCountIs(2),
-      });
-
-      // Build and persist UIMessage from generateText result
-      // KEY-DECISION 2026-02-20: No fallback text for reactive persona. If the model
-      // returns only tool calls (placed an object without speaking), that's valid behavior.
-      // Passing "[PERSONA] ..." as fallback caused persistent stuck "..." messages in chat
-      // because generateText is not streaming - the fallback becomes the final text.
-      const reactiveMessage = this._buildGenerateTextMessage(result, reactivePersona.name);
-      if (reactiveMessage) {
-        this.messages.push(reactiveMessage);
-        await this.persistMessages(this.messages);
-      }
-
-      const totalToolCalls = result.steps.reduce((sum, s) => sum + s.toolCalls.length, 0);
-      this._logRequestEnd("reactive", reactivePersona.name, startTime, result.steps.length, totalToolCalls);
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- StepResult<T> toolCalls are narrowly typed; _traceToolFailures accepts the common shape
-      this._traceToolFailures("reactive", result.steps as any[]);
-    } catch (err) {
-      console.error(
-        JSON.stringify({
-          event: "reactive:error",
-          boardId: this.name,
-          persona: reactivePersona.name,
-          autonomousExchangeCount: this._autonomousExchangeCount,
-          error: String(err),
-          // Include stack trace to distinguish programming bugs from transient AI/network errors
-          stack: err instanceof Error ? err.stack : undefined,
-        }),
-      );
-    } finally {
-      // Toggle persona regardless of success/failure - prevents getting stuck
-      this._activePersonaIndex = reactiveIndex;
-      this._isGenerating = false;
-      await boardStub.setAiPresence(false).catch((err: unknown) => {
+      // Re-check: human may have interrupted during the delay (onChatMessage resets count)
+      if (this._autonomousExchangeCount === 0) {
         console.debug(
           JSON.stringify({
-            event: "ai:presence:cleanup-error",
+            event: "reactive:skip",
+            reason: "human-interrupted",
+            boardId: this.name,
+          }),
+        );
+        return;
+      }
+
+      // Load personas if not passed in (director nudge path).
+      // withGenerating's finally handles _isGenerating = false if this throws.
+      let effectivePersonas: Persona[];
+      try {
+        effectivePersonas = personas ?? (await this._getEffectivePersonas());
+      } catch (err) {
+        console.error(
+          JSON.stringify({
+            event: "reactive:personas-error",
+            boardId: this.name,
+            error: String(err),
+          }),
+        );
+        return;
+      }
+      // Skip reactive if only 1 persona (can't react to yourself)
+      if (effectivePersonas.length <= 1) {
+        console.debug(
+          JSON.stringify({
+            event: "reactive:skip",
+            reason: "single-persona",
+            boardId: this.name,
+          }),
+        );
+        return;
+      }
+      const boundActive = activeIndex % effectivePersonas.length;
+      const reactiveIndex = (boundActive + 1) % effectivePersonas.length;
+      const reactivePersona = effectivePersonas[reactiveIndex];
+      const activePersona = effectivePersonas[boundActive];
+      const startTime = Date.now();
+      this._logRequestStart("reactive", reactivePersona.name);
+
+      const doId = this.env.BOARD.idFromName(this.name);
+      const boardStub = this.env.BOARD.get(doId);
+      const batchId = crypto.randomUUID();
+      const tools = createSDKTools(boardStub, batchId, this.env.AI, this.ctx.storage);
+
+      // Pass the same game mode block to the reactive persona
+      const reactiveGameModeState: GameModeState = {
+        hatPrompt: this._hatPromptIndex >= 0 ? HAT_PROMPTS[this._hatPromptIndex] : undefined,
+        hatExchangeCount: this._hatExchangeCount,
+        hatPromptOffset: Math.min(50 + this._hatPromptCount * 600, 650),
+        yesAndCount: this._yesAndCount,
+      };
+      const reactiveGameModeBlock = buildGameModePromptBlock(this._gameMode, reactiveGameModeState);
+
+      // Extract what the active persona just created for context injection
+      const lastActionSummary = this._describeLastAction();
+
+      // Load scene relationships for reactive persona context
+      const reactiveRelationships =
+        (await this.ctx.storage.get<CharacterRelationship[]>("narrative:relationships")) ?? [];
+      const reactiveRelBlock = buildRelationshipBlock(reactiveRelationships);
+
+      // Load lifecycle phase for reactive persona (same storage key)
+      const reactiveStoredPhase = await this.ctx.storage.get<SceneLifecyclePhase>("scene:lifecyclePhase");
+      const reactiveLifecyclePhase = computeLifecyclePhase(
+        this.messages.filter((m) => m.role === "user").length,
+        reactiveStoredPhase ?? undefined,
+      );
+
+      const reactiveLifecycleBlock =
+        this._gameMode !== "hat" ? `\n\n${buildLifecycleBlock(reactiveLifecyclePhase)}` : "";
+      const reactiveSystem =
+        buildPersonaSystemPrompt(
+          reactivePersona,
+          activePersona,
+          SYSTEM_PROMPT,
+          reactiveGameModeBlock,
+          reactiveRelBlock,
+        ) +
+        reactiveLifecycleBlock +
+        `\n\n[REACTIVE MODE] ${activePersona.name} just placed: ${lastActionSummary || "objects on the canvas"}. ` +
+        `React in character with exactly 1 spoken sentence (required - always produce text). ` +
+        `Optionally place 1 canvas object that BUILDS on theirs (same area, related content) - do NOT use batchExecute.`;
+
+      const reactiveScenePhase = computeScenePhase(this.messages.filter((m) => m.role === "user").length);
+      const model = this._getTracedModel("reactive", reactivePersona.name, {
+        gameMode: this._gameMode,
+        scenePhase: reactiveScenePhase,
+      });
+
+      // Show AI presence while generating
+      await boardStub.setAiPresence(true).catch((err: unknown) => {
+        console.debug(
+          JSON.stringify({
+            event: "ai:presence:start-error",
             trigger: "reactive",
             error: String(err),
           }),
         );
       });
-    }
+
+      try {
+        const { messages: sanitizedMsgs, repairedCount } = sanitizeMessages(this.messages);
+        if (repairedCount > 0) this._traceSanitizeRepair("reactive", repairedCount);
+        const result = await generateText({
+          model,
+          system: reactiveSystem,
+          messages: await convertToModelMessages(sanitizedMsgs),
+          tools,
+          stopWhen: stepCountIs(2),
+        });
+
+        // Build and persist UIMessage from generateText result
+        // KEY-DECISION 2026-02-20: No fallback text for reactive persona. If the model
+        // returns only tool calls (placed an object without speaking), that's valid behavior.
+        // Passing "[PERSONA] ..." as fallback caused persistent stuck "..." messages in chat
+        // because generateText is not streaming - the fallback becomes the final text.
+        const reactiveMessage = this._buildGenerateTextMessage(result, reactivePersona.name);
+        if (reactiveMessage) {
+          this.messages.push(reactiveMessage);
+          await this.persistMessages(this.messages);
+        }
+
+        const totalToolCalls = result.steps.reduce((sum, s) => sum + s.toolCalls.length, 0);
+        this._logRequestEnd("reactive", reactivePersona.name, startTime, result.steps.length, totalToolCalls);
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- StepResult<T> toolCalls are narrowly typed; _traceToolFailures accepts the common shape
+        this._traceToolFailures("reactive", result.steps as any[]);
+      } catch (err) {
+        console.error(
+          JSON.stringify({
+            event: "reactive:error",
+            boardId: this.name,
+            persona: reactivePersona.name,
+            autonomousExchangeCount: this._autonomousExchangeCount,
+            error: String(err),
+            // Include stack trace to distinguish programming bugs from transient AI/network errors
+            stack: err instanceof Error ? err.stack : undefined,
+          }),
+        );
+      } finally {
+        // Toggle persona regardless of success/failure - prevents getting stuck
+        this._activePersonaIndex = reactiveIndex;
+        await boardStub.setAiPresence(false).catch((err: unknown) => {
+          console.debug(
+            JSON.stringify({
+              event: "ai:presence:cleanup-error",
+              trigger: "reactive",
+              error: String(err),
+            }),
+          );
+        });
+      }
+    });
   }
 
   // ---------------------------------------------------------------------------
@@ -2319,83 +2336,85 @@ export class ChatAgent extends AIChatAgent<Bindings> {
       return;
     }
 
-    this._isGenerating = true;
-    const startTime = Date.now();
-    const personas = await this._getEffectivePersonas();
-    const reactionIndex = this._activePersonaIndex % personas.length;
-    const reactionPersona = personas[reactionIndex];
-    const reactionOther = personas.length > 1 ? personas[(reactionIndex + 1) % personas.length] : undefined;
+    await this.withGenerating(async () => {
+      const startTime = Date.now();
+      const personas = await this._getEffectivePersonas();
+      const reactionIndex = this._activePersonaIndex % personas.length;
+      const reactionPersona = personas[reactionIndex];
+      const reactionOther = personas.length > 1 ? personas[(reactionIndex + 1) % personas.length] : undefined;
 
-    this._logRequestStart("sfx-reaction", reactionPersona.name, { labels });
+      this._logRequestStart("sfx-reaction", reactionPersona.name, { labels });
 
-    const doId = this.env.BOARD.idFromName(this.name);
-    const boardStub = this.env.BOARD.get(doId);
-    const batchId = crypto.randomUUID();
-    const tools = createSDKTools(boardStub, batchId, this.env.AI, this.ctx.storage);
+      const doId = this.env.BOARD.idFromName(this.name);
+      const boardStub = this.env.BOARD.get(doId);
+      const batchId = crypto.randomUUID();
+      const tools = createSDKTools(boardStub, batchId, this.env.AI, this.ctx.storage);
 
-    await boardStub.setAiPresence(true).catch((err: unknown) => {
-      console.debug(JSON.stringify({ event: "ai:presence:start-error", trigger: "sfx-reaction", error: String(err) }));
-    });
-
-    try {
-      const relationships = (await this.ctx.storage.get<CharacterRelationship[]>("narrative:relationships")) ?? [];
-      const relBlock = buildRelationshipBlock(relationships);
-      const gameModeState: GameModeState = {
-        hatPrompt: this._hatPromptIndex >= 0 ? HAT_PROMPTS[this._hatPromptIndex] : undefined,
-        hatExchangeCount: this._hatExchangeCount,
-        hatPromptOffset: Math.min(50 + this._hatPromptCount * 600, 650),
-        yesAndCount: this._yesAndCount,
-      };
-      const gameModeBlock = buildGameModePromptBlock(this._gameMode, gameModeState);
-      const storedPhase = await this.ctx.storage.get<SceneLifecyclePhase>("scene:lifecyclePhase");
-      const lifecyclePhase = computeLifecyclePhase(humanTurns, storedPhase ?? undefined);
-      const lifecycleBlock = this._gameMode !== "hat" ? `\n\n${buildLifecycleBlock(lifecyclePhase)}` : "";
-
-      const sfxSystem =
-        buildPersonaSystemPrompt(reactionPersona, reactionOther, SYSTEM_PROMPT, gameModeBlock, relBlock) +
-        lifecycleBlock +
-        `\n\n${buildSfxReactionPrompt(labels)}`;
-
-      const { messages: sanitizedMsgs, repairedCount } = sanitizeMessages(this.messages);
-      if (repairedCount > 0) this._traceSanitizeRepair("sfx-reaction", repairedCount);
-
-      const result = await generateText({
-        model: this._getTracedModel("sfx-reaction", reactionPersona.name, { gameMode: this._gameMode }),
-        system: sfxSystem,
-        messages: await convertToModelMessages(sanitizedMsgs),
-        tools,
-        stopWhen: stepCountIs(2),
-      });
-
-      const reactionMessage = this._buildGenerateTextMessage(result, reactionPersona.name);
-      if (reactionMessage) {
-        this.messages.push(reactionMessage);
-        await this.persistMessages(this.messages);
-      }
-
-      const totalToolCalls = result.steps.reduce((sum, s) => sum + s.toolCalls.length, 0);
-      this._logRequestEnd("sfx-reaction", reactionPersona.name, startTime, result.steps.length, totalToolCalls, {
-        labels,
-      });
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- StepResult<T> toolCalls are narrowly typed; _traceToolFailures accepts the common shape
-      this._traceToolFailures("sfx-reaction", result.steps as any[]);
-    } catch (err) {
-      console.error(
-        JSON.stringify({
-          event: "sfx-reaction:error",
-          boardId: this.name,
-          persona: reactionPersona.name,
-          error: String(err),
-        }),
-      );
-    } finally {
-      this._isGenerating = false;
-      await boardStub.setAiPresence(false).catch((err: unknown) => {
+      await boardStub.setAiPresence(true).catch((err: unknown) => {
         console.debug(
-          JSON.stringify({ event: "ai:presence:cleanup-error", trigger: "sfx-reaction", error: String(err) }),
+          JSON.stringify({ event: "ai:presence:start-error", trigger: "sfx-reaction", error: String(err) }),
         );
       });
-    }
+
+      try {
+        const relationships = (await this.ctx.storage.get<CharacterRelationship[]>("narrative:relationships")) ?? [];
+        const relBlock = buildRelationshipBlock(relationships);
+        const gameModeState: GameModeState = {
+          hatPrompt: this._hatPromptIndex >= 0 ? HAT_PROMPTS[this._hatPromptIndex] : undefined,
+          hatExchangeCount: this._hatExchangeCount,
+          hatPromptOffset: Math.min(50 + this._hatPromptCount * 600, 650),
+          yesAndCount: this._yesAndCount,
+        };
+        const gameModeBlock = buildGameModePromptBlock(this._gameMode, gameModeState);
+        const storedPhase = await this.ctx.storage.get<SceneLifecyclePhase>("scene:lifecyclePhase");
+        const lifecyclePhase = computeLifecyclePhase(humanTurns, storedPhase ?? undefined);
+        const lifecycleBlock = this._gameMode !== "hat" ? `\n\n${buildLifecycleBlock(lifecyclePhase)}` : "";
+
+        const sfxSystem =
+          buildPersonaSystemPrompt(reactionPersona, reactionOther, SYSTEM_PROMPT, gameModeBlock, relBlock) +
+          lifecycleBlock +
+          `\n\n${buildSfxReactionPrompt(labels)}`;
+
+        const { messages: sanitizedMsgs, repairedCount } = sanitizeMessages(this.messages);
+        if (repairedCount > 0) this._traceSanitizeRepair("sfx-reaction", repairedCount);
+
+        const result = await generateText({
+          model: this._getTracedModel("sfx-reaction", reactionPersona.name, { gameMode: this._gameMode }),
+          system: sfxSystem,
+          messages: await convertToModelMessages(sanitizedMsgs),
+          tools,
+          stopWhen: stepCountIs(2),
+        });
+
+        const reactionMessage = this._buildGenerateTextMessage(result, reactionPersona.name);
+        if (reactionMessage) {
+          this.messages.push(reactionMessage);
+          await this.persistMessages(this.messages);
+        }
+
+        const totalToolCalls = result.steps.reduce((sum, s) => sum + s.toolCalls.length, 0);
+        this._logRequestEnd("sfx-reaction", reactionPersona.name, startTime, result.steps.length, totalToolCalls, {
+          labels,
+        });
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- StepResult<T> toolCalls are narrowly typed; _traceToolFailures accepts the common shape
+        this._traceToolFailures("sfx-reaction", result.steps as any[]);
+      } catch (err) {
+        console.error(
+          JSON.stringify({
+            event: "sfx-reaction:error",
+            boardId: this.name,
+            persona: reactionPersona.name,
+            error: String(err),
+          }),
+        );
+      } finally {
+        await boardStub.setAiPresence(false).catch((err: unknown) => {
+          console.debug(
+            JSON.stringify({ event: "ai:presence:cleanup-error", trigger: "sfx-reaction", error: String(err) }),
+          );
+        });
+      }
+    });
   }
 
   /** Called by DO schedule after 5s of player idle - reacts to recent canvas mutations in character.
@@ -2497,104 +2516,112 @@ export class ChatAgent extends AIChatAgent<Bindings> {
       return;
     }
 
-    // React!
-    this._isGenerating = true;
-    const startTime = Date.now();
-    const reactionPersonas = await this._getEffectivePersonas();
-    const reactionIndex = this._activePersonaIndex % reactionPersonas.length;
-    const reactionPersona = reactionPersonas[reactionIndex];
-    const reactionOther =
-      reactionPersonas.length > 1 ? reactionPersonas[(reactionIndex + 1) % reactionPersonas.length] : undefined;
-
-    this._logRequestStart("canvas-action", reactionPersona.name, { actionCount: actions.length, score });
-
-    const doId = this.env.BOARD.idFromName(this.name);
-    const boardStub = this.env.BOARD.get(doId);
-    const batchId = crypto.randomUUID();
-    const tools = createSDKTools(boardStub, batchId, this.env.AI, this.ctx.storage);
-
-    await boardStub.setAiPresence(true).catch((err: unknown) => {
-      console.debug(JSON.stringify({ event: "ai:presence:start-error", trigger: "canvas-action", error: String(err) }));
-    });
-
+    // React! - pre-declare so they are accessible after withGenerating releases the mutex
     let didReact = false;
-    try {
-      const relationships = (await this.ctx.storage.get<CharacterRelationship[]>("narrative:relationships")) ?? [];
-      const relBlock = buildRelationshipBlock(relationships);
+    let savedReactionIndex = 0;
+    let savedReactionPersonas: Persona[] = [];
 
-      const gameModeState: GameModeState = {
-        hatPrompt: this._hatPromptIndex >= 0 ? HAT_PROMPTS[this._hatPromptIndex] : undefined,
-        hatExchangeCount: this._hatExchangeCount,
-        hatPromptOffset: Math.min(50 + this._hatPromptCount * 600, 650),
-        yesAndCount: this._yesAndCount,
-      };
-      const gameModeBlock = buildGameModePromptBlock(this._gameMode, gameModeState);
+    await this.withGenerating(async () => {
+      const startTime = Date.now();
+      const reactionPersonas = await this._getEffectivePersonas();
+      const reactionIndex = this._activePersonaIndex % reactionPersonas.length;
+      const reactionPersona = reactionPersonas[reactionIndex];
+      const reactionOther =
+        reactionPersonas.length > 1 ? reactionPersonas[(reactionIndex + 1) % reactionPersonas.length] : undefined;
 
-      const storedPhase = await this.ctx.storage.get<SceneLifecyclePhase>("scene:lifecyclePhase");
-      const lifecyclePhase = computeLifecyclePhase(humanTurns, storedPhase ?? undefined);
-      const lifecycleBlock = this._gameMode !== "hat" ? `\n\n${buildLifecycleBlock(lifecyclePhase)}` : "";
+      savedReactionIndex = reactionIndex;
+      savedReactionPersonas = reactionPersonas;
 
-      const canvasReactionSystem =
-        buildPersonaSystemPrompt(reactionPersona, reactionOther, SYSTEM_PROMPT, gameModeBlock, relBlock) +
-        lifecycleBlock +
-        `\n\n${buildCanvasReactionPrompt(actions)}`;
+      this._logRequestStart("canvas-action", reactionPersona.name, { actionCount: actions.length, score });
 
-      const { messages: sanitizedMsgs, repairedCount } = sanitizeMessages(this.messages);
-      if (repairedCount > 0) this._traceSanitizeRepair("canvas-action", repairedCount);
+      const doId = this.env.BOARD.idFromName(this.name);
+      const boardStub = this.env.BOARD.get(doId);
+      const batchId = crypto.randomUUID();
+      const tools = createSDKTools(boardStub, batchId, this.env.AI, this.ctx.storage);
 
-      const result = await generateText({
-        model: this._getTracedModel("canvas-action", reactionPersona.name, { gameMode: this._gameMode }),
-        system: canvasReactionSystem,
-        messages: await convertToModelMessages(sanitizedMsgs),
-        tools,
-        stopWhen: stepCountIs(2),
-      });
-
-      // No fallback text - same fix as reactive persona (see KEY-DECISION above)
-      const reactionMessage = this._buildGenerateTextMessage(result, reactionPersona.name);
-      if (reactionMessage) {
-        this.messages.push(reactionMessage);
-        await this.persistMessages(this.messages);
-      }
-
-      const totalToolCalls = result.steps.reduce((sum, s) => sum + s.toolCalls.length, 0);
-      this._logRequestEnd("canvas-action", reactionPersona.name, startTime, result.steps.length, totalToolCalls, {
-        score,
-        actionCount: actions.length,
-      });
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- StepResult<T> toolCalls are narrowly typed; _traceToolFailures accepts the common shape
-      this._traceToolFailures("canvas-action", result.steps as any[]);
-
-      // Set 30s cooldown to prevent back-to-back canvas reactions
-      this._canvasReactionCooldownUntil = Date.now() + 30_000;
-      didReact = true;
-    } catch (err) {
-      console.error(
-        JSON.stringify({
-          event: "canvas-reaction:error",
-          boardId: this.name,
-          persona: reactionPersona.name,
-          score,
-          error: String(err),
-        }),
-      );
-    } finally {
-      this._isGenerating = false;
-      await boardStub.setAiPresence(false).catch((err: unknown) => {
+      await boardStub.setAiPresence(true).catch((err: unknown) => {
         console.debug(
-          JSON.stringify({ event: "ai:presence:cleanup-error", trigger: "canvas-action", error: String(err) }),
+          JSON.stringify({ event: "ai:presence:start-error", trigger: "canvas-action", error: String(err) }),
         );
       });
-    }
 
+      try {
+        const relationships = (await this.ctx.storage.get<CharacterRelationship[]>("narrative:relationships")) ?? [];
+        const relBlock = buildRelationshipBlock(relationships);
+
+        const gameModeState: GameModeState = {
+          hatPrompt: this._hatPromptIndex >= 0 ? HAT_PROMPTS[this._hatPromptIndex] : undefined,
+          hatExchangeCount: this._hatExchangeCount,
+          hatPromptOffset: Math.min(50 + this._hatPromptCount * 600, 650),
+          yesAndCount: this._yesAndCount,
+        };
+        const gameModeBlock = buildGameModePromptBlock(this._gameMode, gameModeState);
+
+        const storedPhase = await this.ctx.storage.get<SceneLifecyclePhase>("scene:lifecyclePhase");
+        const lifecyclePhase = computeLifecyclePhase(humanTurns, storedPhase ?? undefined);
+        const lifecycleBlock = this._gameMode !== "hat" ? `\n\n${buildLifecycleBlock(lifecyclePhase)}` : "";
+
+        const canvasReactionSystem =
+          buildPersonaSystemPrompt(reactionPersona, reactionOther, SYSTEM_PROMPT, gameModeBlock, relBlock) +
+          lifecycleBlock +
+          `\n\n${buildCanvasReactionPrompt(actions)}`;
+
+        const { messages: sanitizedMsgs, repairedCount } = sanitizeMessages(this.messages);
+        if (repairedCount > 0) this._traceSanitizeRepair("canvas-action", repairedCount);
+
+        const result = await generateText({
+          model: this._getTracedModel("canvas-action", reactionPersona.name, { gameMode: this._gameMode }),
+          system: canvasReactionSystem,
+          messages: await convertToModelMessages(sanitizedMsgs),
+          tools,
+          stopWhen: stepCountIs(2),
+        });
+
+        // No fallback text - same fix as reactive persona (see KEY-DECISION above)
+        const reactionMessage = this._buildGenerateTextMessage(result, reactionPersona.name);
+        if (reactionMessage) {
+          this.messages.push(reactionMessage);
+          await this.persistMessages(this.messages);
+        }
+
+        const totalToolCalls = result.steps.reduce((sum, s) => sum + s.toolCalls.length, 0);
+        this._logRequestEnd("canvas-action", reactionPersona.name, startTime, result.steps.length, totalToolCalls, {
+          score,
+          actionCount: actions.length,
+        });
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- StepResult<T> toolCalls are narrowly typed; _traceToolFailures accepts the common shape
+        this._traceToolFailures("canvas-action", result.steps as any[]);
+
+        // Set 30s cooldown to prevent back-to-back canvas reactions
+        this._canvasReactionCooldownUntil = Date.now() + 30_000;
+        didReact = true;
+      } catch (err) {
+        console.error(
+          JSON.stringify({
+            event: "canvas-reaction:error",
+            boardId: this.name,
+            persona: reactionPersona.name,
+            score,
+            error: String(err),
+          }),
+        );
+      } finally {
+        await boardStub.setAiPresence(false).catch((err: unknown) => {
+          console.debug(
+            JSON.stringify({ event: "ai:presence:cleanup-error", trigger: "canvas-action", error: String(err) }),
+          );
+        });
+      }
+    });
+
+    // Trigger reactive persona AFTER withGenerating releases _isGenerating = false,
+    // so _triggerReactivePersona's busy guard passes.
     if (didReact) {
       // Reset director timer (AI just acted - restart 60s inactivity window)
       this._resetDirectorTimer();
-      // Trigger reactive persona cascade (same pattern as onChatMessage wrappedOnFinish)
-      // Called AFTER _isGenerating = false so _triggerReactivePersona's busy guard passes
       this._autonomousExchangeCount++;
       this.ctx.waitUntil(
-        this._triggerReactivePersona(reactionIndex, reactionPersonas).catch((err: unknown) => {
+        this._triggerReactivePersona(savedReactionIndex, savedReactionPersonas).catch((err: unknown) => {
           console.error(JSON.stringify({ event: "reactive:unhandled", boardId: this.name, error: String(err) }));
         }),
       );
@@ -2658,119 +2685,155 @@ export class ChatAgent extends AIChatAgent<Bindings> {
       return;
     }
 
-    this._isGenerating = true;
-    const startTime = Date.now();
-    const directorPersonas = await this._getEffectivePersonas();
-    const directorIndex = this._activePersonaIndex % directorPersonas.length;
-    const directorPersona = directorPersonas[directorIndex];
-    const directorOther =
-      directorPersonas.length > 1 ? directorPersonas[(directorIndex + 1) % directorPersonas.length] : undefined;
+    // Pre-declare so they are accessible after withGenerating releases the mutex
+    let directorTriggered = false;
+    let savedDirectorIndex = 0;
+    let savedDirectorPersonas: Persona[] = [];
 
-    // Determine scene phase from user message count
-    const userMessageCount = directorHumanTurns;
-    const phase = computeScenePhase(userMessageCount);
-    this._logRequestStart("director", directorPersona.name, {
-      messageCount: this.messages.length,
-      budgetPhase: directorBudget,
-    });
+    await this.withGenerating(async () => {
+      const startTime = Date.now();
+      const directorPersonas = await this._getEffectivePersonas();
+      const directorIndex = this._activePersonaIndex % directorPersonas.length;
+      const directorPersona = directorPersonas[directorIndex];
+      const directorOther =
+        directorPersonas.length > 1 ? directorPersonas[(directorIndex + 1) % directorPersonas.length] : undefined;
 
-    const doId = this.env.BOARD.idFromName(this.name);
-    const boardStub = this.env.BOARD.get(doId);
-    const batchId = crypto.randomUUID();
-    const tools = createSDKTools(boardStub, batchId, this.env.AI, this.ctx.storage);
+      savedDirectorIndex = directorIndex;
+      savedDirectorPersonas = directorPersonas;
 
-    // Show AI presence while generating
-    await boardStub.setAiPresence(true).catch((err: unknown) => {
-      console.debug(
-        JSON.stringify({
-          event: "ai:presence:start-error",
-          trigger: "director",
-          error: String(err),
-        }),
-      );
-    });
-
-    try {
-      // Build game mode block for director
-      const directorGameModeState: GameModeState = {
-        hatPrompt: this._hatPromptIndex >= 0 ? HAT_PROMPTS[this._hatPromptIndex] : undefined,
-        hatExchangeCount: this._hatExchangeCount,
-        hatPromptOffset: Math.min(50 + this._hatPromptCount * 600, 650),
-        yesAndCount: this._yesAndCount,
-      };
-      const directorGameModeBlock = buildGameModePromptBlock(this._gameMode, directorGameModeState);
-
-      // Mode-specific director instructions
-      let directorInstructions: string;
-      if (this._gameMode === "hat") {
-        const hatKey = this._hatExchangeCount >= 5 ? "wrapup" : "active";
-        directorInstructions = DIRECTOR_PROMPTS_HAT[hatKey];
-      } else if (this._gameMode === "yesand") {
-        const yesandKey = this._yesAndCount >= 10 ? "wrapup" : "active";
-        directorInstructions = DIRECTOR_PROMPTS_YESAND[yesandKey];
-      } else {
-        directorInstructions = `Current scene phase: ${phase.toUpperCase()}. ` + DIRECTOR_PROMPTS[phase];
-      }
-
-      // Load scene relationships for director context
-      const directorRelationships =
-        (await this.ctx.storage.get<CharacterRelationship[]>("narrative:relationships")) ?? [];
-      const directorRelBlock = buildRelationshipBlock(directorRelationships);
-
-      // Load lifecycle phase for director (auto-computed from user message count)
-      const directorStoredPhase = await this.ctx.storage.get<SceneLifecyclePhase>("scene:lifecyclePhase");
-      const directorLifecyclePhase = computeLifecyclePhase(directorHumanTurns, directorStoredPhase ?? undefined);
-      const directorLifecycleBlock =
-        this._gameMode !== "hat" ? `\n\n${buildLifecycleBlock(directorLifecyclePhase)}` : "";
-
-      // Director nudge uses the active persona's voice + budget-aware prompts
-      let directorSystem =
-        buildPersonaSystemPrompt(
-          directorPersona,
-          directorOther,
-          SYSTEM_PROMPT,
-          directorGameModeBlock,
-          directorRelBlock,
-        ) +
-        directorLifecycleBlock +
-        `\n\n[DIRECTOR MODE] You are the scene director. The players have been quiet for a while. ` +
-        directorInstructions +
-        `\n\nAct NOW - add something to the canvas to restart momentum. ` +
-        `Keep your chat response to 1 sentence max, something provocative that invites players to react.`;
-      if (directorBudget !== "normal") {
-        directorSystem += `\n\n${BUDGET_PROMPTS[directorBudget]}`;
-      }
-
-      const { messages: sanitizedMsgs, repairedCount } = sanitizeMessages(this.messages);
-      if (repairedCount > 0) this._traceSanitizeRepair("director", repairedCount);
-      const result = await generateText({
-        model: this._getTracedModel("director", directorPersona.name, {
-          gameMode: this._gameMode,
-          scenePhase: phase,
-        }),
-        system: directorSystem,
-        messages: await convertToModelMessages(sanitizedMsgs),
-        tools,
-        stopWhen: stepCountIs(3),
+      // Determine scene phase from user message count
+      const userMessageCount = directorHumanTurns;
+      const phase = computeScenePhase(userMessageCount);
+      this._logRequestStart("director", directorPersona.name, {
+        messageCount: this.messages.length,
+        budgetPhase: directorBudget,
       });
 
-      // Build and persist UIMessage from generateText result
-      const directorMessage = this._buildGenerateTextMessage(result, directorPersona.name);
-      if (directorMessage) {
-        this.messages.push(directorMessage);
-        await this.persistMessages(this.messages);
+      const doId = this.env.BOARD.idFromName(this.name);
+      const boardStub = this.env.BOARD.get(doId);
+      const batchId = crypto.randomUUID();
+      const tools = createSDKTools(boardStub, batchId, this.env.AI, this.ctx.storage);
+
+      // Show AI presence while generating
+      await boardStub.setAiPresence(true).catch((err: unknown) => {
+        console.debug(
+          JSON.stringify({
+            event: "ai:presence:start-error",
+            trigger: "director",
+            error: String(err),
+          }),
+        );
+      });
+
+      try {
+        // Build game mode block for director
+        const directorGameModeState: GameModeState = {
+          hatPrompt: this._hatPromptIndex >= 0 ? HAT_PROMPTS[this._hatPromptIndex] : undefined,
+          hatExchangeCount: this._hatExchangeCount,
+          hatPromptOffset: Math.min(50 + this._hatPromptCount * 600, 650),
+          yesAndCount: this._yesAndCount,
+        };
+        const directorGameModeBlock = buildGameModePromptBlock(this._gameMode, directorGameModeState);
+
+        // Mode-specific director instructions
+        let directorInstructions: string;
+        if (this._gameMode === "hat") {
+          const hatKey = this._hatExchangeCount >= 5 ? "wrapup" : "active";
+          directorInstructions = DIRECTOR_PROMPTS_HAT[hatKey];
+        } else if (this._gameMode === "yesand") {
+          const yesandKey = this._yesAndCount >= 10 ? "wrapup" : "active";
+          directorInstructions = DIRECTOR_PROMPTS_YESAND[yesandKey];
+        } else {
+          directorInstructions = `Current scene phase: ${phase.toUpperCase()}. ` + DIRECTOR_PROMPTS[phase];
+        }
+
+        // Load scene relationships for director context
+        const directorRelationships =
+          (await this.ctx.storage.get<CharacterRelationship[]>("narrative:relationships")) ?? [];
+        const directorRelBlock = buildRelationshipBlock(directorRelationships);
+
+        // Load lifecycle phase for director (auto-computed from user message count)
+        const directorStoredPhase = await this.ctx.storage.get<SceneLifecyclePhase>("scene:lifecyclePhase");
+        const directorLifecyclePhase = computeLifecyclePhase(directorHumanTurns, directorStoredPhase ?? undefined);
+        const directorLifecycleBlock =
+          this._gameMode !== "hat" ? `\n\n${buildLifecycleBlock(directorLifecyclePhase)}` : "";
+
+        // Director nudge uses the active persona's voice + budget-aware prompts
+        let directorSystem =
+          buildPersonaSystemPrompt(
+            directorPersona,
+            directorOther,
+            SYSTEM_PROMPT,
+            directorGameModeBlock,
+            directorRelBlock,
+          ) +
+          directorLifecycleBlock +
+          `\n\n[DIRECTOR MODE] You are the scene director. The players have been quiet for a while. ` +
+          directorInstructions +
+          `\n\nAct NOW - add something to the canvas to restart momentum. ` +
+          `Keep your chat response to 1 sentence max, something provocative that invites players to react.`;
+        if (directorBudget !== "normal") {
+          directorSystem += `\n\n${BUDGET_PROMPTS[directorBudget]}`;
+        }
+
+        const { messages: sanitizedMsgs, repairedCount } = sanitizeMessages(this.messages);
+        if (repairedCount > 0) this._traceSanitizeRepair("director", repairedCount);
+        const result = await generateText({
+          model: this._getTracedModel("director", directorPersona.name, {
+            gameMode: this._gameMode,
+            scenePhase: phase,
+          }),
+          system: directorSystem,
+          messages: await convertToModelMessages(sanitizedMsgs),
+          tools,
+          stopWhen: stepCountIs(3),
+        });
+
+        // Build and persist UIMessage from generateText result
+        const directorMessage = this._buildGenerateTextMessage(result, directorPersona.name);
+        if (directorMessage) {
+          this.messages.push(directorMessage);
+          await this.persistMessages(this.messages);
+        }
+
+        const totalToolCalls = result.steps.reduce((sum, s) => sum + s.toolCalls.length, 0);
+        this._logRequestEnd("director", directorPersona.name, startTime, result.steps.length, totalToolCalls, {
+          phase,
+        });
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- StepResult<T> toolCalls are narrowly typed; _traceToolFailures accepts the common shape
+        this._traceToolFailures("director", result.steps as any[]);
+
+        directorTriggered = true;
+      } catch (err) {
+        console.error(
+          JSON.stringify({
+            event: "director:nudge-error",
+            boardId: this.name,
+            persona: directorPersona.name,
+            phase,
+            error: String(err),
+          }),
+        );
+      } finally {
+        await boardStub.setAiPresence(false).catch((err: unknown) => {
+          console.debug(
+            JSON.stringify({
+              event: "ai:presence:cleanup-error",
+              trigger: "director",
+              error: String(err),
+            }),
+          );
+        });
       }
+    });
 
-      const totalToolCalls = result.steps.reduce((sum, s) => sum + s.toolCalls.length, 0);
-      this._logRequestEnd("director", directorPersona.name, startTime, result.steps.length, totalToolCalls, { phase });
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- StepResult<T> toolCalls are narrowly typed; _traceToolFailures accepts the common shape
-      this._traceToolFailures("director", result.steps as any[]);
-
-      // Director nudge also triggers the other persona to react
-      // Pass directorPersonas to avoid a redundant second D1 query
+    // Trigger reactive persona AFTER withGenerating releases _isGenerating = false,
+    // so _triggerReactivePersona's busy guard passes.
+    // Pass directorPersonas to avoid a redundant second D1 query.
+    if (directorTriggered) {
       this._autonomousExchangeCount++;
       this.ctx.waitUntil(
-        this._triggerReactivePersona(directorIndex, directorPersonas).catch((err: unknown) => {
+        this._triggerReactivePersona(savedDirectorIndex, savedDirectorPersonas).catch((err: unknown) => {
           console.error(
             JSON.stringify({
               event: "reactive:unhandled",
@@ -2780,27 +2843,6 @@ export class ChatAgent extends AIChatAgent<Bindings> {
           );
         }),
       );
-    } catch (err) {
-      console.error(
-        JSON.stringify({
-          event: "director:nudge-error",
-          boardId: this.name,
-          persona: directorPersona.name,
-          phase,
-          error: String(err),
-        }),
-      );
-    } finally {
-      this._isGenerating = false;
-      await boardStub.setAiPresence(false).catch((err: unknown) => {
-        console.debug(
-          JSON.stringify({
-            event: "ai:presence:cleanup-error",
-            trigger: "director",
-            error: String(err),
-          }),
-        );
-      });
     }
   }
 

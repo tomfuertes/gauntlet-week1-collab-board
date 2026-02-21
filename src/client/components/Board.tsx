@@ -2100,7 +2100,7 @@ export function Board({
                   headers: { "Content-Type": "application/json" },
                   body: JSON.stringify({ game_mode: mode }),
                   credentials: "include",
-                }).catch(() => {});
+                }).catch((e) => console.error("Failed to save game mode:", e));
               }
             }}
             onDismiss={() => setBoardGenStarted(true)}
@@ -2325,7 +2325,7 @@ export function Board({
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ game_mode: mode }),
                 credentials: "include",
-              }).catch(() => {});
+              }).catch((e) => console.error("Failed to save game mode:", e));
             }
           }}
           onDismiss={() => setBoardGenStarted(true)}
