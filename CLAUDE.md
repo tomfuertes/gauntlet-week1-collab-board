@@ -85,7 +85,7 @@ See `~/.claude/CLAUDE.md` for universal worktree conventions (merge safety, abso
 
 ## Browser Testing (playwright-cli)
 
-The `playwright-cli` skill is available for automated browser testing. **Use it proactively** for UAT, smoke tests, and verifying features - don't stop to ask, just run it.
+See `~/.claude/CLAUDE.md` for universal browser testing conventions (artifacts dir, proactive use, snapshots vs screenshots, sandbox flag).
 
 **UAT and quality exploration swarms should target production** (`https://yesaind.com`), not localhost. Prod is what real users see and avoids wrangler dev quirks (DO cold starts, WS flakiness, single-IP rate limit buckets). Only use localhost for testing uncommitted code changes.
 
@@ -110,8 +110,6 @@ playwright-cli state-save auth-user1.json     # save auth state for reuse
 playwright-cli state-load auth-user1.json     # restore auth state
 ```
 
-**All artifacts MUST go to `playwright/`** (gitignored). Always use `--filename=playwright/<name>.png` for screenshots. Never save screenshots to the repo root - no manual cleanup needed. Snapshots are YAML accessibility trees - prefer them over screenshots for understanding page structure.
-
 ### E2E Tests (Playwright)
 
 ```bash
@@ -121,7 +119,6 @@ npx playwright test --reporter=dot     # minimal output (default 'list' floods c
 ```
 
 **Known gotchas:**
-- Sandbox blocks Playwright browser launch and `wrangler dev`. Use `dangerouslyDisableSandbox: true` for both.
 - **Reactive persona UAT timing:** SAGE/reactive persona reliably triggers on the 2nd+ exchange, not the 1st (timing gap: `ctx.waitUntil` fires before base class adds the new assistant message to `this.messages`). GLM reactive `generateText` takes 30-40s. UAT must send a follow-up message before testing SAGE, then wait 45-60s.
 - **WS flakiness in local dev is expected.** First WS connection often drops with wrangler dev (DO cold start during WS handshake). The app reconnects but E2E/UAT tests must account for this. **After navigating to a board, always wait for `[data-state="connected"]` before interacting.** This selector is on the connection status dot in the header. Use `createObjectsViaWS()` helper (in `e2e/helpers.ts`) instead of UI double-click for reliable object creation. `wsRef.current` can be null after a drop even when React state shows "connected".
 - **HMR hook-order false positive:** "React has detected a change in the order of Hooks called by Board" during dev = Vite HMR artifact, not a real bug. Full page reload fixes it. Never investigate this error in a live dev session.
@@ -209,11 +206,9 @@ Each object stored as separate DO Storage key (`obj:{uuid}`, ~200 bytes). LWW vi
 
 ## Doc Sync
 
-- **Session start:** Read `CLAUDE.md`, `git log --oneline -20`, `TaskList`. No summary needed.
-- **Task list is the single source of truth** for backlog, loose ends, tech debt, and unshipped features. Use `TaskCreate`/`TaskList`/`TaskUpdate`. Not notes.md, not GitHub issues (unless external collaboration needed).
-- **CLAUDE.md:** Update only when file map, key constraints, or gotchas change. Not a changelog.
-- **KEY-DECISION comments:** Non-obvious decisions go in code, not docs. `// KEY-DECISION <date>: <rationale>`
 - **No session notes or docs/ files.** `docs/` directory was removed. Task list + git log is the source of truth.
+
+See `~/.claude/CLAUDE.md` for session start ritual and doc sync conventions.
 
 ## Custom Agents (Delegation)
 
@@ -229,12 +224,6 @@ See `~/.claude/CLAUDE.md` for agent workflow, model selection, and team conventi
 | E2E / eval harness | `general-purpose` | sonnet | `bypassPermissions` | team member (reports via SendMessage) |
 | Codebase exploration | `Explore` (built-in) | sonnet | default | team member or background (atomic) |
 
-**Architect agents can spawn sub-agents.** Opus architects should delegate exploratory token-burning (file reads, grep sweeps, pattern research) to sonnet or haiku background agents rather than burning opus tokens on mechanical exploration.
-
-**Always spawn agents with `mode: "bypassPermissions"`** unless they need user approval for destructive actions. The OS sandbox (`sandbox.enabled: true`) is the safety boundary - it blocks writes outside allowed paths and network outside allowed domains. Permission prompts inside sandboxed agents are redundant friction.
-
-**UAT uses teams, not background tasks.** Each test scenario gets a teammate that reports failures immediately via `SendMessage`. The lead triages and fixes while other flows still run. Before spawning UAT, enumerate scenarios as a numbered list for the user.
-
 **Agent prompts must explicitly mention:**
 - **Dev server startup** (only if UAT needed): `npm run dev` with `run_in_background: true` and `dangerouslyDisableSandbox: true`. Then `npm run health` to wait.
 - `scripts/localcurl.sh` instead of `curl`
@@ -244,8 +233,6 @@ See `~/.claude/CLAUDE.md` for agent workflow, model selection, and team conventi
 - `"Write your implementation plan to $TMPDIR/plan-{task-id}.md before coding"` - if the agent runs out of context, the orchestrator can read the plan to assess progress and hand off cleanly.
 - Agents should prefer atomic tool calls over exploratory browsing to conserve context window.
 
-Never run playwright-cli sessions or full test suites in main Opus context. Always delegate.
-
 ## Conventions
 
 - TypeScript strict mode
@@ -254,9 +241,4 @@ Never run playwright-cli sessions or full test suites in main Opus context. Alwa
 - Feature-based organization on client side
 - Vertical slices - each increment delivers user-visible behavior
 - Never break sync - every commit should pass the 2-browser test
-- Use `npx <tool>` or `npm run <script>`, never `./node_modules/.bin/<tool>` directly (matches permission allowlist, works in worktrees)
-- **Never use `git -C <path>`** - run git commands directly (e.g., `git status`, `git commit`). The working directory is already the repo. `git -C` bypasses the permission allowlist and forces manual approval on every invocation. This applies to both the main repo and worktrees.
 - Use `scripts/localcurl.sh` instead of `curl` for local API testing (localhost-only wrapper, whitelisted in worktrees)
-- Start dev servers with `run_in_background: true` on the Bash tool, not `&` or `2>&1 &`. The background task mechanism handles this cleanly without needing shell backgrounding.
-- Never leave sprint/task codes (A1, B2, etc.) in code comments - they're meaningless without the plan doc
-- **`gh issue create` with long bodies:** Write body to `$TMPDIR/issue-<name>.md` first, then `gh issue create --title "..." --body-file $TMPDIR/issue-<name>.md --label <label>`. Never pipe/heredoc into `gh` (blocked by `no-gh-stdin.sh` hook). Never use `<` or `<<<` angle brackets in titles (confuses shell). Create issues one at a time (parallel `gh` calls race on hook stdin).
