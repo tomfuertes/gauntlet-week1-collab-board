@@ -44,15 +44,22 @@ export function SpectatorView({ boardId, onBack }: SpectatorViewProps) {
     canvasBubbles,
     audienceWave,
     clearAudienceWave,
+    activePoll,
+    pollResult,
+    clearPollResult,
     sendCursor,
     sendReaction,
     sendHeckle,
+    sendVote,
   } = useSpectatorSocket(boardId);
   const { activeWave, dismissWave } = useWaveEffect(audienceWave, clearAudienceWave);
   const [size, setSize] = useState({ width: window.innerWidth, height: window.innerHeight });
   const [scale, setScale] = useState(1);
   const [stagePos, setStagePos] = useState({ x: 0, y: 0 });
   const [copied, setCopied] = useState(false);
+  // Poll state: track per-poll vote and countdown
+  const [votedOptionId, setVotedOptionId] = useState<string | null>(null);
+  const [pollCountdown, setPollCountdown] = useState(0);
   const lastCursorSend = useRef(0);
   const stageRef = useRef<HTMLDivElement>(null);
 
@@ -72,6 +79,28 @@ export function SpectatorView({ boardId, onBack }: SpectatorViewProps) {
     }, 1000);
     return () => clearInterval(id);
   }, [lastHeckleAt]);
+
+  // Poll countdown: tick every second while poll is active
+  useEffect(() => {
+    if (!activePoll) return;
+    const id = setInterval(() => {
+      setPollCountdown(Math.max(0, Math.ceil((activePoll.expiresAt - Date.now()) / 1000)));
+    }, 200);
+    setPollCountdown(Math.max(0, Math.ceil((activePoll.expiresAt - Date.now()) / 1000)));
+    return () => clearInterval(id);
+  }, [activePoll]);
+
+  // Reset vote state on new poll
+  useEffect(() => {
+    if (activePoll) setVotedOptionId(null);
+  }, [activePoll?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Auto-dismiss poll result after 5s
+  useEffect(() => {
+    if (!pollResult) return;
+    const id = setTimeout(clearPollResult, 5000);
+    return () => clearTimeout(id);
+  }, [pollResult, clearPollResult]);
 
   useEffect(() => {
     const onResize = () => setSize({ width: window.innerWidth, height: window.innerHeight });
@@ -358,6 +387,227 @@ export function SpectatorView({ boardId, onBack }: SpectatorViewProps) {
             count={activeWave.count}
             onDone={dismissWave}
           />
+        )}
+
+        {/* Audience poll overlay - voting phase */}
+        {activePoll && (
+          <div
+            style={{
+              position: "absolute",
+              inset: 0,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              background: "rgba(0,0,0,0.55)",
+              zIndex: 20,
+              pointerEvents: "all",
+            }}
+          >
+            <div
+              style={{
+                background: "#0f172a",
+                border: "1px solid rgba(255,255,255,0.12)",
+                borderRadius: 16,
+                padding: "28px 32px",
+                maxWidth: 420,
+                width: "90%",
+                boxShadow: "0 20px 60px rgba(0,0,0,0.7)",
+              }}
+            >
+              <div
+                style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16 }}
+              >
+                <div
+                  style={{
+                    fontFamily: "Georgia, 'Times New Roman', serif",
+                    fontSize: "0.65rem",
+                    letterSpacing: "0.18em",
+                    textTransform: "uppercase",
+                    color: "rgba(255,255,255,0.35)",
+                  }}
+                >
+                  Audience Poll
+                </div>
+                <div
+                  style={{
+                    fontFamily: "monospace",
+                    fontSize: "1.1rem",
+                    fontWeight: 700,
+                    color: pollCountdown <= 5 ? "#f87171" : "#fbbf24",
+                    transition: "color 0.3s",
+                  }}
+                >
+                  {pollCountdown}s
+                </div>
+              </div>
+              <div
+                style={{
+                  fontFamily: "Georgia, 'Times New Roman', serif",
+                  fontSize: "clamp(1rem, 3vw, 1.2rem)",
+                  fontWeight: 600,
+                  color: "#f1f5f9",
+                  marginBottom: 20,
+                  lineHeight: 1.4,
+                }}
+              >
+                {activePoll.question}
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                {activePoll.options.map((opt) => {
+                  const isVoted = votedOptionId === opt.id;
+                  return (
+                    <button
+                      key={opt.id}
+                      onClick={() => {
+                        if (!votedOptionId) {
+                          setVotedOptionId(opt.id);
+                          sendVote(activePoll.id, opt.id);
+                        }
+                      }}
+                      disabled={!!votedOptionId}
+                      style={{
+                        background: isVoted ? "rgba(251,191,36,0.15)" : "rgba(255,255,255,0.05)",
+                        border: `1px solid ${isVoted ? "rgba(251,191,36,0.6)" : "rgba(255,255,255,0.12)"}`,
+                        borderRadius: 10,
+                        color: isVoted ? "#fbbf24" : "#e2e8f0",
+                        padding: "10px 16px",
+                        fontSize: "0.875rem",
+                        textAlign: "left",
+                        cursor: votedOptionId ? "default" : "pointer",
+                        transition: "background 0.15s, border-color 0.15s",
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 8,
+                      }}
+                    >
+                      {isVoted && <span style={{ fontSize: "0.75rem" }}>✓</span>}
+                      {opt.label}
+                    </button>
+                  );
+                })}
+              </div>
+              {votedOptionId && (
+                <div
+                  style={{ marginTop: 14, fontSize: "0.75rem", color: "rgba(255,255,255,0.3)", textAlign: "center" }}
+                >
+                  Vote recorded - waiting for results...
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Audience poll result overlay (auto-dismisses in 5s, tap to dismiss early) */}
+        {pollResult && (
+          <div
+            style={{
+              position: "absolute",
+              inset: 0,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              background: "rgba(0,0,0,0.55)",
+              zIndex: 20,
+              pointerEvents: "all",
+            }}
+            onClick={clearPollResult}
+          >
+            <div
+              onClick={(e) => e.stopPropagation()}
+              style={{
+                background: "#0f172a",
+                border: "1px solid rgba(255,255,255,0.12)",
+                borderRadius: 16,
+                padding: "28px 32px",
+                maxWidth: 420,
+                width: "90%",
+                boxShadow: "0 20px 60px rgba(0,0,0,0.7)",
+              }}
+            >
+              <div
+                style={{
+                  fontFamily: "Georgia, 'Times New Roman', serif",
+                  fontSize: "0.65rem",
+                  letterSpacing: "0.18em",
+                  textTransform: "uppercase",
+                  color: "rgba(255,255,255,0.35)",
+                  marginBottom: 12,
+                }}
+              >
+                The Audience Has Spoken
+              </div>
+              <div
+                style={{
+                  fontFamily: "Georgia, 'Times New Roman', serif",
+                  fontSize: "0.9rem",
+                  color: "rgba(255,255,255,0.5)",
+                  marginBottom: 6,
+                }}
+              >
+                {pollResult.question}
+              </div>
+              <div
+                style={{
+                  fontFamily: "Georgia, 'Times New Roman', serif",
+                  fontSize: "clamp(1.1rem, 3vw, 1.4rem)",
+                  fontWeight: 700,
+                  color: "#fbbf24",
+                  marginBottom: 20,
+                }}
+              >
+                {pollResult.winner.label}
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                {pollResult.options
+                  .slice()
+                  .sort((a, b) => (pollResult.votes[b.id] ?? 0) - (pollResult.votes[a.id] ?? 0))
+                  .map((opt) => {
+                    const count = pollResult.votes[opt.id] ?? 0;
+                    const pct = pollResult.totalVotes > 0 ? Math.round((count / pollResult.totalVotes) * 100) : 0;
+                    const isWinner = opt.id === pollResult.winner.id;
+                    return (
+                      <div key={opt.id}>
+                        <div
+                          style={{
+                            display: "flex",
+                            justifyContent: "space-between",
+                            marginBottom: 4,
+                            fontSize: "0.8rem",
+                            color: isWinner ? "#fbbf24" : "rgba(255,255,255,0.5)",
+                          }}
+                        >
+                          <span>{opt.label}</span>
+                          <span>
+                            {pct}% ({count})
+                          </span>
+                        </div>
+                        <div
+                          style={{
+                            background: "rgba(255,255,255,0.08)",
+                            borderRadius: 4,
+                            height: 6,
+                            overflow: "hidden",
+                          }}
+                        >
+                          <div
+                            style={{
+                              background: isWinner ? "#fbbf24" : "rgba(255,255,255,0.25)",
+                              height: "100%",
+                              width: `${pct}%`,
+                              borderRadius: 4,
+                              transition: "width 0.5s ease",
+                            }}
+                          />
+                        </div>
+                      </div>
+                    );
+                  })}
+              </div>
+              <div style={{ marginTop: 14, fontSize: "0.7rem", color: "rgba(255,255,255,0.2)", textAlign: "center" }}>
+                {pollResult.totalVotes} vote{pollResult.totalVotes !== 1 ? "s" : ""} cast · tap to dismiss
+              </div>
+            </div>
+          </div>
         )}
       </div>
 

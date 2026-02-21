@@ -59,6 +59,9 @@ interface UseWebSocketReturn {
   clearCurtainCall: () => void;
   audienceWave: { emoji: string; count: number; effect: string } | null;
   clearAudienceWave: () => void;
+  activePoll: Poll | null;
+  pollResult: PollResult | null;
+  clearPollResult: () => void;
   send: (msg: WSClientMessage) => void;
   createObject: (obj: BoardObject) => void;
   updateObject: (partial: BoardObjectUpdate) => void;
@@ -129,6 +132,8 @@ export function useWebSocket(
   const [canvasBubbles, setCanvasBubbles] = useState<CanvasBubble[]>([]);
   const [curtainCall, setCurtainCall] = useState<CurtainCallData | null>(null);
   const [audienceWave, setAudienceWave] = useState<{ emoji: string; count: number; effect: string } | null>(null);
+  const [activePoll, setActivePoll] = useState<Poll | null>(null);
+  const [pollResult, setPollResult] = useState<PollResult | null>(null);
 
   useEffect(() => {
     let intentionalClose = false;
@@ -342,6 +347,14 @@ export function useWebSocket(
           case "audience:wave":
             setAudienceWave({ emoji: msg.emoji, count: msg.count, effect: msg.effect });
             break;
+          case "poll:start":
+            setActivePoll(msg.poll);
+            setPollResult(null);
+            break;
+          case "poll:result":
+            setActivePoll(null);
+            setPollResult(msg.result);
+            break;
           case "board:deleted":
             // Board was deleted by owner - navigate away
             intentionalClose = true;
@@ -464,6 +477,7 @@ export function useWebSocket(
 
   const clearCurtainCall = useCallback(() => setCurtainCall(null), []);
   const clearAudienceWave = useCallback(() => setAudienceWave(null), []);
+  const clearPollResult = useCallback(() => setPollResult(null), []);
 
   /** Send batch:undo to Board DO via WS - deletes all objects with matching batchId server-side */
   const batchUndo = useCallback(
@@ -488,6 +502,9 @@ export function useWebSocket(
     clearCurtainCall,
     audienceWave,
     clearAudienceWave,
+    activePoll,
+    pollResult,
+    clearPollResult,
     send,
     createObject,
     updateObject,

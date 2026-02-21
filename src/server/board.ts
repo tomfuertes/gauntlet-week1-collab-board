@@ -249,6 +249,7 @@ export class Board extends DurableObject<Bindings> {
     const result: PollResult = {
       pollId: poll.id,
       question: poll.question,
+      options: poll.options,
       winner,
       votes: tally,
       totalVotes,

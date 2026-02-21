@@ -359,6 +359,7 @@ export interface Poll {
 export interface PollResult {
   pollId: string;
   question: string;
+  options: PollOption[]; // all options (for display labels)
   winner: PollOption;
   votes: Record<string, number>; // optionId -> vote count
   totalVotes: number;

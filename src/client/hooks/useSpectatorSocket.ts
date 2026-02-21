@@ -37,9 +37,13 @@ interface UseSpectatorSocketReturn {
   canvasBubbles: CanvasBubble[];
   audienceWave: AudienceWaveEvent | null;
   clearAudienceWave: () => void;
+  activePoll: Poll | null;
+  pollResult: PollResult | null;
+  clearPollResult: () => void;
   sendCursor: (x: number, y: number) => void;
   sendReaction: (emoji: string, x: number, y: number) => void;
   sendHeckle: (text: string) => void;
+  sendVote: (pollId: string, optionId: string) => void;
 }
 
 const BACKOFF_BASE_MS = 1000;
@@ -59,6 +63,8 @@ export function useSpectatorSocket(boardId: string): UseSpectatorSocketReturn {
   const [heckleEvents, setHeckleEvents] = useState<HeckleEvent[]>([]);
   const [canvasBubbles, setCanvasBubbles] = useState<CanvasBubble[]>([]);
   const [audienceWave, setAudienceWave] = useState<AudienceWaveEvent | null>(null);
+  const [activePoll, setActivePoll] = useState<Poll | null>(null);
+  const [pollResult, setPollResult] = useState<PollResult | null>(null);
 
   useEffect(() => {
     let intentionalClose = false;
@@ -196,6 +202,14 @@ export function useSpectatorSocket(boardId: string): UseSpectatorSocketReturn {
           case "audience:wave":
             setAudienceWave({ emoji: msg.emoji, count: msg.count, effect: msg.effect });
             break;
+          case "poll:start":
+            setActivePoll(msg.poll);
+            setPollResult(null);
+            break;
+          case "poll:result":
+            setActivePoll(null);
+            setPollResult(msg.result);
+            break;
           case "board:deleted":
             intentionalClose = true;
             wsRef.current?.close();
@@ -257,6 +271,13 @@ export function useSpectatorSocket(boardId: string): UseSpectatorSocketReturn {
   }, []);
 
   const clearAudienceWave = useCallback(() => setAudienceWave(null), []);
+  const clearPollResult = useCallback(() => setPollResult(null), []);
+
+  const sendVote = useCallback((pollId: string, optionId: string) => {
+    if (wsRef.current?.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify({ type: "poll:vote", pollId, optionId } satisfies WSClientMessage));
+    }
+  }, []);
 
   return {
     connectionState,
@@ -270,8 +291,12 @@ export function useSpectatorSocket(boardId: string): UseSpectatorSocketReturn {
     canvasBubbles,
     audienceWave,
     clearAudienceWave,
+    activePoll,
+    pollResult,
+    clearPollResult,
     sendCursor,
     sendReaction,
     sendHeckle,
+    sendVote,
   };
 }

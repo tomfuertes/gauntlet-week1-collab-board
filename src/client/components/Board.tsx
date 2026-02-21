@@ -642,6 +642,9 @@ export function Board({
     clearCurtainCall,
     audienceWave,
     clearAudienceWave,
+    activePoll,
+    pollResult,
+    clearPollResult,
     send,
     createObject: wsCreate,
     updateObject: wsUpdate,
@@ -762,6 +765,13 @@ export function Board({
     const t = setTimeout(clearCurtainCall, 15000);
     return () => clearTimeout(t);
   }, [curtainCall, clearCurtainCall]);
+
+  // Auto-dismiss poll result banner after 8s (players get less context than spectators)
+  useEffect(() => {
+    if (!pollResult) return;
+    const t = setTimeout(clearPollResult, 8000);
+    return () => clearTimeout(t);
+  }, [pollResult, clearPollResult]);
 
   // --- AI Batch Undo state ---
   const [undoAiBatchId, setUndoAiBatchId] = useState<string | null>(null);
@@ -3299,6 +3309,65 @@ export function Board({
           onDone={() => setCurtainConfettis((prev) => prev.filter((p) => p.id !== c.id))}
         />
       ))}
+
+      {/* Audience poll indicator for players - compact banner (spectators get full overlay) */}
+      {(activePoll || pollResult) && (
+        <div
+          style={{
+            position: "fixed",
+            bottom: 80,
+            left: "50%",
+            transform: "translateX(-50%)",
+            zIndex: 60,
+            background: "#0f172a",
+            border: "1px solid rgba(251,191,36,0.4)",
+            borderRadius: 12,
+            padding: "10px 18px",
+            boxShadow: "0 8px 32px rgba(0,0,0,0.6)",
+            display: "flex",
+            alignItems: "center",
+            gap: 10,
+            fontSize: "0.8125rem",
+            color: "#e2e8f0",
+            maxWidth: 400,
+            overflow: "hidden",
+          }}
+        >
+          <span style={{ color: "#fbbf24", fontSize: "1rem" }}>🎭</span>
+          {activePoll ? (
+            <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              Audience voting: <em style={{ color: "#fbbf24" }}>{activePoll.question}</em>
+            </span>
+          ) : pollResult ? (
+            <span
+              style={{
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+                display: "flex",
+                alignItems: "center",
+                gap: 8,
+              }}
+            >
+              Audience chose: <em style={{ color: "#fbbf24" }}>{pollResult.winner.label}</em>
+              <button
+                onClick={clearPollResult}
+                style={{
+                  background: "none",
+                  border: "none",
+                  color: "rgba(255,255,255,0.3)",
+                  cursor: "pointer",
+                  fontSize: "0.75rem",
+                  padding: 0,
+                  flexShrink: 0,
+                }}
+              >
+                ✕
+              </button>
+            </span>
+          ) : null}
+        </div>
+      )}
 
       {/* Curtain call overlay - scene end celebration + star rating */}
       {curtainCall && (
