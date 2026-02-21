@@ -563,3 +563,35 @@ export function buildSfxReactionPrompt(sfxLabels: string[]): string {
     `- Brief and punchy - keep the scene moving.`
   );
 }
+
+// ---------------------------------------------------------------------------
+// Chat keyword prefixes - "note:" and "qa:" detected server-side in onChatMessage
+// ---------------------------------------------------------------------------
+
+/**
+ * Injected when a user message starts with "note:" prefix.
+ * Instructs the AI to treat the content as out-of-character director guidance.
+ */
+export function buildDirectorNotePrompt(username: string, noteContent: string): string {
+  return (
+    `[DIRECTOR NOTE from ${username}] "${noteContent}"\n` +
+    `RULES:\n` +
+    `- This is out-of-character guidance from a player-director, NOT scene dialogue.\n` +
+    `- Acknowledge briefly IN CHARACTER (1 short sentence max), then adjust your performance accordingly.\n` +
+    `- Do NOT treat this as a player action within the scene.`
+  );
+}
+
+/**
+ * Injected when a user message starts with "qa:" prefix.
+ * Instructs the AI to execute tool calls directly for QA/testing purposes.
+ */
+export function buildQACommandPrompt(command: string): string {
+  return (
+    `[QA TEST COMMAND] The user wants to test: "${command}"\n` +
+    `RULES:\n` +
+    `- Execute the appropriate tool call(s) directly to fulfill this request.\n` +
+    `- Skip improv framing - minimal text, focus on tool execution.\n` +
+    `- Confirm briefly after completing the action.`
+  );
+}

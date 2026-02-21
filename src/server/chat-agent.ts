@@ -31,6 +31,8 @@ import {
   buildPlotTwistPrompt,
   buildHecklePrompt,
   buildSfxReactionPrompt,
+  buildDirectorNotePrompt,
+  buildQACommandPrompt,
 } from "./prompts";
 import type { GameModeState } from "./prompts";
 import { HAT_PROMPTS, getRandomHatPrompt } from "./hat-prompts";
@@ -962,6 +964,42 @@ export class ChatAgent extends AIChatAgent<Bindings> {
       console.debug(JSON.stringify({ event: "plot-twist:already-used", boardId: this.name }));
     }
 
+    // Detect chat keyword prefixes: "note:" (director notes) and "qa:" (QA test commands).
+    // KEY-DECISION 2026-02-21: Server-side detection rewrites message history with a structured
+    // tag so the AI sees clean context rather than raw prefix syntax. Follows [PLOT TWIST] pattern.
+    let detectedDirectorNote: { username: string; content: string } | undefined;
+    let detectedQACommand: string | undefined;
+    const lastMsgForPrefix = this.messages[this.messages.length - 1];
+    if (lastMsgForPrefix?.role === "user") {
+      const rawTextForPrefix =
+        lastMsgForPrefix.parts
+          ?.filter((p) => p.type === "text")
+          .map((p) => (p as { type: "text"; text: string }).text)
+          .join("") ?? "";
+      // Strip [username] prefix before checking for keyword prefixes
+      const contentForPrefix = rawTextForPrefix.replace(/^\[[^\]]+\]\s*/, "");
+      const noteMatch = contentForPrefix.match(/^note:\s*(.+)/is);
+      const qaMatch = !noteMatch && contentForPrefix.match(/^qa:\s*(.+)/is);
+      const uname = (body?.username as string | undefined) || "a player";
+      if (noteMatch) {
+        const content = noteMatch[1].trim();
+        detectedDirectorNote = { username: uname, content };
+        this.messages[this.messages.length - 1] = {
+          ...lastMsgForPrefix,
+          parts: [{ type: "text" as const, text: `[${uname}] [DIRECTOR NOTE: ${content}]` }],
+        };
+        console.debug(JSON.stringify({ event: "chat:director-note", boardId: this.name, user: uname }));
+      } else if (qaMatch) {
+        const command = qaMatch[1].trim();
+        detectedQACommand = command;
+        this.messages[this.messages.length - 1] = {
+          ...lastMsgForPrefix,
+          parts: [{ type: "text" as const, text: `[${uname}] [QA TEST: ${command}]` }],
+        };
+        console.debug(JSON.stringify({ event: "chat:qa-command", boardId: this.name, user: uname }));
+      }
+    }
+
     // Load scene relationships for system prompt injection
     const relationships = (await this.ctx.storage.get<CharacterRelationship[]>("narrative:relationships")) ?? [];
     const relBlock = buildRelationshipBlock(relationships);
@@ -1068,8 +1106,19 @@ export class ChatAgent extends AIChatAgent<Bindings> {
       systemPrompt += `\n\n${buildHecklePrompt(heckles)}`;
     }
 
-    // Momentum nudge: after 3+ exchanges, prompt AI to end with a provocative hook
-    if (humanTurns >= 3 && budgetPhase === "normal") {
+    // Director note: inject out-of-character guidance so AI adjusts performance without scene dialogue
+    if (detectedDirectorNote) {
+      systemPrompt += `\n\n${buildDirectorNotePrompt(detectedDirectorNote.username, detectedDirectorNote.content)}`;
+    }
+
+    // QA test command: inject direct tool execution instruction
+    if (detectedQACommand) {
+      systemPrompt += `\n\n${buildQACommandPrompt(detectedQACommand)}`;
+    }
+
+    // Momentum nudge: after 3+ exchanges, prompt AI to end with a provocative hook.
+    // Skip for QA commands - those should stay focused on tool execution.
+    if (humanTurns >= 3 && budgetPhase === "normal" && !detectedQACommand) {
       systemPrompt += `\n\n${MOMENTUM_PROMPT}`;
     }
 
