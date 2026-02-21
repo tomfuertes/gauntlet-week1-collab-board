@@ -4,10 +4,14 @@ import type {
   BoardObject,
   CanvasAction,
   MutateResult,
+  Poll,
+  PollOption,
+  PollResult,
   ReplayEvent,
   SceneMood,
   WSClientMessage,
   WSServerMessage,
+  WaveEffect,
 } from "../shared/types";
 import type { Bindings } from "./env";
 import { recordBoardActivity, markBoardSeen } from "./env";
@@ -42,6 +46,20 @@ export class Board extends DurableObject<Bindings> {
   private lastSfxAt = new Map<string, number>();
   // Current scene mood (ephemeral - resets on hibernation, which is fine for atmospheric state)
   private currentMood: SceneMood = "neutral";
+
+  // KEY-DECISION 2026-02-21: Audience wave detection uses class properties (not DO Storage)
+  // because cooldowns are short-lived (30s/15s). Reset on hibernation is correct behavior.
+  // Window: 3+ distinct spectators send the same emoji within 5s triggers a wave.
+  private reactionWindow = new Map<string, { spectatorIds: Set<string>; firstAt: number }>();
+  private lastWaveAt = new Map<string, number>(); // per-emoji cooldown (30s)
+  private lastGlobalWaveAt = 0; // global cooldown (15s)
+
+  // KEY-DECISION 2026-02-21: Polls are ephemeral class properties (not DO Storage).
+  // If DO hibernates mid-poll, votes are lost - acceptable given 15s poll lifetime.
+  // 1 active poll at a time; 30s cooldown between polls.
+  private activePoll: Poll | null = null;
+  private pollVotes = new Map<string, string>(); // spectatorId -> optionId
+  private lastPollEndAt = 0;
 
   private async getBoardId(): Promise<string | null> {
     if (!this._boardId) {
@@ -182,6 +200,72 @@ export class Board extends DurableObject<Bindings> {
     );
   }
 
+  /** Create an audience poll (called via RPC from ChatAgent's askAudience tool).
+   *  Rate-limited: 1 active poll at a time, 30s cooldown between polls. */
+  async createPoll(question: string, options: PollOption[]): Promise<{ ok: boolean; error?: string }> {
+    if (this.activePoll) {
+      return { ok: false, error: "A poll is already active" };
+    }
+    if (Date.now() - this.lastPollEndAt < 30_000) {
+      return { ok: false, error: "Poll cooldown in effect (30s between polls)" };
+    }
+    if (!question || options.length < 2 || options.length > 4) {
+      return { ok: false, error: "Poll requires a question and 2-4 options" };
+    }
+    const poll: Poll = {
+      id: crypto.randomUUID(),
+      question,
+      options,
+      expiresAt: Date.now() + 15_000,
+    };
+    this.activePoll = poll;
+    this.pollVotes = new Map();
+    await this.ctx.storage.setAlarm(poll.expiresAt);
+    this.broadcast({ type: "poll:start", poll });
+    console.debug(JSON.stringify({ event: "poll:start", pollId: poll.id, question }));
+    return { ok: true };
+  }
+
+  /** DO alarm handler - fires when poll expires, tallies votes, notifies ChatAgent. */
+  async alarm(): Promise<void> {
+    const poll = this.activePoll;
+    if (!poll) return; // stale alarm (e.g. after hibernation reset)
+
+    const votes = this.pollVotes;
+    const tally: Record<string, number> = {};
+    for (const opt of poll.options) tally[opt.id] = 0;
+    for (const optionId of votes.values()) {
+      if (optionId in tally) tally[optionId]++;
+    }
+
+    const totalVotes = votes.size;
+    // Pick winner: highest vote count, tie-breaks to first option
+    const winnerId = poll.options.reduce(
+      (best, opt) => ((tally[opt.id] ?? 0) > (tally[best] ?? 0) ? opt.id : best),
+      poll.options[0].id,
+    );
+    const winner = poll.options.find((o) => o.id === winnerId) ?? poll.options[0];
+
+    const result: PollResult = {
+      pollId: poll.id,
+      question: poll.question,
+      winner,
+      votes: tally,
+      totalVotes,
+    };
+
+    // Reset state before notifying to prevent races
+    this.activePoll = null;
+    this.pollVotes = new Map();
+    this.lastPollEndAt = Date.now();
+
+    this.broadcast({ type: "poll:result", result });
+    console.debug(JSON.stringify({ event: "poll:result", pollId: result.pollId, winner: winner.label, totalVotes }));
+
+    // Notify ChatAgent so result injects into next AI response
+    this.notifyPollResult(result);
+  }
+
   /** Set AI presence visibility in the presence list */
   async setAiPresence(active: boolean): Promise<void> {
     this.aiActiveUntil = active ? Date.now() + 60_000 : 0;
@@ -270,8 +354,14 @@ export class Board extends DurableObject<Bindings> {
       return;
     }
 
-    // Spectators can only send cursor updates, reactions, and heckles
-    if (meta.role === "spectator" && msg.type !== "cursor" && msg.type !== "reaction" && msg.type !== "heckle") {
+    // Spectators can only send cursor updates, reactions, heckles, and poll votes
+    if (
+      meta.role === "spectator" &&
+      msg.type !== "cursor" &&
+      msg.type !== "reaction" &&
+      msg.type !== "heckle" &&
+      msg.type !== "poll:vote"
+    ) {
       console.warn(JSON.stringify({ event: "spectator:blocked", type: msg.type, userId: meta.userId }));
       return;
     }
@@ -295,6 +385,8 @@ export class Board extends DurableObject<Bindings> {
         // Increment per-connection reaction count (persisted in attachment for heckle budget)
         const updated: ConnectionMeta = { ...meta, reactionCount: meta.reactionCount + 1 };
         ws.serializeAttachment(updated);
+        // Feed into wave detection (spectators only - audience wave mechanics)
+        this.checkWave(msg.emoji, meta.userId, now);
       }
       return;
     }
@@ -330,6 +422,20 @@ export class Board extends DurableObject<Bindings> {
       this.broadcast({ type: "heckle", userId: meta.userId, text });
       // Forward to ChatAgent so AI can react in next response
       this.notifyHeckle(meta.userId, text);
+      return;
+    }
+
+    if (msg.type === "poll:vote" && meta.role === "spectator") {
+      const poll = this.activePoll;
+      if (!poll) return; // no active poll
+      if (poll.id !== msg.pollId) return; // stale vote for expired poll
+      if (this.pollVotes.has(meta.userId)) return; // already voted
+      const validOption = poll.options.find((o) => o.id === msg.optionId);
+      if (!validOption) return; // invalid option
+      this.pollVotes.set(meta.userId, msg.optionId);
+      console.debug(
+        JSON.stringify({ event: "poll:vote", pollId: poll.id, userId: meta.userId, optionId: msg.optionId }),
+      );
       return;
     }
 
@@ -676,12 +782,81 @@ export class Board extends DurableObject<Bindings> {
     });
   }
 
+  /** Fire-and-forget poll result notification to ChatAgent - AI injects result in next response. */
+  private notifyPollResult(result: PollResult): void {
+    this.withBoardId("poll-result:notify", async (boardId) => {
+      const id = this.env.CHAT_AGENT.idFromName(boardId);
+      const chatAgent = this.env.CHAT_AGENT.get(id);
+      await chatAgent.onPollResult(result);
+    });
+  }
+
   /** Fire-and-forget heckle notification to ChatAgent - AI incorporates on next response. */
   private notifyHeckle(userId: string, text: string): void {
     this.withBoardId("heckle:notify", async (boardId) => {
       const id = this.env.CHAT_AGENT.idFromName(boardId);
       const chatAgent = this.env.CHAT_AGENT.get(id);
       await chatAgent.onHeckle(userId, text);
+    });
+  }
+
+  // Emoji -> canvas wave effect mapping (must match ALLOWED_REACTION_EMOJIS order)
+  private static readonly EMOJI_EFFECTS: ReadonlyMap<string, WaveEffect> = new Map([
+    ["\uD83D\uDC4F", "confetti"], // 👏 applause
+    ["\uD83D\uDE02", "shake"], // 😂 laugh
+    ["\uD83D\uDD25", "glow"], // 🔥 fire
+    ["\u2764\uFE0F", "hearts"], // ❤️ heart
+    ["\uD83D\uDE2E", "spotlight"], // 😮 surprise
+    ["\uD83C\uDFAD", "dramatic"], // 🎭 theater masks
+  ]);
+
+  /** Sliding-window wave detector: 3+ distinct spectators same emoji within 5s. */
+  private checkWave(emoji: string, spectatorId: string, now: number): void {
+    const WINDOW_MS = 5_000;
+    const WAVE_THRESHOLD = 3;
+    const PER_EMOJI_COOLDOWN_MS = 30_000;
+    const GLOBAL_COOLDOWN_MS = 15_000;
+
+    // Prune expired entries for this emoji
+    const entry = this.reactionWindow.get(emoji) ?? { spectatorIds: new Set<string>(), firstAt: now };
+    if (now - entry.firstAt > WINDOW_MS) {
+      entry.spectatorIds = new Set();
+      entry.firstAt = now;
+    }
+    entry.spectatorIds.add(spectatorId);
+    this.reactionWindow.set(emoji, entry);
+
+    if (entry.spectatorIds.size < WAVE_THRESHOLD) return;
+
+    // Check cooldowns
+    const lastWave = this.lastWaveAt.get(emoji) ?? 0;
+    if (now - lastWave < PER_EMOJI_COOLDOWN_MS) return;
+    if (now - this.lastGlobalWaveAt < GLOBAL_COOLDOWN_MS) return;
+
+    const effect = Board.EMOJI_EFFECTS.get(emoji);
+    if (!effect) return;
+
+    const count = entry.spectatorIds.size;
+
+    // Reset window + update cooldowns
+    this.reactionWindow.delete(emoji);
+    this.lastWaveAt.set(emoji, now);
+    this.lastGlobalWaveAt = now;
+
+    // Broadcast to ALL clients (players + spectators)
+    this.broadcast({ type: "audience:wave", emoji, count, effect });
+    console.debug(JSON.stringify({ event: "audience:wave", emoji, count, effect }));
+
+    // Notify ChatAgent for atmospheric injection on next AI response
+    this.notifyWave(emoji, count);
+  }
+
+  /** Fire-and-forget wave notification to ChatAgent - AI gets atmospheric context on next response. */
+  private notifyWave(emoji: string, count: number): void {
+    this.withBoardId("wave:notify", async (boardId) => {
+      const id = this.env.CHAT_AGENT.idFromName(boardId);
+      const chatAgent = this.env.CHAT_AGENT.get(id);
+      await chatAgent.onAudienceWave(emoji, count);
     });
   }
 

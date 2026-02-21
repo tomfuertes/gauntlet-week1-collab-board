@@ -1,5 +1,5 @@
 import { useEffect, useRef, useCallback, useState } from "react";
-import type { WSClientMessage, WSServerMessage, BoardObject } from "@shared/types";
+import type { WSClientMessage, WSServerMessage, BoardObject, Poll, PollResult } from "@shared/types";
 import type { ConnectionState, CursorState, Reaction } from "./useWebSocket";
 
 export interface HeckleEvent {
@@ -19,6 +19,12 @@ export interface CanvasBubble {
   isHeckle: boolean;
 }
 
+export interface AudienceWaveEvent {
+  emoji: string;
+  count: number;
+  effect: string;
+}
+
 interface UseSpectatorSocketReturn {
   connectionState: ConnectionState;
   initialized: boolean;
@@ -29,6 +35,8 @@ interface UseSpectatorSocketReturn {
   reactions: Reaction[];
   heckleEvents: HeckleEvent[];
   canvasBubbles: CanvasBubble[];
+  audienceWave: AudienceWaveEvent | null;
+  clearAudienceWave: () => void;
   sendCursor: (x: number, y: number) => void;
   sendReaction: (emoji: string, x: number, y: number) => void;
   sendHeckle: (text: string) => void;
@@ -50,6 +58,7 @@ export function useSpectatorSocket(boardId: string): UseSpectatorSocketReturn {
   const [reactions, setReactions] = useState<Reaction[]>([]);
   const [heckleEvents, setHeckleEvents] = useState<HeckleEvent[]>([]);
   const [canvasBubbles, setCanvasBubbles] = useState<CanvasBubble[]>([]);
+  const [audienceWave, setAudienceWave] = useState<AudienceWaveEvent | null>(null);
 
   useEffect(() => {
     let intentionalClose = false;
@@ -184,6 +193,9 @@ export function useSpectatorSocket(boardId: string): UseSpectatorSocketReturn {
               },
             ]);
             break;
+          case "audience:wave":
+            setAudienceWave({ emoji: msg.emoji, count: msg.count, effect: msg.effect });
+            break;
           case "board:deleted":
             intentionalClose = true;
             wsRef.current?.close();
@@ -244,6 +256,8 @@ export function useSpectatorSocket(boardId: string): UseSpectatorSocketReturn {
     }
   }, []);
 
+  const clearAudienceWave = useCallback(() => setAudienceWave(null), []);
+
   return {
     connectionState,
     initialized,
@@ -254,6 +268,8 @@ export function useSpectatorSocket(boardId: string): UseSpectatorSocketReturn {
     reactions,
     heckleEvents,
     canvasBubbles,
+    audienceWave,
+    clearAudienceWave,
     sendCursor,
     sendReaction,
     sendHeckle,

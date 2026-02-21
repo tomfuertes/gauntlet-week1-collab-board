@@ -3,7 +3,14 @@
  * Extracted for version tracking and reviewability.
  */
 
-import type { GameMode, Persona, CharacterRelationship, SceneLifecyclePhase, CanvasAction } from "../shared/types";
+import type {
+  GameMode,
+  Persona,
+  CharacterRelationship,
+  PollResult,
+  SceneLifecyclePhase,
+  CanvasAction,
+} from "../shared/types";
 
 /** Bump when prompt content changes - logged with every AI request for correlation */
 export const PROMPT_VERSION = "v17";
@@ -543,6 +550,35 @@ export function buildHecklePrompt(heckles: string[]): string {
 }
 
 // ---------------------------------------------------------------------------
+// Audience Wave - atmospheric crowd energy injection
+// ---------------------------------------------------------------------------
+
+// Human-readable descriptions for each emoji reaction type
+const WAVE_DESCRIPTIONS: Record<string, string> = {
+  "\uD83D\uDC4F": "erupted in applause", // 👏
+  "\uD83D\uDE02": "burst out laughing", // 😂
+  "\uD83D\uDD25": "lit up with fire energy", // 🔥
+  "\u2764\uFE0F": "showered the stage with hearts", // ❤️
+  "\uD83D\uDE2E": "gasped in collective surprise", // 😮
+  "\uD83C\uDFAD": "roared with theatrical appreciation", // 🎭
+};
+
+/**
+ * Injected when 3+ spectators send the same emoji within 5s (audience wave detected).
+ * Provides a single-sentence atmospheric cue - light touch, not a full director note.
+ */
+export function buildWavePrompt(emoji: string, count: number): string {
+  const description = WAVE_DESCRIPTIONS[emoji] ?? "reacted strongly";
+  return (
+    `[AUDIENCE WAVE] ${count} spectators just ${description}!\n` +
+    `RULES:\n` +
+    `- This is atmospheric context, not a command. Let the audience energy color your next line.\n` +
+    `- One brief in-character acknowledgment at most - then continue the scene naturally.\n` +
+    `- Don't break the fourth wall or announce "the audience". Stay in the world of the scene.`
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Sound Board / Foley Artist - prompt for SFX-triggered AI reactions
 // ---------------------------------------------------------------------------
 
@@ -579,6 +615,35 @@ export function buildDirectorNotePrompt(username: string, noteContent: string): 
     `- This is out-of-character guidance from a player-director, NOT scene dialogue.\n` +
     `- Acknowledge briefly IN CHARACTER (1 short sentence max), then adjust your performance accordingly.\n` +
     `- Do NOT treat this as a player action within the scene.`
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Audience Poll - result injection when spectators have voted
+// ---------------------------------------------------------------------------
+
+/**
+ * Injected when an audience poll has concluded with results.
+ * Gives the AI the winning option and vote breakdown to incorporate into the next scene beat.
+ */
+export function buildPollResultPrompt(result: PollResult): string {
+  const pct = result.totalVotes > 0 ? Math.round(((result.votes[result.winner.id] ?? 0) / result.totalVotes) * 100) : 0;
+  const breakdown = Object.entries(result.votes)
+    .map(([optionId, count]) => {
+      // Find option label - re-derive from result context isn't available here,
+      // so embed optionId with count; winner already has the label
+      const label = optionId === result.winner.id ? result.winner.label : optionId;
+      return `  ${label}: ${count} vote${count !== 1 ? "s" : ""}`;
+    })
+    .join("\n");
+  return (
+    `[AUDIENCE POLL RESULT] The audience has voted on: "${result.question}"\n` +
+    `Winner: "${result.winner.label}" with ${pct}% of ${result.totalVotes} vote${result.totalVotes !== 1 ? "s" : ""}.\n` +
+    `Vote breakdown:\n${breakdown}\n` +
+    `RULES:\n` +
+    `- The audience has spoken - honor their choice. Incorporate "${result.winner.label}" into the scene naturally.\n` +
+    `- One brief in-character acknowledgment of the audience choice, then advance the scene with their decision.\n` +
+    `- This is a yes-and offer from the audience. Build on it, don't explain it.`
   );
 }
 

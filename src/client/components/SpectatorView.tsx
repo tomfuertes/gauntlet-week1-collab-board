@@ -9,6 +9,7 @@ import { Cursors } from "./Cursors";
 import { BoardGrid } from "./BoardGrid";
 import { AudienceRow } from "./AudienceRow";
 import { CanvasSpeechBubbles } from "./CanvasSpeechBubbles";
+import { WaveEffect, useWaveEffect, getWaveContainerClass, waveNeedsOverlay } from "./WaveEffect";
 import "../styles/animations.css";
 
 const HECKLE_COST = 5;
@@ -41,10 +42,13 @@ export function SpectatorView({ boardId, onBack }: SpectatorViewProps) {
     spectatorCount,
     reactions,
     canvasBubbles,
+    audienceWave,
+    clearAudienceWave,
     sendCursor,
     sendReaction,
     sendHeckle,
   } = useSpectatorSocket(boardId);
+  const { activeWave, dismissWave } = useWaveEffect(audienceWave, clearAudienceWave);
   const [size, setSize] = useState({ width: window.innerWidth, height: window.innerHeight });
   const [scale, setScale] = useState(1);
   const [stagePos, setStagePos] = useState({ x: 0, y: 0 });
@@ -139,7 +143,15 @@ export function SpectatorView({ boardId, onBack }: SpectatorViewProps) {
 
   return (
     <div
-      style={{ height: "100vh", background: colors.bg, display: "flex", flexDirection: "column", overflow: "hidden" }}
+      className={getWaveContainerClass(activeWave) || undefined}
+      style={{
+        height: "100vh",
+        background: colors.bg,
+        display: "flex",
+        flexDirection: "column",
+        overflow: "hidden",
+        position: "relative",
+      }}
     >
       {/* Header */}
       <div
@@ -336,6 +348,17 @@ export function SpectatorView({ boardId, onBack }: SpectatorViewProps) {
           stagePos={stagePos}
           headerH={0}
         />
+
+        {/* Audience wave overlay effects (confetti/hearts/spotlight/dramatic) */}
+        {activeWave && waveNeedsOverlay(activeWave.effect) && (
+          <WaveEffect
+            key={activeWave.key}
+            effect={activeWave.effect}
+            emoji={activeWave.emoji}
+            count={activeWave.count}
+            onDone={dismissWave}
+          />
+        )}
       </div>
 
       {/* Heckle input (shown when active) */}

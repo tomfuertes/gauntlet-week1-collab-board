@@ -34,6 +34,7 @@ import { ChatPanel } from "./ChatPanel";
 import { CanvasPreview } from "./CanvasPreview";
 import { OnboardModal } from "./OnboardModal";
 import { ConfettiBurst } from "./ConfettiBurst";
+import { WaveEffect, useWaveEffect, getWaveContainerClass, waveNeedsOverlay } from "./WaveEffect";
 import { BoardGrid } from "./BoardGrid";
 import { AudienceRow, getAudienceFigureXs, AUDIENCE_Y } from "./AudienceRow";
 import { CanvasSpeechBubbles } from "./CanvasSpeechBubbles";
@@ -639,6 +640,8 @@ export function Board({
     canvasBubbles,
     curtainCall,
     clearCurtainCall,
+    audienceWave,
+    clearAudienceWave,
     send,
     createObject: wsCreate,
     updateObject: wsUpdate,
@@ -713,6 +716,7 @@ export function Board({
     stagePos,
     size,
   );
+  const { activeWave, dismissWave } = useWaveEffect(audienceWave, clearAudienceWave);
 
   // Stable refs to avoid recreating callbacks on every state change
   const objectsRef = useRef(objects);
@@ -2115,8 +2119,13 @@ export function Board({
 
   return (
     // cb-canvas-overlay applies slide-in animation when mobile expanded canvas is shown
+    // cb-wave-shake / cb-wave-glow are applied temporarily for audience wave CSS effects
     <div
-      className={isMobile && canvasExpanded ? "cb-canvas-overlay" : undefined}
+      className={
+        [isMobile && canvasExpanded ? "cb-canvas-overlay" : "", getWaveContainerClass(activeWave)]
+          .filter(Boolean)
+          .join(" ") || undefined
+      }
       style={{
         width: "100vw",
         height: "100vh",
@@ -3225,6 +3234,17 @@ export function Board({
 
       {/* Confetti burst (first object + AI multi-create) */}
       {confettiPos && <ConfettiBurst key={confettiKey} x={confettiPos.x} y={confettiPos.y} onDone={clearConfetti} />}
+
+      {/* Audience wave effect overlay (confetti/hearts/spotlight/dramatic) */}
+      {activeWave && waveNeedsOverlay(activeWave.effect) && (
+        <WaveEffect
+          key={activeWave.key}
+          effect={activeWave.effect}
+          emoji={activeWave.emoji}
+          count={activeWave.count}
+          onDone={dismissWave}
+        />
+      )}
 
       {/* Floating reactions - above audience figures when spectators present, else canvas position */}
       {reactions.map((r) => {

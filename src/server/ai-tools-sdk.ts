@@ -8,6 +8,7 @@ import type {
   MutateResult,
   BoardStub,
   CharacterRelationship,
+  PollOption,
   TransientEffect,
 } from "../shared/types";
 import { computeConnectedLineGeometry, getEdgePoint, type ObjectBounds } from "../shared/connection-geometry";
@@ -1052,6 +1053,33 @@ export function createSDKTools(stub: BoardStub, batchId?: string, ai?: Ai, stora
       }),
     }),
 
+    // 22. askAudience
+    askAudience: tool({
+      description:
+        "Pose a multiple-choice question to the audience (spectators watching the live board). " +
+        "Spectators vote for 15 seconds, then the winning choice is fed back to you as context for your next response. " +
+        "Use at pivotal scene moments to let the audience co-direct: 'Should the villain escape or surrender?' " +
+        "Provide 2-4 short option labels. Rate-limited: 1 poll at a time, 30s cooldown between polls.",
+      inputSchema: z.object({
+        question: z.string().describe("The question to pose to the audience (e.g. 'What should happen next?')"),
+        options: z
+          .array(z.string().min(1).max(40))
+          .min(2)
+          .max(4)
+          .describe("2-4 short option labels for the audience to choose from"),
+      }),
+      execute: instrumentExecute("askAudience", async ({ question, options }) => {
+        const pollOptions: PollOption[] = options.map((label: string) => ({
+          id: crypto.randomUUID().slice(0, 8),
+          label: label.trim(),
+        }));
+        const result = await stub.createPoll(question, pollOptions);
+        if (!result.ok) return { error: result.error };
+        console.debug(JSON.stringify({ event: "ai:poll:start", question, optionCount: pollOptions.length }));
+        return { pollStarted: true, question, options: pollOptions.map((o) => o.label) };
+      }),
+    }),
+
     // 21. play_sfx
     play_sfx: tool({
       description:
@@ -1139,6 +1167,7 @@ export function createSDKTools(stub: BoardStub, batchId?: string, ai?: Ai, stora
                   "createEffect",
                   "setMood",
                   "play_sfx",
+                  "askAudience",
                 ])
                 .describe("Tool name to execute"),
               args: z.record(z.string(), z.unknown()).describe("Arguments for the tool (same as calling it directly)"),

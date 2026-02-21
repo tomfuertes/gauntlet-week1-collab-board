@@ -6,6 +6,8 @@ import type {
   BoardObjectUpdate,
   ChoreographyStep,
   TransientEffect,
+  Poll,
+  PollResult,
 } from "@shared/types";
 import { SFX_EFFECTS } from "@shared/types";
 import type { HeckleEvent, CanvasBubble } from "./useSpectatorSocket";
@@ -55,6 +57,8 @@ interface UseWebSocketReturn {
   canvasBubbles: CanvasBubble[];
   curtainCall: CurtainCallData | null;
   clearCurtainCall: () => void;
+  audienceWave: { emoji: string; count: number; effect: string } | null;
+  clearAudienceWave: () => void;
   send: (msg: WSClientMessage) => void;
   createObject: (obj: BoardObject) => void;
   updateObject: (partial: BoardObjectUpdate) => void;
@@ -124,6 +128,7 @@ export function useWebSocket(
   const [heckleEvents, setHeckleEvents] = useState<HeckleEvent[]>([]);
   const [canvasBubbles, setCanvasBubbles] = useState<CanvasBubble[]>([]);
   const [curtainCall, setCurtainCall] = useState<CurtainCallData | null>(null);
+  const [audienceWave, setAudienceWave] = useState<{ emoji: string; count: number; effect: string } | null>(null);
 
   useEffect(() => {
     let intentionalClose = false;
@@ -334,6 +339,9 @@ export function useWebSocket(
           case "mood":
             onMoodRef.current?.(msg.mood, msg.intensity);
             break;
+          case "audience:wave":
+            setAudienceWave({ emoji: msg.emoji, count: msg.count, effect: msg.effect });
+            break;
           case "board:deleted":
             // Board was deleted by owner - navigate away
             intentionalClose = true;
@@ -455,6 +463,7 @@ export function useWebSocket(
   }, []);
 
   const clearCurtainCall = useCallback(() => setCurtainCall(null), []);
+  const clearAudienceWave = useCallback(() => setAudienceWave(null), []);
 
   /** Send batch:undo to Board DO via WS - deletes all objects with matching batchId server-side */
   const batchUndo = useCallback(
@@ -477,6 +486,8 @@ export function useWebSocket(
     canvasBubbles,
     curtainCall,
     clearCurtainCall,
+    audienceWave,
+    clearAudienceWave,
     send,
     createObject,
     updateObject,

@@ -72,6 +72,7 @@ const TOOL_ICONS: Record<ToolName, string> = {
   setMood: "\u{1F30A}",
   play_sfx: "\u{1F3B5}",
   batchExecute: "\u{26A1}",
+  askAudience: "\u{1F64B}",
 };
 
 const TOOL_LABELS: Record<ToolName, string> = {
@@ -99,6 +100,7 @@ const TOOL_LABELS: Record<ToolName, string> = {
   setMood: "Setting scene mood",
   play_sfx: "Playing sound effect",
   batchExecute: "Executing batch",
+  askAudience: "Asking the audience",
 };
 
 function getToolIcon(name: string): string {

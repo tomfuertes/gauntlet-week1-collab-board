@@ -124,7 +124,11 @@ export type WSClientMessage =
   | { type: "spotlight"; objectId?: string; x?: number; y?: number }
   | { type: "blackout" }
   | { type: "sfx"; effect: string; x: number; y: number }
-  | { type: "mood"; mood: SceneMood; intensity: number };
+  | { type: "mood"; mood: SceneMood; intensity: number }
+  | { type: "poll:vote"; pollId: string; optionId: string };
+
+/** Visual effect triggered by a collective audience wave */
+export type WaveEffect = "confetti" | "shake" | "glow" | "spotlight" | "hearts" | "dramatic";
 
 export type WSServerMessage =
   | { type: "cursor"; userId: string; username: string; x: number; y: number }
@@ -146,7 +150,10 @@ export type WSServerMessage =
   | { type: "blackout" }
   | { type: "sfx"; userId: string; effect: string; x: number; y: number }
   | { type: "curtain_call"; characters: { id: string; name: string }[]; sceneTitle: string }
-  | { type: "mood"; mood: SceneMood; intensity: number };
+  | { type: "mood"; mood: SceneMood; intensity: number }
+  | { type: "audience:wave"; emoji: string; count: number; effect: WaveEffect }
+  | { type: "poll:start"; poll: Poll }
+  | { type: "poll:result"; result: PollResult };
 
 export const AI_USER_ID = "ai-agent" as const;
 export const AI_USERNAME = "AI Assistant" as const;
@@ -337,6 +344,26 @@ export const CANVAS_MIN_Y = 60;
 export const CANVAS_MAX_X = 1150;
 export const CANVAS_MAX_Y = 780;
 
+export interface PollOption {
+  id: string;
+  label: string;
+}
+
+export interface Poll {
+  id: string;
+  question: string;
+  options: PollOption[];
+  expiresAt: number;
+}
+
+export interface PollResult {
+  pollId: string;
+  question: string;
+  winner: PollOption;
+  votes: Record<string, number>; // optionId -> vote count
+  totalVotes: number;
+}
+
 /**
  * Minimal interface for the Board DO stub methods used by AI tools.
  * mutate() intentionally narrows to BoardMutation (vs WSClientMessage in Board DO)
@@ -348,6 +375,7 @@ export interface BoardStub {
   mutate(msg: BoardMutation): Promise<MutateResult>;
   injectCursor(x: number, y: number): Promise<void>;
   saveCriticReview(review: string, score: number, model: string): Promise<void>;
+  createPoll(question: string, options: PollOption[]): Promise<{ ok: boolean; error?: string }>;
 }
 
 /** Canvas mutation notification sent from Board DO to ChatAgent after each player action */

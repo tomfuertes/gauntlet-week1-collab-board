@@ -32,6 +32,8 @@ import {
   PLOT_TWISTS,
   buildPlotTwistPrompt,
   buildHecklePrompt,
+  buildPollResultPrompt,
+  buildWavePrompt,
   buildSfxReactionPrompt,
   buildDirectorNotePrompt,
   buildQACommandPrompt,
@@ -302,6 +304,10 @@ export class ChatAgent extends AIChatAgent<Bindings> {
   private _pendingHeckles: string[] = [];
   // Sound Board: SFX cues from players, consumed by onSfxReaction (fast 2s timer)
   private _pendingSfxLabels: string[] = [];
+  // Audience wave: atmospheric context injected into next AI response (resets on hibernation - correct)
+  private _pendingWavePrompts: string[] = [];
+  // Poll result: last completed poll result, injected into next AI response then cleared
+  private _pendingPollResult: import("../shared/types").PollResult | null = null;
 
   /** Check if daily AI budget is exhausted. Returns true if over budget. */
   private _isOverBudget(): boolean {
@@ -1164,6 +1170,20 @@ export class ChatAgent extends AIChatAgent<Bindings> {
       const heckles = this._pendingHeckles;
       this._pendingHeckles = [];
       systemPrompt += `\n\n${buildHecklePrompt(heckles)}`;
+    }
+
+    // Audience wave: inject atmospheric crowd energy context on the next response
+    if (this._pendingWavePrompts.length > 0) {
+      const wavePrompt = this._pendingWavePrompts[this._pendingWavePrompts.length - 1]; // most recent wave
+      this._pendingWavePrompts = [];
+      systemPrompt += `\n\n${wavePrompt}`;
+    }
+
+    // Audience poll result: inject winning choice so AI incorporates it into next scene beat
+    if (this._pendingPollResult) {
+      const pollResult = this._pendingPollResult;
+      this._pendingPollResult = null;
+      systemPrompt += `\n\n${buildPollResultPrompt(pollResult)}`;
     }
 
     // Director note: inject out-of-character guidance so AI adjusts performance without scene dialogue
@@ -2297,6 +2317,33 @@ export class ChatAgent extends AIChatAgent<Bindings> {
   async onHeckle(userId: string, text: string): Promise<void> {
     console.debug(JSON.stringify({ event: "heckle:received", boardId: this.name, userId, textLen: text.length }));
     this._pendingHeckles.push(text);
+  }
+
+  /** Receives poll result from Board DO when 15s voting window closes.
+   *  Stores result for injection into next AI response (same buffer pattern as heckles).
+   *  KEY-DECISION 2026-02-21: Single result stored (not an array) - only one poll can be
+   *  active at a time, so at most one result arrives before the next human exchange. */
+  async onPollResult(result: import("../shared/types").PollResult): Promise<void> {
+    console.debug(
+      JSON.stringify({
+        event: "poll-result:received",
+        boardId: this.name,
+        pollId: result.pollId,
+        winner: result.winner.label,
+        totalVotes: result.totalVotes,
+      }),
+    );
+    this._pendingPollResult = result;
+  }
+
+  /** Receives audience wave notification from Board DO (3+ spectators same emoji within 5s).
+   *  Buffers atmospheric prompt for injection into next AI response.
+   *  KEY-DECISION 2026-02-21: Same buffer-and-inject pattern as heckles - wave context flows
+   *  naturally into the improv rather than interrupting. Only most recent wave is used if multiple
+   *  fire before the next AI response. */
+  async onAudienceWave(emoji: string, count: number): Promise<void> {
+    console.debug(JSON.stringify({ event: "audience-wave:received", boardId: this.name, emoji, count }));
+    this._pendingWavePrompts.push(buildWavePrompt(emoji, count));
   }
 
   /** Receives SFX trigger from Board DO. Buffers label and schedules a fast 2s reaction.
