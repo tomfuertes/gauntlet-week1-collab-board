@@ -38,7 +38,7 @@ const TOOL_DEFAULTS = {
   circle: { diameter: 100, fill: "#3b82f6", stroke: "#2563eb" },
   line: { width: 200, height: 0, stroke: "#94a3b8" },
   frame: { width: 400, height: 300 },
-  image: { width: 512, height: 512 },
+  image: { width: 1024, height: 1024 },
   connector: { stroke: "#94a3b8" },
   person: { width: 80, height: 120, color: "#6366f1" }, // indigo; SPARK=#fb923c, SAGE=#4ade80
 } as const;
@@ -301,7 +301,7 @@ export async function generateImageDataUrl(ai: Ai, prompt: string): Promise<stri
 
   const response = await ai.run(
     "@cf/stabilityai/stable-diffusion-xl-base-1.0" as Parameters<Ai["run"]>[0],
-    { prompt, width: 512, height: 512 } as Record<string, unknown>,
+    { prompt, width: 1024, height: 1024 } as Record<string, unknown>,
   );
 
   if (!response || typeof (response as ReadableStream).getReader !== "function") {
