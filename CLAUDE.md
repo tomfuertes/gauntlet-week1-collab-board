@@ -17,7 +17,7 @@ React + Vite + react-konva + TypeScript | Cloudflare Workers + Hono + Durable Ob
 | `src/server/index.ts` | Hono routes, board CRUD, DO exports, WS upgrade, persona/replay/gallery APIs |
 | `src/server/chat-agent.ts` | ChatAgent DO - AI chat, troupe config, stage manager, audience polls/waves, persona claims, director nudges |
 | `src/server/ai-tools-sdk.ts` | 19 AI tools incl. askAudience (Zod schemas, batchExecute meta-tool) |
-| `src/server/prompts.ts` | System prompt assembly, persona identity, scene phases, PROMPT_VERSION |
+| `src/server/prompts/` | Prompt modules: `system.ts` (core prompt), `intents.ts`, `personas.ts`, `game-modes.ts`, `dramatic-arc.ts`, `stage-manager.ts`, `reactions.ts`, `critic.ts`, `index.ts` (barrel + PROMPT_VERSION) |
 | `src/server/tracing-middleware.ts` | AI SDK middleware -> D1 traces + optional Langfuse |
 | `src/server/auth.ts` | Passkey/WebAuthn primary auth + password fallback (PBKDF2 timing-safe, D1 sessions, rate limiting) |
 | `src/shared/types.ts` | Persona, BoardObject, GameMode, AIModel, AI_MODELS, TroupeConfig, Poll, WaveEffect, canvas bounds constants |
