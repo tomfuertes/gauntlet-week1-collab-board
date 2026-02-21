@@ -33,13 +33,15 @@ React + Vite + react-konva + TypeScript | Cloudflare Workers + Hono + Durable Ob
 | `src/client/components/AuthForm.tsx` | Passkey/WebAuthn registration + login UI with password fallback |
 
 **AI architecture (gotchas that will bite you):**
-- 8 models across 3 providers. `body.model` sent per-message for DO hibernation resilience.
+- Anthropic + OpenAI models only (Workers AI removed in v21). `body.model` sent per-message for DO hibernation resilience.
 - Per-player persona claims via `body.personaId` (same per-message pattern). Fallback: round-robin.
 - Reactive persona fires via `ctx.waitUntil` after each response. First exchange unreliable (timing gap).
 - Class-level state resets on DO hibernation. Client re-sends model/gameMode/personaId each message.
-- `tool_choice: "auto"` shim extracted to `getShimmedWorkersAI()` helper in chat-agent.ts (CF issue #404). Single call site.
-- Canvas bounds exported as `CANVAS_MIN_X/Y`, `CANVAS_MAX_X/Y` from shared/types.ts. Used in prompts.ts, index.ts, chat-agent.ts.
-- Default model is Claude Haiku 4.5. GLM available but degrades by exchange 3+.
+- Canvas bounds exported as `CANVAS_MIN_X/Y`, `CANVAS_MAX_X/Y` from shared/types.ts. Used in prompts, index.ts, chat-agent.ts.
+- Default model is Claude Haiku 4.5.
+- `createSDKTools()` called 6 times per user turn with per-context maxCreates budget (main=4, stageManager=6, reactive=2, director=2, sfx=1, canvas=1).
+- Game modes: `yesand` (beginner), `freeform` (mid), `harold` (advanced). Harold uses `humanTurns` for phase coaching (Opening/First Beats/Second Beats/Third Beats).
+- Templates: 2 only (superhero-hoa, pirate-therapy), shown only in yesand (beginner) mode.
 - Deploy via `git push` to main (CF git integration). Never `wrangler deploy` manually.
 
 ## Prompt Tuning Notes
@@ -47,8 +49,8 @@ React + Vite + react-konva + TypeScript | Cloudflare Workers + Hono + Durable Ob
 - **Haiku ignores soft rules.** "Create ONLY objects requested" is treated as a suggestion. Use hard caps: "NEVER create more than N objects per response."
 - **getBoardState pre-check can regress simple layouts** - model wastes a tool call and loses track of constraints. Removed in v19.
 - **v19 baseline (Haiku):** 3/10 layout pass, avg overlap 3.6 (down from 5.7 in v17).
-- **v20 baseline (Haiku):** 4/10 layout pass, avg overlap 3.5, OOB=0. Narrative 3.2/5 (first clean judge run). Server-side enforcement eliminated OOB entirely. Over-creation in complication/character-intro still bypasses count cap (see #195). tool_usage scored 1/5 across all narratives - model creates text objects only, no visual storytelling tools (see #196).
-- **Remaining layout killers:** over-creation in open-ended scenes (complication, character-intro) - count cap may not fire correctly for batchExecute. Prompt stripped too aggressively on visual tool emphasis.
+- **v20 baseline (Haiku):** 4/10 layout pass, avg overlap 3.5, OOB=0. Narrative 3.2/5 (first clean judge run). Server-side enforcement eliminated OOB entirely.
+- **v21 fixes:** (1) Judge pipeline now includes toolCalls in transcript (was blind to tool_usage). (2) Visual tool mandate - createPerson/drawScene required, createText restricted to dialogue. (3) maxCreates parameterized per call site (was 4 per closure x 6 closures = uncapped). (4) Game mode restructure: hat/freezetag removed, Harold added.
 
 ## Commands
 
