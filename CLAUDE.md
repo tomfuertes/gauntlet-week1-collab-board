@@ -42,6 +42,13 @@ React + Vite + react-konva + TypeScript | Cloudflare Workers + Hono + Durable Ob
 - Default model is Claude Haiku 4.5. GLM available but degrades by exchange 3+.
 - Deploy via `git push` to main (CF git integration). Never `wrangler deploy` manually.
 
+## Prompt Tuning Notes
+
+- **Haiku ignores soft rules.** "Create ONLY objects requested" is treated as a suggestion. Use hard caps: "NEVER create more than N objects per response."
+- **getBoardState pre-check can regress simple layouts** - model wastes a tool call and loses track of constraints. Removed in v19.
+- **v19 baseline (Haiku):** 3/10 layout pass, avg overlap 3.6 (down from 5.7 in v17). Narrative eval still needs clean run with fixed text capture.
+- **Remaining layout killers:** over-creation in open-ended scenes (complication, character-intro, stakes-escalation) and OOB in row-layout (grid positions may exceed canvas bounds at x=1000+200=1200 > 1150).
+
 ## Commands
 
 ```bash
@@ -65,6 +72,8 @@ npm run migrate:remote       # apply pending to remote only
 source .dev.vars && EVAL_MODEL=claude-haiku-4.5 npm run eval   # run all scenarios
 # EVAL_USERNAME/EVAL_PASSWORD/EVAL_MODEL env vars override defaults (eval/eval1234/glm-4.7-flash)
 # JSON reports written to scripts/eval-results/<timestamp>.json (gitignored, kept on disk for reference)
+# Quick summary: jq '{model, layout: "\(.layout.passed)/\(.layout.total)", overlap: .layout.avgOverlap}' scripts/eval-results/*.json
+# Compare runs: npm run eval:compare scripts/eval-results/A.json scripts/eval-results/B.json
 
 # Format & Audit
 npm run format           # prettier --write
