@@ -79,13 +79,9 @@ npm run update-deps      # bumps all deps except vite/plugin-react (major), then
 
 ## Git Worktrees
 
-Use native `claude -w <name>` for isolated feature work. It creates a worktree at `.claude/worktrees/<name>`, auto-cleans on exit if no changes.
-
 After worktree creation, run `npm ci` to install deps (lockfile-only, fast).
 
-When working in a worktree, use absolute paths for file tools. Run git commands directly (not `git -C`) - the working directory is already the repo/worktree.
-
-**NEVER delegate merging to sub-agents.** Always merge worktree branches in main context (the orchestrator). Worktree branches fork from a point-in-time snapshot of main. If other branches merge first, a sub-agent's squash merge will silently revert the intervening changes. The orchestrator must: (1) check `git diff main..feat/<branch>` for unexpected reversions, (2) rebase onto current main if needed, (3) resolve conflicts with full project context, (4) typecheck after merge.
+See `~/.claude/CLAUDE.md` for universal worktree conventions (merge safety, absolute paths, isolation).
 
 ## Browser Testing (playwright-cli)
 
