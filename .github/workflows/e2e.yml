@@ -74,7 +74,7 @@ jobs:
         run: npm run migrate:local
 
       - name: Start dev server
-        run: npx wrangler dev --port $WRANGLER_PORT &
+        run: npx wrangler dev --config wrangler.ci.toml --port $WRANGLER_PORT &
 
       - name: Wait for server
         run: npm run health

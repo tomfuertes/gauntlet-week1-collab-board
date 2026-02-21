@@ -1,0 +1,35 @@
+send_metrics = false
+account_id = "fe43646df25e695ec77f896a1971a7af"
+name = "collabboard"
+main = "src/server/index.ts"
+compatibility_date = "2025-02-01"
+compatibility_flags = ["nodejs_compat"]
+
+[assets]
+directory = "dist"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "collabboard-db"
+database_id = "a95ec3ec-693b-4ac9-9cf6-7182cd0cdd0d"
+
+[durable_objects]
+bindings = [
+  { name = "BOARD", class_name = "Board" },
+  { name = "CHAT_AGENT", class_name = "ChatAgent" }
+]
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["Board"]
+
+[[migrations]]
+tag = "v2"
+new_sqlite_classes = ["ChatAgent"]
+
+[vars]
+DAILY_AI_BUDGET_USD = "5.00"
+WORKERS_AI_MODEL = "@cf/zai-org/glm-4.7-flash"
+DEFAULT_AI_MODEL = "gpt-4o-mini"
+LANGFUSE_PUBLIC_KEY = "pk-lf-683e2ebc-6e3d-4f02-bd85-9d7d67d06a94"
+LANGFUSE_BASE_URL = "https://us.cloud.langfuse.com"
