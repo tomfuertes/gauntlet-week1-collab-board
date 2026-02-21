@@ -384,7 +384,7 @@ export function createSDKTools(
     if (existingBoundsCache === null) {
       const objects = await stub.readObjects();
       existingBoundsCache = objects
-        .filter((o: BoardObject) => o.type !== "line" && !o.isBackground)
+        .filter((o: BoardObject) => o.type !== "line" && o.type !== "image" && !o.isBackground)
         .map((o: BoardObject) => ({ x: o.x, y: o.y, width: o.width, height: o.height }));
     }
     return existingBoundsCache;
@@ -462,7 +462,7 @@ export function createSDKTools(
 
     const result = await createAndMutate(stub, obj);
     if (!("error" in result)) {
-      if (obj.type !== "line") {
+      if (obj.type !== "line" && obj.type !== "image") {
         aiCreatedBounds.push({ x: obj.x, y: obj.y, width: obj.width, height: obj.height });
       }
       aiCreateCount++;
