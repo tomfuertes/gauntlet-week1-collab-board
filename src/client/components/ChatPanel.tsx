@@ -653,7 +653,9 @@ export function ChatPanel({
         right: 16,
         width: 360,
         maxHeight: "min(600px, 50vh)",
-        zIndex: 30,
+        // KEY-DECISION 2026-02-21: zIndex: 15 is below Select overlay (99) and dropdown (100)
+        // so model selector dropdown renders on top of chat panel
+        zIndex: 15,
         background: "rgba(15, 23, 42, 0.97)",
         border: "1px solid #334155",
         borderRadius: 12,
