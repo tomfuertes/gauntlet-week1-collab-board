@@ -1148,6 +1148,9 @@ export function Board({
 
   // Bulk drag handlers (reads selectedIds from ref for stability)
   const handleShapeDragStart = useCallback((_e: KonvaEventObject<DragEvent>, id: string) => {
+    const node = shapeRefs.current.get(id);
+    if (node) node.moveToTop();
+
     const sel = selectedIdsRef.current;
     if (sel.has(id) && sel.size > 1) {
       const positions = new Map<string, { x: number; y: number }>();
