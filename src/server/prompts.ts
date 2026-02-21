@@ -13,7 +13,7 @@ import type {
 } from "../shared/types";
 
 /** Bump when prompt content changes - logged with every AI request for correlation */
-export const PROMPT_VERSION = "v18";
+export const PROMPT_VERSION = "v19";
 
 // ---------------------------------------------------------------------------
 // Multi-agent personas - dynamic AI characters with distinct improv styles
@@ -322,12 +322,13 @@ TOOL RULES:
 
 LAYOUT RULES:
 - Canvas usable area: (50,60) to (1150,780). Never place objects outside these bounds.
+// KEY-DECISION 2026-02-21: Hard cap beats soft language for Haiku - "at most 4" is unambiguous; soft "do not add extras" was ignored.
+- OBJECT LIMIT: Create at most 4 objects per response. If the scene needs more, stop at 4 and let the player ask for more.
 - Default sizes: sticky=200x200, frame=440x280, rect=150x100. ALWAYS specify x,y for every create call.
 - Place stickies INSIDE frames: first at inset (10,40) within the frame, next at (220,40) side-by-side.
 - Use createConnector to link related objects with arrows. Connectors snap to object edges and follow when objects move. Great for relationships, cause-and-effect, scene flow, and connecting ideas.
-// KEY-DECISION 2026-02-21: Added creation-count, pre-check, frame-children, and type-mapping rules to combat v17 eval failures (over-creation 7-8 objs, overlap score 12-20, type mismatch).
+// KEY-DECISION 2026-02-21: Added creation-count, frame-children, and type-mapping rules to combat v17 eval failures (over-creation 7-8 objs, overlap score 12-20, type mismatch). Removed getBoardState pre-check (v18 regression: forced tool call disrupted row-layout ordering).
 - Create ONLY the objects explicitly requested. Do not add decorative extras, labels, or supplementary objects unless the player asks.
-- Before creating objects, call getBoardState to check existing positions and avoid overlap.
 - Place children inside frames at y=40 spaced 210px apart (x=10, 220, 430). Second row at y=260 same x pattern.
 - Match object types to intent: character/person descriptions = sticky, visual backdrop = image or shape, grouping container = frame, relationship = connector.
 
@@ -335,12 +336,13 @@ COLORS: #fbbf24 yellow, #f87171 red, #4ade80 green, #60a5fa blue, #c084fc purple
 
 PERSONA COLORS: SPARK always uses red (#f87171) for stickies. SAGE always uses green (#4ade80) for stickies.
 
-// KEY-DECISION 2026-02-21: Replaced vague "spread across canvas" with concrete grid slots to eliminate overlap (v17 eval score 12-20) and enforce deterministic placement.
+// KEY-DECISION 2026-02-21: Replaced vague "spread across canvas" with concrete grid slots to eliminate overlap (v17 eval score 12-20) and enforce deterministic placement. Added "first N positions" rule to prevent slot-skipping when object count < grid slots.
 DISPERSION RULE: When creating multiple objects WITHOUT a containing frame, use these grid positions:
 - 2 objects: (200,200), (700,200)
 - 3 objects: (200,200), (600,200), (1000,200)
 - 4 objects: (200,200), (600,200), (200,500), (600,500)
 - 5-6 objects: (150,150), (550,150), (950,150), (150,500), (550,500), (950,500)
+When creating fewer objects than grid slots, use the FIRST N positions only. Do not skip slots.
 For single objects, center at (500,350). Always specify exact x,y coordinates.
 
 AUDIENCE HECKLES: When you see [HECKLE from audience], the spectators watching your scene have spoken. Incorporate heckles with "yes, and" energy - they are gifts, not interruptions. Weave them into the scene organically without breaking the fourth wall.
@@ -359,10 +361,10 @@ CONTENT GUIDELINES:
  * Injected on first exchange only. humanTurns is already 1 (current message counted) when this
  * check runs in onChatMessage, so `<= 1` means exactly the first user message - not two exchanges.
  */
+// KEY-DECISION 2026-02-21: Changed from "1 frame + 1-2 chars + 1-2 props" (up to 5 objects, violates 4-cap) to "1 frame with 2-3 chars inside, optional props" (max 4 objects, matches OBJECT LIMIT).
 export const SCENE_SETUP_PROMPT = `SCENE SETUP: On this FIRST exchange, establish the world:
-- 1 location frame (title = where we are)
-- 1-2 characters via createPerson (name=character name, color=persona color or a fitting tone)
-- 1-2 prop labels INSIDE the frame via createText (specific, funny details players can riff on)
+- 1 location frame with 2-3 characters inside it via createPerson (name=character name, color=persona color or a fitting tone)
+- Props are optional - only add if the scene specifically calls for them
 Quality over quantity - 3 composed objects beat 10 scattered cards.`;
 
 /** Injected only when body.intent matches a chip label - one entry per chip */
