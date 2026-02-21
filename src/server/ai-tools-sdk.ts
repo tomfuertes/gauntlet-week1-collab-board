@@ -353,14 +353,22 @@ export async function generateImageDataUrl(ai: Ai, prompt: string): Promise<stri
 // Tool registry
 // ---------------------------------------------------------------------------
 
+/** Shared mutable ref passed across multiple createSDKTools closures in the same turn.
+ *  Allows stageManager + main streamText to share a single global creation cap. */
+export type CreateBudget = { used: number };
+
 /** Create the full AI SDK tool registry bound to a specific Board DO stub.
- *  @param maxCreates - per-call object creation budget. Main streamText=4, stageManager=6, reactive/director=2, reactions=1. */
+ *  @param maxCreates - per-closure object creation budget (local cap).
+ *  @param createBudget - shared ref for cross-closure global cap (stageManager + main turn).
+ *  @param globalMaxCreates - max total creates across all closures sharing createBudget. */
 export function createSDKTools(
   stub: BoardStub,
   batchId?: string,
   ai?: Ai,
   storage?: DurableObjectStorage,
   maxCreates = 4,
+  createBudget?: CreateBudget,
+  globalMaxCreates?: number,
 ) {
   // Rotate through AI_PALETTE per streamText call so multi-entity scenes get distinct colors.
   // Only used as fallback when the LLM doesn't specify an explicit color.
@@ -373,6 +381,9 @@ export function createSDKTools(
   // KEY-DECISION 2026-02-21: maxCreates is parameterized because createSDKTools is called 4-6
   // times per user turn (stageManager, main, reactive, director, canvas/sfx reactions). Each
   // call gets its own closure - a fixed cap of 4 allowed 6-8 objects per turn total.
+  // KEY-DECISION 2026-02-21: createBudget is a shared mutable ref that lets stageManager and
+  // main streamText share a global cap (~6) per turn. Out-of-band calls (reactive, sfx, canvas,
+  // director) fire in separate execution contexts and keep independent closure counters.
   let aiCreateCount = 0;
   const MAX_AI_CREATES_PER_RESPONSE = maxCreates;
   const aiCreatedBounds: Array<{ x: number; y: number; width: number; height: number }> = [];
@@ -450,9 +461,17 @@ export function createSDKTools(
    * Position should already be set by flowPlace() before calling this.
    */
   async function enforcedCreate(obj: BoardObject) {
-    // Count cap - return success-shaped result so LLM doesn't retry
+    // Local per-closure cap - return success-shaped result so LLM doesn't retry
     if (aiCreateCount >= MAX_AI_CREATES_PER_RESPONSE) {
       console.debug(JSON.stringify({ event: "ai:layout:cap", dropped: obj.type, count: aiCreateCount }));
+      return { created: obj.id, type: obj.type, x: obj.x, y: obj.y, width: obj.width, height: obj.height };
+    }
+
+    // Global cross-closure cap (shared between stageManager + main streamText)
+    if (createBudget && globalMaxCreates !== undefined && createBudget.used >= globalMaxCreates) {
+      console.debug(
+        JSON.stringify({ event: "ai:layout:global-cap", dropped: obj.type, globalUsed: createBudget.used }),
+      );
       return { created: obj.id, type: obj.type, x: obj.x, y: obj.y, width: obj.width, height: obj.height };
     }
 
@@ -466,6 +485,7 @@ export function createSDKTools(
         aiCreatedBounds.push({ x: obj.x, y: obj.y, width: obj.width, height: obj.height });
       }
       aiCreateCount++;
+      if (createBudget) createBudget.used++;
     }
     return result;
   }
@@ -1060,9 +1080,15 @@ export function createSDKTools(
         const w = width ?? 200;
         const h = height ?? 300;
 
-        // Count cap: entire composition counts as 1 create
+        // Count cap: entire composition counts as 1 create (check local + global)
         if (aiCreateCount >= MAX_AI_CREATES_PER_RESPONSE) {
           console.debug(JSON.stringify({ event: "ai:layout:cap", dropped: "drawScene", count: aiCreateCount }));
+          return { created: 0, label, bounds: { x: 0, y: 0, width: w, height: h }, batchId: "", partIds: [] };
+        }
+        if (createBudget && globalMaxCreates !== undefined && createBudget.used >= globalMaxCreates) {
+          console.debug(
+            JSON.stringify({ event: "ai:layout:global-cap", dropped: "drawScene", globalUsed: createBudget.used }),
+          );
           return { created: 0, label, bounds: { x: 0, y: 0, width: w, height: h }, batchId: "", partIds: [] };
         }
 
@@ -1125,6 +1151,7 @@ export function createSDKTools(
         // Track the full composition bounding box (not individual parts)
         aiCreatedBounds.push({ x, y, width: w, height: h + 32 });
         aiCreateCount++;
+        if (createBudget) createBudget.used++;
 
         return {
           created: partIds.length,
