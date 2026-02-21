@@ -7,7 +7,7 @@ test.describe("Board CRUD", () => {
     await page.goto("/");
     await expect(page.locator("text=Your Boards")).toBeVisible();
 
-    await page.click("text=+ New Board");
+    await page.click("text=+ Create New Board");
     // New board navigates directly to the board canvas
     await page.waitForSelector('span[title="connected"]', { timeout: 10_000 });
 

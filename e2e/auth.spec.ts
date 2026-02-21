@@ -3,6 +3,7 @@ import { test, expect } from "@playwright/test";
 test.describe("Auth", () => {
   test("sign up new user -> lands on board list", async ({ page }) => {
     await page.goto("/");
+    await page.click("text=Use password instead");
     await page.click("text=Need an account? Sign up");
     const u = `e2e-signup-${Date.now()}`;
     await page.fill('input[placeholder="Username"]', u);
@@ -25,6 +26,7 @@ test.describe("Auth", () => {
     await context.clearCookies();
 
     await page.goto("/");
+    await page.click("text=Use password instead");
     await page.fill('input[placeholder="Username"]', username);
     await page.fill('input[placeholder="Password"]', "testpass1234");
     await page.click('button[type="submit"]');
@@ -35,6 +37,7 @@ test.describe("Auth", () => {
 
   test("session persists across page reload", async ({ page }) => {
     await page.goto("/");
+    await page.click("text=Use password instead");
     await page.click("text=Need an account? Sign up");
     const u = `e2e-sess-${Date.now()}`;
     await page.fill('input[placeholder="Username"]', u);
@@ -52,6 +55,7 @@ test.describe("Auth", () => {
 
   test("logout -> returns to login form", async ({ page }) => {
     await page.goto("/");
+    await page.click("text=Use password instead");
     await page.click("text=Need an account? Sign up");
     const u = `e2e-logout-${Date.now()}`;
     await page.fill('input[placeholder="Username"]', u);
