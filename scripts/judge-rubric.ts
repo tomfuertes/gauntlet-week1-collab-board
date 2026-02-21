@@ -251,7 +251,7 @@ function parseAndValidate(text: string): RawJudgeResponse {
  * Send a transcript to the judge model and parse structured scores.
  * Uses Anthropic SDK directly (not the CF Agents WS path).
  *
- * @param transcript - Array of {role: "player"|"ai", text: string} turns
+ * @param transcript - Array of {role, text, toolCalls?} turns
  * @param scenarioId - For tagging the result
  * @param options.model - Judge model ID (default: EVAL_JUDGE_MODEL env or "claude-sonnet-4")
  * @param options.apiKey - Anthropic API key (default: process.env.ANTHROPIC_API_KEY)
@@ -259,7 +259,7 @@ function parseAndValidate(text: string): RawJudgeResponse {
  * @throws if API key missing, model unreachable, or response unparseable after 2 retries
  */
 export async function judgeTranscript(
-  transcript: { role: string; text: string }[],
+  transcript: { role: string; text: string; toolCalls?: string[] }[],
   scenarioId: string,
   options?: { model?: string; apiKey?: string },
 ): Promise<JudgeResult> {
@@ -274,9 +274,16 @@ export async function judgeTranscript(
   const modelId = options?.model ?? process.env.EVAL_JUDGE_MODEL ?? "claude-sonnet-4-6";
   const anthropic = createAnthropic({ apiKey });
 
-  // Build transcript text for the judge
+  // KEY-DECISION 2026-02-21: Include toolCalls in judge transcript. Previously only .text was sent,
+  // making tool_usage scoring blind - judge scored 1/5 even when 14+ objects were created.
   const transcriptText = transcript
-    .map((entry, i) => `[Turn ${i + 1}] ${entry.role.toUpperCase()}: ${entry.text}`)
+    .map((entry, i) => {
+      let line = `[Turn ${i + 1}] ${entry.role.toUpperCase()}: ${entry.text}`;
+      if (entry.toolCalls?.length) {
+        line += `\n[TOOLS USED: ${entry.toolCalls.join(", ")}]`;
+      }
+      return line;
+    })
     .join("\n\n");
 
   const userMessage = `Please evaluate this improv scene transcript:\n\n${transcriptText}`;

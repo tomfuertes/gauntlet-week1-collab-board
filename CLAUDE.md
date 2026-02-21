@@ -46,8 +46,9 @@ React + Vite + react-konva + TypeScript | Cloudflare Workers + Hono + Durable Ob
 
 - **Haiku ignores soft rules.** "Create ONLY objects requested" is treated as a suggestion. Use hard caps: "NEVER create more than N objects per response."
 - **getBoardState pre-check can regress simple layouts** - model wastes a tool call and loses track of constraints. Removed in v19.
-- **v19 baseline (Haiku):** 3/10 layout pass, avg overlap 3.6 (down from 5.7 in v17). Narrative eval still needs clean run with fixed text capture.
-- **Remaining layout killers:** over-creation in open-ended scenes (complication, character-intro, stakes-escalation) and OOB in row-layout (grid positions may exceed canvas bounds at x=1000+200=1200 > 1150).
+- **v19 baseline (Haiku):** 3/10 layout pass, avg overlap 3.6 (down from 5.7 in v17).
+- **v20 baseline (Haiku):** 4/10 layout pass, avg overlap 3.5, OOB=0. Narrative 3.2/5 (first clean judge run). Server-side enforcement eliminated OOB entirely. Over-creation in complication/character-intro still bypasses count cap (see #195). tool_usage scored 1/5 across all narratives - model creates text objects only, no visual storytelling tools (see #196).
+- **Remaining layout killers:** over-creation in open-ended scenes (complication, character-intro) - count cap may not fire correctly for batchExecute. Prompt stripped too aggressively on visual tool emphasis.
 
 ## Commands
 
