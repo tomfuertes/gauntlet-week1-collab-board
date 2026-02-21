@@ -14,7 +14,7 @@ import {
   INTENT_PROMPTS,
   MOMENTUM_PROMPT,
   DIRECTOR_PROMPTS,
-  DIRECTOR_PROMPTS_HAT,
+  DIRECTOR_PROMPTS_HAROLD,
   DIRECTOR_PROMPTS_YESAND,
   PROMPT_VERSION,
   computeScenePhase,
@@ -40,7 +40,6 @@ import {
   buildStageManagerPrompt,
 } from "./prompts";
 import type { GameModeState } from "./prompts";
-import { HAT_PROMPTS, getRandomHatPrompt } from "./hat-prompts";
 import type { Bindings } from "./env";
 import { recordBoardActivity } from "./env";
 import type {
@@ -263,16 +262,7 @@ export class ChatAgent extends AIChatAgent<Bindings> {
 
   // Game mode state (resets on DO hibernation - client re-sends gameMode on each message)
   private _gameMode: GameMode = "freeform";
-  private _hatPromptIndex = -1;
-  private _hatExchangeCount = 0;
-  private _hatPromptCount = 0; // increments on each new hat prompt for spatial offset calculation
   private _yesAndCount = 0;
-
-  // KEY-DECISION 2026-02-20: Freeze Tag state resets on DO hibernation (same as other game state).
-  // Client sends [FREEZE] and [TAKEOVER: name] markers; server tracks freeze phase in these fields.
-  // _freezeIsFrozen is a transient gate (on for 1 exchange: freeze announcement), reset after takeover.
-  private _freezeIsFrozen = false;
-  private _freezeTakenCharacter: string | undefined = undefined;
 
   // Per-message requested model (resets on DO hibernation - client re-sends model on each message)
   private _requestedModel = "";
@@ -428,15 +418,13 @@ export class ChatAgent extends AIChatAgent<Bindings> {
       return createOpenAI({ apiKey: this.env.OPENAI_API_KEY })(entry!.modelId);
     }
 
-    // Anthropic provider
+    // Anthropic provider (fallback for any unknown provider)
     if (provider === "anthropic" && this.env.ANTHROPIC_API_KEY) {
       return createAnthropic({ apiKey: this.env.ANTHROPIC_API_KEY })(entry!.modelId);
     }
 
-    // Workers AI provider (default fallback) - shim injects tool_choice:"auto" (CF issue #404)
-    const modelId =
-      entry?.provider === "workers-ai" ? entry.modelId : this.env.WORKERS_AI_MODEL || "@cf/zai-org/glm-4.7-flash";
-    return getShimmedWorkersAI(this.env, modelId);
+    // Fallback to Anthropic Haiku if model entry not found or API key not available
+    return createAnthropic({ apiKey: this.env.ANTHROPIC_API_KEY })("claude-haiku-4-5-20251001");
   }
 
   /** Lazily initialize Langfuse client. Returns null if env vars not configured.
@@ -494,13 +482,13 @@ export class ChatAgent extends AIChatAgent<Bindings> {
   private _getModelName(): string {
     const entry = this._resolveModelEntry();
     if (entry) return entry.id;
-    return (this.env.WORKERS_AI_MODEL || "glm-4.7-flash").split("/").pop() || "workers-ai";
+    return "claude-haiku-4.5";
   }
 
-  /** Check if current model is a Workers AI model (for budget/neuron tracking) */
-  private _isWorkersAI(): boolean {
+  /** Check if current model is an Anthropic model (for budget/neuron tracking) */
+  private _isAnthropicModel(): boolean {
     const entry = this._resolveModelEntry();
-    return !entry || entry.provider === "workers-ai";
+    return !entry || entry.provider === "anthropic";
   }
 
   /** Structured log: AI request started */
@@ -527,11 +515,8 @@ export class ChatAgent extends AIChatAgent<Bindings> {
     toolCalls: number,
     extra?: Record<string, unknown>,
   ) {
-    // Rough neuron tracking: ~2K input + ~500 output per step (conservative estimate).
-    // Actual usage varies by model/context but this prevents runaway spend.
-    if (this._isWorkersAI()) {
-      this._trackUsage(steps * 2000, steps * 500);
-    }
+    // Neuron tracking removed - Workers AI models no longer supported.
+    // Anthropic and OpenAI handle billing separately.
     console.debug(
       JSON.stringify({
         event: "ai:request:end",
@@ -779,46 +764,8 @@ export class ChatAgent extends AIChatAgent<Bindings> {
       humanTurns,
     });
 
-    // Daily spend cap: reject if over budget (Workers AI only - Anthropic has its own billing)
-    if (this._isWorkersAI() && this._isOverBudget()) {
-      this._isGenerating = false;
-      console.warn(
-        JSON.stringify({
-          event: "budget:daily-cap",
-          boardId: this.name,
-          neurons: this._dailySpendNeurons,
-        }),
-      );
-      const lf = this._getLangfuse();
-      if (lf) {
-        lf.trace({
-          name: "budget:daily-cap",
-          metadata: { boardId: this.name, neurons: this._dailySpendNeurons },
-          tags: ["budget", "daily-cap"],
-        });
-        lf.flushAsync().catch((err) => {
-          console.error(
-            JSON.stringify({ event: "trace:langfuse-flush-error", boardId: this.name, error: String(err) }),
-          );
-        });
-      }
-      const capMsg: UIMessage = {
-        id: crypto.randomUUID(),
-        role: "assistant",
-        parts: [
-          {
-            type: "text" as const,
-            text: `[${activePersona.name}] The AI has reached its daily budget. Come back tomorrow for more improv!`,
-          },
-        ],
-      };
-      this.messages.push(capMsg);
-      await this.persistMessages(this.messages);
-      return new Response(JSON.stringify({ error: "daily-budget-exceeded" }), {
-        status: 200,
-        headers: { "Content-Type": "application/json" },
-      });
-    }
+    // Daily spend cap removed - Workers AI models no longer supported.
+    // Anthropic and OpenAI handle billing through their respective platforms.
 
     // Reject if scene is over - the last human message pushed us past the budget
     if (humanTurns > SCENE_TURN_BUDGET) {
@@ -905,7 +852,7 @@ export class ChatAgent extends AIChatAgent<Bindings> {
     const tools = createSDKTools(boardStub, batchId, this.env.AI, this.ctx.storage);
 
     // Update game mode from client (sent on every message so it survives DO hibernation)
-    if (body?.gameMode && ["hat", "yesand", "freeform", "freezetag"].includes(body.gameMode)) {
+    if (body?.gameMode && ["yesand", "freeform", "harold"].includes(body.gameMode)) {
       this._gameMode = body.gameMode as GameMode;
     }
 
@@ -918,87 +865,22 @@ export class ChatAgent extends AIChatAgent<Bindings> {
     const scenePhase = computeScenePhase(humanTurns);
     const intentChip = typeof body?.intent === "string" ? (body.intent as string) : undefined;
 
-    // Handle hat mode prompt lifecycle
-    if (this._gameMode === "hat") {
-      // Check for [NEXT-HAT-PROMPT] marker to advance prompt
-      const lastUserMsg = this.messages[this.messages.length - 1];
-      const lastUserText =
-        lastUserMsg?.parts
-          ?.filter((p) => p.type === "text")
-          .map((p) => (p as { type: "text"; text: string }).text)
-          .join("") ?? "";
-      if (lastUserText.includes("[NEXT-HAT-PROMPT]")) {
-        const pick = getRandomHatPrompt(this._hatPromptIndex);
-        this._hatPromptIndex = pick.index;
-        this._hatExchangeCount = 0;
-        this._hatPromptCount++;
-      } else if (this._hatPromptIndex === -1) {
-        // First message in hat mode - pick initial prompt
-        const pick = getRandomHatPrompt();
-        this._hatPromptIndex = pick.index;
-        this._hatExchangeCount = 0;
-        this._hatPromptCount = 0;
-      }
-      this._hatExchangeCount++;
-    }
-
     // Track yes-and beat count
     if (this._gameMode === "yesand") {
       this._yesAndCount++;
     }
 
-    // Build game mode prompt block
-    // Hat prompt spatial offset: each new prompt gets x+=600 so scenes don't pile up.
-    // Clamped to canvas right edge (1150 - 500 frame width = 650 max x).
-    const hatXOffset = Math.min(50 + this._hatPromptCount * 600, 650);
-
-    // Handle freeze tag [FREEZE] and [TAKEOVER: name] markers in the last user message.
-    // Detection runs before gameModeState build so the correct phase is injected this exchange.
-    const lastMsgForFreeze = this.messages[this.messages.length - 1];
-    const lastTextForFreeze =
-      lastMsgForFreeze?.parts
-        ?.filter((p) => p.type === "text")
-        .map((p) => (p as { type: "text"; text: string }).text)
-        .join("") ?? "";
-    if (this._gameMode === "freezetag") {
-      if (lastTextForFreeze.includes("[FREEZE]")) {
-        this._freezeIsFrozen = true;
-        this._freezeTakenCharacter = undefined;
-        console.debug(JSON.stringify({ event: "freezetag:freeze", boardId: this.name }));
-      }
-      const takeoverMatch = lastTextForFreeze.match(/\[TAKEOVER:\s*([^\]]+)\]/);
-      if (takeoverMatch) {
-        this._freezeTakenCharacter = takeoverMatch[1].trim();
-        this._freezeIsFrozen = false;
-        console.debug(
-          JSON.stringify({ event: "freezetag:takeover", boardId: this.name, character: this._freezeTakenCharacter }),
-        );
-      }
-    }
-
     const gameModeState: GameModeState = {
-      hatPrompt: this._hatPromptIndex >= 0 ? HAT_PROMPTS[this._hatPromptIndex] : undefined,
-      hatExchangeCount: this._hatExchangeCount,
-      hatPromptOffset: hatXOffset,
       yesAndCount: this._yesAndCount,
-      freezeIsFrozen: this._freezeIsFrozen,
-      freezeTakenCharacter: this._freezeTakenCharacter,
+      haroldTurns: humanTurns,
     };
     const gameModeBlock = buildGameModePromptBlock(this._gameMode, gameModeState);
 
-    // After takeover is processed (injected into system prompt this exchange), clear it so
-    // subsequent messages return to normal freeze-tag play. Freeze state clears on takeover above.
-    if (this._gameMode === "freezetag" && this._freezeTakenCharacter) {
-      this._freezeTakenCharacter = undefined;
-    }
-
-    // Clear relationships, lifecycle phase, plot twist gate, and freeze state at scene start
+    // Clear relationships, lifecycle phase, and plot twist gate at scene start
     if (this.messages.length <= 1) {
       await this.ctx.storage.delete("narrative:relationships");
       await this.ctx.storage.delete("scene:lifecyclePhase");
       this._plotTwistUsed = false;
-      this._freezeIsFrozen = false;
-      this._freezeTakenCharacter = undefined;
     }
 
     // Detect [PLOT TWIST] trigger in the last user message.
@@ -1075,10 +957,7 @@ export class ChatAgent extends AIChatAgent<Bindings> {
     // Build persona-aware system prompt with optional selection + multiplayer context
     let systemPrompt = buildPersonaSystemPrompt(activePersona, otherPersona, SYSTEM_PROMPT, gameModeBlock, relBlock);
 
-    // Inject lifecycle phase guidance (skip for hat mode - rapid-fire scenes don't have dramatic arc)
-    if (this._gameMode !== "hat") {
-      systemPrompt += `\n\n${buildLifecycleBlock(lifecyclePhase)}`;
-    }
+    systemPrompt += `\n\n${buildLifecycleBlock(lifecyclePhase)}`;
 
     // Auto-archive on curtain (>=5 human turns to avoid archiving micro-scenes)
     // KEY-DECISION 2026-02-20: ctx.waitUntil so archiving never delays the AI response stream.
@@ -1630,10 +1509,10 @@ export class ChatAgent extends AIChatAgent<Bindings> {
         });
         rawName = result.text;
       } else {
-        // Workers AI fallback - quality varies by model
-        const modelId = this.env.WORKERS_AI_MODEL || "@cf/zai-org/glm-4.7-flash";
+        // Fallback to Anthropic if no API key found (shouldn't happen in production)
+        const anthropic = createAnthropic({ apiKey: this.env.ANTHROPIC_API_KEY });
         const result = await generateText({
-          model: getShimmedWorkersAI(this.env, modelId),
+          model: anthropic("claude-haiku-4-5-20251001"),
           messages: [{ role: "user" as const, content: namingPrompt }],
         });
         rawName = result.text;
@@ -1715,13 +1594,14 @@ export class ChatAgent extends AIChatAgent<Bindings> {
         rawResponse = result.text;
         modelName = "claude-haiku-4.5";
       } else {
-        const modelId = this.env.WORKERS_AI_MODEL || "@cf/zai-org/glm-4.7-flash";
+        // Fallback to Anthropic if no API key found (shouldn't happen in production)
+        const anthropic = createAnthropic({ apiKey: this.env.ANTHROPIC_API_KEY });
         const result = await generateText({
-          model: getShimmedWorkersAI(this.env, modelId),
+          model: anthropic("claude-haiku-4-5-20251001"),
           messages: [{ role: "user" as const, content: reviewPrompt }],
         });
         rawResponse = result.text;
-        modelName = modelId.split("/").pop() || "workers-ai";
+        modelName = "claude-haiku-4.5";
       }
     } catch (err) {
       console.error(JSON.stringify({ event: "critic:gen-error", boardId: this.name, error: String(err) }));
@@ -2100,10 +1980,8 @@ export class ChatAgent extends AIChatAgent<Bindings> {
 
       // Pass the same game mode block to the reactive persona
       const reactiveGameModeState: GameModeState = {
-        hatPrompt: this._hatPromptIndex >= 0 ? HAT_PROMPTS[this._hatPromptIndex] : undefined,
-        hatExchangeCount: this._hatExchangeCount,
-        hatPromptOffset: Math.min(50 + this._hatPromptCount * 600, 650),
         yesAndCount: this._yesAndCount,
+        haroldTurns: this.messages.filter((m) => m.role === "user").length,
       };
       const reactiveGameModeBlock = buildGameModePromptBlock(this._gameMode, reactiveGameModeState);
 
@@ -2122,8 +2000,7 @@ export class ChatAgent extends AIChatAgent<Bindings> {
         reactiveStoredPhase ?? undefined,
       );
 
-      const reactiveLifecycleBlock =
-        this._gameMode !== "hat" ? `\n\n${buildLifecycleBlock(reactiveLifecyclePhase)}` : "";
+      const reactiveLifecycleBlock = `\n\n${buildLifecycleBlock(reactiveLifecyclePhase)}`;
       const reactiveSystem =
         buildPersonaSystemPrompt(
           reactivePersona,
@@ -2406,15 +2283,13 @@ export class ChatAgent extends AIChatAgent<Bindings> {
         const relationships = (await this.ctx.storage.get<CharacterRelationship[]>("narrative:relationships")) ?? [];
         const relBlock = buildRelationshipBlock(relationships);
         const gameModeState: GameModeState = {
-          hatPrompt: this._hatPromptIndex >= 0 ? HAT_PROMPTS[this._hatPromptIndex] : undefined,
-          hatExchangeCount: this._hatExchangeCount,
-          hatPromptOffset: Math.min(50 + this._hatPromptCount * 600, 650),
           yesAndCount: this._yesAndCount,
+          haroldTurns: humanTurns,
         };
         const gameModeBlock = buildGameModePromptBlock(this._gameMode, gameModeState);
         const storedPhase = await this.ctx.storage.get<SceneLifecyclePhase>("scene:lifecyclePhase");
         const lifecyclePhase = computeLifecyclePhase(humanTurns, storedPhase ?? undefined);
-        const lifecycleBlock = this._gameMode !== "hat" ? `\n\n${buildLifecycleBlock(lifecyclePhase)}` : "";
+        const lifecycleBlock = `\n\n${buildLifecycleBlock(lifecyclePhase)}`;
 
         const sfxSystem =
           buildPersonaSystemPrompt(reactionPersona, reactionOther, SYSTEM_PROMPT, gameModeBlock, relBlock) +
@@ -2596,16 +2471,14 @@ export class ChatAgent extends AIChatAgent<Bindings> {
         const relBlock = buildRelationshipBlock(relationships);
 
         const gameModeState: GameModeState = {
-          hatPrompt: this._hatPromptIndex >= 0 ? HAT_PROMPTS[this._hatPromptIndex] : undefined,
-          hatExchangeCount: this._hatExchangeCount,
-          hatPromptOffset: Math.min(50 + this._hatPromptCount * 600, 650),
           yesAndCount: this._yesAndCount,
+          haroldTurns: humanTurns,
         };
         const gameModeBlock = buildGameModePromptBlock(this._gameMode, gameModeState);
 
         const storedPhase = await this.ctx.storage.get<SceneLifecyclePhase>("scene:lifecyclePhase");
         const lifecyclePhase = computeLifecyclePhase(humanTurns, storedPhase ?? undefined);
-        const lifecycleBlock = this._gameMode !== "hat" ? `\n\n${buildLifecycleBlock(lifecyclePhase)}` : "";
+        const lifecycleBlock = `\n\n${buildLifecycleBlock(lifecyclePhase)}`;
 
         const canvasReactionSystem =
           buildPersonaSystemPrompt(reactionPersona, reactionOther, SYSTEM_PROMPT, gameModeBlock, relBlock) +
@@ -2774,18 +2647,16 @@ export class ChatAgent extends AIChatAgent<Bindings> {
       try {
         // Build game mode block for director
         const directorGameModeState: GameModeState = {
-          hatPrompt: this._hatPromptIndex >= 0 ? HAT_PROMPTS[this._hatPromptIndex] : undefined,
-          hatExchangeCount: this._hatExchangeCount,
-          hatPromptOffset: Math.min(50 + this._hatPromptCount * 600, 650),
           yesAndCount: this._yesAndCount,
+          haroldTurns: directorHumanTurns,
         };
         const directorGameModeBlock = buildGameModePromptBlock(this._gameMode, directorGameModeState);
 
         // Mode-specific director instructions
         let directorInstructions: string;
-        if (this._gameMode === "hat") {
-          const hatKey = this._hatExchangeCount >= 5 ? "wrapup" : "active";
-          directorInstructions = DIRECTOR_PROMPTS_HAT[hatKey];
+        if (this._gameMode === "harold") {
+          const haroldKey = directorHumanTurns >= 14 ? "wrapup" : "active";
+          directorInstructions = DIRECTOR_PROMPTS_HAROLD[haroldKey];
         } else if (this._gameMode === "yesand") {
           const yesandKey = this._yesAndCount >= 10 ? "wrapup" : "active";
           directorInstructions = DIRECTOR_PROMPTS_YESAND[yesandKey];
@@ -2801,8 +2672,7 @@ export class ChatAgent extends AIChatAgent<Bindings> {
         // Load lifecycle phase for director (auto-computed from user message count)
         const directorStoredPhase = await this.ctx.storage.get<SceneLifecyclePhase>("scene:lifecyclePhase");
         const directorLifecyclePhase = computeLifecyclePhase(directorHumanTurns, directorStoredPhase ?? undefined);
-        const directorLifecycleBlock =
-          this._gameMode !== "hat" ? `\n\n${buildLifecycleBlock(directorLifecyclePhase)}` : "";
+        const directorLifecycleBlock = `\n\n${buildLifecycleBlock(directorLifecyclePhase)}`;
 
         // Director nudge uses the active persona's voice + budget-aware prompts
         let directorSystem =

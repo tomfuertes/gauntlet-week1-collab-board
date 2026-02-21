@@ -202,34 +202,37 @@ export interface TroupeConfig {
 /** Max human turns per scene before AI wraps up */
 export const SCENE_TURN_BUDGET = 20;
 
-export type GameMode = "freeform" | "hat" | "yesand" | "freezetag";
+export type GameMode = "freeform" | "yesand" | "harold";
 
 /** Explicit scene lifecycle phases with AI-directed transitions */
 export type SceneLifecyclePhase = "establish" | "build" | "peak" | "resolve" | "curtain";
 
 export const GAME_MODES = [
-  { mode: "freeform" as const, label: "Freeform", icon: "\u2728", description: "Classic improv - no rules, just play" },
   {
-    mode: "hat" as const,
-    label: "Scenes From a Hat",
-    icon: "\uD83C\uDFA9",
-    description: "Random prompts, short scenes",
+    mode: "yesand" as const,
+    label: "Yes-And Chain",
+    icon: "\uD83D\uDD17",
+    description: "Build a 10-beat chain",
+    difficulty: "beginner" as const,
   },
-  { mode: "yesand" as const, label: "Yes-And Chain", icon: "\uD83D\uDD17", description: "Build a 10-beat chain" },
   {
-    mode: "freezetag" as const,
-    label: "Freeze Tag",
-    icon: "\uD83E\uDD76",
-    description: "Freeze the scene, steal a character, restart in a new direction",
+    mode: "freeform" as const,
+    label: "Freeform",
+    icon: "\u2728",
+    description: "Classic improv - no rules, just play",
+    difficulty: "mid" as const,
+  },
+  {
+    mode: "harold" as const,
+    label: "Harold",
+    icon: "\uD83C\uDFAD",
+    description: "Long-form: opening, beats, callbacks",
+    difficulty: "advanced" as const,
   },
 ] as const;
 
 /** Short ID used as the client-side state value for the model selector */
 export type AIModel =
-  | "glm-4.7-flash"
-  | "gpt-oss-20b"
-  | "llama-4-scout"
-  | "mistral-small-3.1"
   | "gpt-4o-mini"
   | "gpt-4o"
   | "gpt-5-mini"
@@ -241,30 +244,6 @@ export type AIModelProvider = "workers-ai" | "openai" | "anthropic";
 
 /** All selectable AI models across providers. modelId is the provider-specific model identifier. */
 export const AI_MODELS = [
-  {
-    id: "glm-4.7-flash" as const,
-    label: "GLM 4.7 Flash",
-    provider: "workers-ai" as const,
-    modelId: "@cf/zai-org/glm-4.7-flash",
-  },
-  {
-    id: "gpt-oss-20b" as const,
-    label: "GPT-OSS 20B",
-    provider: "workers-ai" as const,
-    modelId: "@cf/openai/gpt-oss-20b",
-  },
-  {
-    id: "llama-4-scout" as const,
-    label: "Llama 4 Scout",
-    provider: "workers-ai" as const,
-    modelId: "@cf/meta/llama-4-scout-17b-16e-instruct",
-  },
-  {
-    id: "mistral-small-3.1" as const,
-    label: "Mistral Small 3.1",
-    provider: "workers-ai" as const,
-    modelId: "@cf/mistralai/mistral-small-3.1-24b-instruct",
-  },
   { id: "gpt-4o-mini" as const, label: "GPT-4o Mini", provider: "openai" as const, modelId: "gpt-4o-mini" },
   { id: "gpt-4o" as const, label: "GPT-4o", provider: "openai" as const, modelId: "gpt-4o" },
   { id: "gpt-5-mini" as const, label: "GPT-5 Mini", provider: "openai" as const, modelId: "gpt-5-mini" },
