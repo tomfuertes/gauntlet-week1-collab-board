@@ -107,7 +107,7 @@ interface ComparisonRow {
   dimension: string;
   scoreA: number;
   scoreB: number;
-  delta: number;       // scoreB - scoreA (positive = improvement)
+  delta: number; // scoreB - scoreA (positive = improvement)
   regression: boolean; // true if delta <= -1.0
 }
 
@@ -146,11 +146,19 @@ function isV2Report(raw: RawReport): raw is V2Report {
 }
 
 function loadReport(filePath: string): NormalizedReport {
+  let fileContent: string;
+  try {
+    fileContent = readFileSync(filePath, "utf8");
+  } catch (err) {
+    const isNotFound = err instanceof Error && (err as NodeJS.ErrnoException).code === "ENOENT";
+    throw new Error(isNotFound ? `File not found: ${filePath}` : `Failed to read ${filePath}: ${err}`);
+  }
+
   let raw: RawReport;
   try {
-    raw = JSON.parse(readFileSync(filePath, "utf8")) as RawReport;
+    raw = JSON.parse(fileContent) as RawReport;
   } catch (err) {
-    throw new Error(`Failed to read/parse ${filePath}: ${err}`);
+    throw new Error(`Invalid JSON in ${filePath}: ${err}`);
   }
 
   if (isV2Report(raw)) {
@@ -171,7 +179,14 @@ function loadReport(filePath: string): NormalizedReport {
         })),
       }));
 
-    return { path: filePath, promptVersion: raw.promptVersion, model: raw.model, timestamp: raw.timestamp, layoutResults, narrativeResults };
+    return {
+      path: filePath,
+      promptVersion: raw.promptVersion,
+      model: raw.model,
+      timestamp: raw.timestamp,
+      layoutResults,
+      narrativeResults,
+    };
   }
 
   // v1: layout-only report (results[] at top level)
@@ -183,7 +198,14 @@ function loadReport(filePath: string): NormalizedReport {
     outOfBounds: r.outOfBounds,
   }));
 
-  return { path: filePath, promptVersion: v1.promptVersion, model: v1.model, timestamp: v1.timestamp, layoutResults, narrativeResults: [] };
+  return {
+    path: filePath,
+    promptVersion: v1.promptVersion,
+    model: v1.model,
+    timestamp: v1.timestamp,
+    layoutResults,
+    narrativeResults: [],
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -244,7 +266,7 @@ function compareReports(a: NormalizedReport, b: NormalizedReport): ComparisonSum
     dimScoresB.set(row.dimension, bArr);
   }
 
-  const avg = (arr: number[]) => arr.length ? arr.reduce((s, v) => s + v, 0) / arr.length : 0;
+  const avg = (arr: number[]) => (arr.length ? arr.reduce((s, v) => s + v, 0) / arr.length : 0);
   const aggregates: AggregateRow[] = Array.from(dimScoresA.keys()).map((dim) => {
     const avgA = avg(dimScoresA.get(dim) ?? []);
     const avgB = avg(dimScoresB.get(dim) ?? []);
@@ -286,11 +308,7 @@ function printComparisonTable(summary: ComparisonSummary): void {
   if (summary.rows.length > 0) {
     console.log("\n=== NARRATIVE SCENARIOS ===");
     console.log(
-      "Scenario".padEnd(26) +
-        "Dimension".padEnd(22) +
-        "A".padStart(4) +
-        "B".padStart(5) +
-        "Delta".padStart(8),
+      "Scenario".padEnd(26) + "Dimension".padEnd(22) + "A".padStart(4) + "B".padStart(5) + "Delta".padStart(8),
     );
     console.log("-".repeat(67));
 
@@ -311,11 +329,7 @@ function printComparisonTable(summary: ComparisonSummary): void {
   if (summary.layoutComparison.length > 0) {
     console.log("\n=== LAYOUT SCENARIOS ===");
     console.log(
-      "Scenario".padEnd(26) +
-        "Pass(A)".padEnd(9) +
-        "Pass(B)".padEnd(9) +
-        "Overlap(d)".padEnd(12) +
-        "OOB(d)".padEnd(8),
+      "Scenario".padEnd(26) + "Pass(A)".padEnd(9) + "Pass(B)".padEnd(9) + "Overlap(d)".padEnd(12) + "OOB(d)".padEnd(8),
     );
     console.log("-".repeat(67));
 
@@ -337,12 +351,7 @@ function printComparisonTable(summary: ComparisonSummary): void {
   // --- Aggregates section ---
   if (summary.aggregates.length > 0) {
     console.log("\n=== AGGREGATES ===");
-    console.log(
-      "Dimension".padEnd(26) +
-        "Avg(A)".padStart(8) +
-        "Avg(B)".padStart(8) +
-        "Delta".padStart(8),
-    );
+    console.log("Dimension".padEnd(26) + "Avg(A)".padStart(8) + "Avg(B)".padStart(8) + "Delta".padStart(8));
     console.log("-".repeat(52));
 
     for (const agg of summary.aggregates) {

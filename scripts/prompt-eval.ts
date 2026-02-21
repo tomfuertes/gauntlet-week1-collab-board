@@ -163,7 +163,7 @@ async function createBoard(cookie: string): Promise<string> {
     body: JSON.stringify({ name: "prompt-eval" }),
   });
   if (!resp.ok) throw new Error(`Create board failed: ${resp.status}`);
-  const { id } = await resp.json() as { id: string };
+  const { id } = (await resp.json()) as { id: string };
   return id;
 }
 
@@ -211,11 +211,7 @@ function nanoid8(): string {
   return crypto.randomUUID().slice(0, 8);
 }
 
-async function runScenario(
-  cookie: string,
-  boardId: string,
-  scenario: Scenario,
-): Promise<ScenarioResult> {
+async function runScenario(cookie: string, boardId: string, scenario: Scenario): Promise<ScenarioResult> {
   const start = Date.now();
 
   return new Promise((resolve) => {
@@ -227,7 +223,14 @@ async function runScenario(
       settled = true;
       clearTimeout(timeoutHandle);
       resolve(result); // resolve before close so a ws.close() throw can't hang the promise
-      try { ws.close(); } catch { /* already closed or invalid state */ }
+      try {
+        ws.close();
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        if (!msg.includes("already closed") && !msg.includes("WebSocket was closed")) {
+          console.warn("[eval] Unexpected ws.close error:", err);
+        }
+      }
     };
 
     const timeoutHandle = setTimeout(() => {
@@ -263,18 +266,20 @@ async function runScenario(
         parts: [{ type: "text", text: scenario.prompt }],
         createdAt: new Date().toISOString(),
       };
-      ws.send(JSON.stringify({
-        id: requestId,
-        init: {
-          method: "POST",
-          body: JSON.stringify({
-            messages: [userMessage],
-            gameMode: "freeform",
-            model: MODEL,
-          }),
-        },
-        type: CF_AGENT_USE_CHAT_REQUEST,
-      }));
+      ws.send(
+        JSON.stringify({
+          id: requestId,
+          init: {
+            method: "POST",
+            body: JSON.stringify({
+              messages: [userMessage],
+              gameMode: "freeform",
+              model: MODEL,
+            }),
+          },
+          type: CF_AGENT_USE_CHAT_REQUEST,
+        }),
+      );
     });
 
     ws.on("message", async (raw: Buffer) => {
@@ -301,9 +306,7 @@ async function runScenario(
         const latencyMs = Date.now() - start;
 
         const expectedMin = scenario.expectedMinObjects ?? 1;
-        const typesMatch = scenario.expectedTypes?.length
-          ? checkTypesMatch(objects, scenario.expectedTypes)
-          : null;
+        const typesMatch = scenario.expectedTypes?.length ? checkTypesMatch(objects, scenario.expectedTypes) : null;
 
         const pass =
           metrics.overlapScore === 0 &&
@@ -369,8 +372,12 @@ function readPromptVersion(): string {
     }
     return m[1];
   } catch (err) {
-    console.warn(`[eval] WARNING: Could not read prompts.ts: ${err}`);
-    console.warn("[eval] Run from repo root so src/server/prompts.ts is reachable.");
+    const isNotFound = err instanceof Error && (err as NodeJS.ErrnoException).code === "ENOENT";
+    if (isNotFound) {
+      console.warn("[eval] WARNING: prompts.ts not found - run from repo root so src/server/prompts.ts is reachable.");
+    } else {
+      console.warn(`[eval] WARNING: Could not parse PROMPT_VERSION from prompts.ts: ${err}`);
+    }
     return "unknown";
   }
 }
@@ -497,7 +504,11 @@ async function runNarrativeScenario(
           try {
             data = JSON.parse(raw.toString());
           } catch {
-            return; // Non-JSON frames are normal during handshake
+            const str = raw.toString();
+            if (str.startsWith("{") || str.startsWith("[")) {
+              console.warn(`[eval] Unparseable JSON frame (turn ${turnIndex}): ${str.slice(0, 200)}`);
+            }
+            return;
           }
 
           if (data["type"] !== CF_AGENT_USE_CHAT_RESPONSE) return;
@@ -518,7 +529,9 @@ async function runNarrativeScenario(
                 if (!toolNames.includes(toolName)) toolNames.push(toolName);
               }
             } catch {
-              // body may not always be JSON - ignore
+              if (body.startsWith("{") || body.startsWith("[")) {
+                console.warn(`[eval] Unparseable JSON body (turn ${turnIndex}): ${body.slice(0, 200)}`);
+              }
             }
           }
 
@@ -556,8 +569,11 @@ async function runNarrativeScenario(
   } finally {
     try {
       ws.close();
-    } catch {
-      /* already closed */
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (!msg.includes("already closed") && !msg.includes("WebSocket was closed")) {
+        throw err;
+      }
     }
   }
 
@@ -570,8 +586,8 @@ async function runNarrativeScenario(
       overlapScore: metrics.overlapScore,
       outOfBounds: metrics.outOfBounds,
     };
-  } catch {
-    // non-fatal - layout metrics are best-effort
+  } catch (error) {
+    console.warn("[eval] Failed to fetch board objects:", error);
   }
 
   // Judge the transcript (unless skipped)
@@ -678,7 +694,13 @@ async function main() {
       console.error("[eval] Create scripts/scenarios.json with an array of Scenario objects.");
       process.exit(1);
     }
-    const scenarios: Scenario[] = JSON.parse(readFileSync(scenariosPath, "utf8"));
+    let scenarios: Scenario[];
+    try {
+      scenarios = JSON.parse(readFileSync(scenariosPath, "utf8")) as Scenario[];
+    } catch (err) {
+      console.error(`[eval] Failed to parse ${scenariosPath}: ${err}`);
+      process.exit(1);
+    }
     console.log(`[eval] Running ${scenarios.length} layout scenarios...\n`);
 
     for (const scenario of scenarios) {
@@ -689,10 +711,16 @@ async function main() {
       } catch (err) {
         console.error(`\n[eval] clearBoard failed for ${scenario.id}: ${err} - skipping`);
         layoutResults.push({
-          id: scenario.id, description: scenario.description ?? "", pass: false,
-          overlapScore: 0, outOfBounds: 0, objectCount: 0,
-          expectedMinObjects: scenario.expectedMinObjects ?? 1, typesMatch: null,
-          latencyMs: 0, error: `clearBoard failed: ${String(err)}`,
+          id: scenario.id,
+          description: scenario.description ?? "",
+          pass: false,
+          overlapScore: 0,
+          outOfBounds: 0,
+          objectCount: 0,
+          expectedMinObjects: scenario.expectedMinObjects ?? 1,
+          typesMatch: null,
+          latencyMs: 0,
+          error: `clearBoard failed: ${String(err)}`,
         });
         continue;
       }
@@ -726,8 +754,8 @@ async function main() {
       const errStr = result.error ? ` (${result.error})` : "";
       console.log(
         `${status}  overlap=${result.overlapScore}  oob=${result.outOfBounds}` +
-        `  objects=${result.objectCount}/${result.expectedMinObjects}${typeStr}` +
-        `  ${(result.latencyMs / 1000).toFixed(1)}s${errStr}`,
+          `  objects=${result.objectCount}/${result.expectedMinObjects}${typeStr}` +
+          `  ${(result.latencyMs / 1000).toFixed(1)}s${errStr}`,
       );
     }
 
@@ -745,16 +773,16 @@ async function main() {
       const errStr = r.error ? ` (${r.error})` : "";
       console.log(
         `  ${r.id.padEnd(22)} ${status}  overlap=${r.overlapScore}  oob=${r.outOfBounds}` +
-        `  objects=${r.objectCount}/${r.expectedMinObjects}${typeStr}` +
-        `  ${(r.latencyMs / 1000).toFixed(1)}s${errStr}`,
+          `  objects=${r.objectCount}/${r.expectedMinObjects}${typeStr}` +
+          `  ${(r.latencyMs / 1000).toFixed(1)}s${errStr}`,
       );
     }
     console.log("───────────────────────────────────────────────────────────────");
     console.log(
       `  Aggregate: ${passed}/${layoutResults.length} pass | ` +
-      `avg overlap: ${avgOverlap.toFixed(1)} | ` +
-      `avg oob: ${avgOob.toFixed(1)} | ` +
-      `avg latency: ${(avgLatency / 1000).toFixed(1)}s`,
+        `avg overlap: ${avgOverlap.toFixed(1)} | ` +
+        `avg oob: ${avgOob.toFixed(1)} | ` +
+        `avg latency: ${(avgLatency / 1000).toFixed(1)}s`,
     );
   } else {
     console.log("[eval] Skipping layout scenarios (EVAL_SKIP_LAYOUT=1)");
@@ -772,7 +800,13 @@ async function main() {
     if (!existsSync(narrativePath)) {
       console.warn("[eval] narrative-scenarios.json not found - skipping narrative phase");
     } else {
-      const narrativeScenarios: NarrativeScenario[] = JSON.parse(readFileSync(narrativePath, "utf8"));
+      let narrativeScenarios: NarrativeScenario[];
+      try {
+        narrativeScenarios = JSON.parse(readFileSync(narrativePath, "utf8")) as NarrativeScenario[];
+      } catch (err) {
+        console.error(`[eval] Failed to parse ${narrativePath}: ${err}`);
+        process.exit(1);
+      }
       const skipJudge = process.env.EVAL_SKIP_JUDGE === "1";
       console.log(
         `\n[eval] Running ${narrativeScenarios.length} narrative scenarios` +
@@ -781,14 +815,23 @@ async function main() {
       );
 
       for (const scenario of narrativeScenarios) {
+        if (!Array.isArray(scenario.turns) || scenario.turns.length === 0) {
+          console.warn(`[eval] Skipping narrative scenario "${scenario.id}": no turns defined`);
+          continue;
+        }
+
         try {
           await clearBoard(cookie, boardId);
         } catch (err) {
           console.error(`[eval] clearBoard failed for narrative ${scenario.id}: ${err} - skipping`);
           narrativeResults.push({
-            id: scenario.id, description: scenario.description, transcript: [],
-            judgeResult: null, layoutMetrics: { objectCount: 0, overlapScore: 0, outOfBounds: 0 },
-            latencyMs: 0, error: `clearBoard failed: ${String(err)}`,
+            id: scenario.id,
+            description: scenario.description,
+            transcript: [],
+            judgeResult: null,
+            layoutMetrics: { objectCount: 0, overlapScore: 0, outOfBounds: 0 },
+            latencyMs: 0,
+            error: `clearBoard failed: ${String(err)}`,
           });
           continue;
         }
@@ -801,7 +844,13 @@ async function main() {
         if (langfuse && result.judgeResult) {
           const trace = langfuse.trace({
             name: "eval:narrative",
-            metadata: { scenarioId: result.id, description: result.description, promptVersion, model: MODEL, judgeModel },
+            metadata: {
+              scenarioId: result.id,
+              description: result.description,
+              promptVersion,
+              model: MODEL,
+              judgeModel,
+            },
             tags: ["eval", "narrative", `scenario:${result.id}`, `model:${MODEL}`, `judgeModel:${judgeModel}`],
           });
           langfuse.score({ traceId: trace.id, name: "overallScore", value: result.judgeResult.overallScore });
@@ -855,9 +904,7 @@ async function main() {
     const scores = judgedNarrative
       .map((r) => r.judgeResult?.dimensions.find((d) => d.dimension === dim)?.score ?? null)
       .filter((s): s is number => s !== null);
-    avgDimensions[dim] = scores.length
-      ? Math.round((scores.reduce((a, b) => a + b, 0) / scores.length) * 10) / 10
-      : 0;
+    avgDimensions[dim] = scores.length ? Math.round((scores.reduce((a, b) => a + b, 0) / scores.length) * 10) / 10 : 0;
   }
 
   const report = {

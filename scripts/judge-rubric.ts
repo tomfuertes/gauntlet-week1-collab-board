@@ -229,6 +229,12 @@ function parseAndValidate(text: string): RawJudgeResponse {
     if (typeof found.score !== "number" || found.score < 1 || found.score > 5) {
       throw new Error(`Invalid score for ${required}: ${found.score} (must be 1-5)`);
     }
+    if (!Number.isInteger(found.score)) {
+      console.warn(
+        `[judge] Non-integer score for ${required}: ${found.score} - rounding to ${Math.round(found.score)}`,
+      );
+      found.score = Math.round(found.score);
+    }
     if (typeof found.reasoning !== "string") {
       throw new Error(`Missing reasoning for dimension: ${required}`);
     }
@@ -277,14 +283,13 @@ export async function judgeTranscript(
 
   const start = Date.now();
 
-  // Attempt with one retry on parse failure
-  let lastError: Error | null = null;
-  let retryMessage = userMessage;
+  // Attempt with one retry on parse failure only - API errors are thrown immediately
+  let lastParseError: Error | null = null;
 
   for (let attempt = 0; attempt < 2; attempt++) {
     const promptMessages =
       attempt === 0
-        ? [{ role: "user" as const, content: retryMessage }]
+        ? [{ role: "user" as const, content: userMessage }]
         : [
             { role: "user" as const, content: userMessage },
             { role: "assistant" as const, content: "I need to re-evaluate and provide valid JSON only." },
@@ -294,14 +299,23 @@ export async function judgeTranscript(
             },
           ];
 
+    let text: string;
     try {
-      const { text } = await generateText({
+      const result = await generateText({
         model: anthropic(modelId),
         system: JUDGE_PROMPT,
         messages: promptMessages,
         temperature: 0,
       });
+      text = result.text;
+    } catch (err) {
+      // API-level error (network, auth, model unavailable) - retrying won't help
+      throw new Error(
+        `Judge API call failed for scenario "${scenarioId}": ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
 
+    try {
       const parsed = parseAndValidate(text);
       const judgeLatencyMs = Date.now() - start;
 
@@ -318,12 +332,11 @@ export async function judgeTranscript(
         judgeLatencyMs,
       };
     } catch (err) {
-      lastError = err instanceof Error ? err : new Error(String(err));
-      // On first attempt failure, retry with nudge
-      retryMessage = userMessage;
+      lastParseError = err instanceof Error ? err : new Error(String(err));
+      // Parse error - retry with nudge prompt
       continue;
     }
   }
 
-  throw new Error(`Judge failed after 2 attempts for scenario "${scenarioId}": ${lastError?.message}`);
+  throw new Error(`Judge failed after 2 attempts for scenario "${scenarioId}": ${lastParseError?.message}`);
 }
