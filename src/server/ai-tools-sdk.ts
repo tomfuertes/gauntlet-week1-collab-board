@@ -1,6 +1,6 @@
 import { tool } from "ai";
 import { z } from "zod";
-import { AI_USER_ID } from "../shared/types";
+import { AI_USER_ID, CANVAS_MIN_X, CANVAS_MAX_X, CANVAS_MIN_Y, CANVAS_MAX_Y } from "../shared/types";
 import type {
   BoardObject,
   BoardObjectProps,
@@ -205,6 +205,18 @@ export function computeOverlapScore(objects: BoardObject[]): number {
   return overlaps;
 }
 
+/** Fraction of the smaller object's area covered by the intersection (0-1). */
+function overlapFraction(
+  a: { x: number; y: number; width: number; height: number },
+  b: { x: number; y: number; width: number; height: number },
+): number {
+  const ix = Math.max(0, Math.min(a.x + a.width, b.x + b.width) - Math.max(a.x, b.x));
+  const iy = Math.max(0, Math.min(a.y + a.height, b.y + b.height) - Math.max(a.y, b.y));
+  const intersection = ix * iy;
+  if (intersection === 0) return 0;
+  return intersection / Math.min(a.width * a.height, b.width * b.height);
+}
+
 // ---------------------------------------------------------------------------
 // Instrumentation
 // ---------------------------------------------------------------------------
@@ -354,6 +366,51 @@ export function createSDKTools(stub: BoardStub, batchId?: string, ai?: Ai, stora
   let paletteIndex = 0;
   const nextPaletteColor = () => AI_PALETTE[paletteIndex++ % AI_PALETTE.length];
 
+  // KEY-DECISION 2026-02-21: Server-side layout enforcement. Per-response counters live in
+  // this closure so all tool calls (including batchExecute) share the same budget without
+  // changing Zod schemas or the BoardStub interface.
+  let aiCreateCount = 0;
+  const MAX_AI_CREATES_PER_RESPONSE = 4;
+  const aiCreatedBounds: Array<{ x: number; y: number; width: number; height: number }> = [];
+
+  /**
+   * Wraps createAndMutate with three layout enforcement layers:
+   * 1. Count cap: drops creates beyond MAX_AI_CREATES_PER_RESPONSE (silently - LLM sees success)
+   * 2. OOB clamping: keeps objects fully within canvas bounds
+   * 3. Overlap nudge: shifts object right/down until overlap fraction < 20%
+   */
+  async function enforcedCreate(obj: BoardObject) {
+    // 1. Count cap - return success-shaped result so LLM doesn't retry
+    if (aiCreateCount >= MAX_AI_CREATES_PER_RESPONSE) {
+      console.debug(JSON.stringify({ event: "ai:layout:cap", dropped: obj.type, count: aiCreateCount }));
+      return { created: obj.id, type: obj.type, x: obj.x, y: obj.y, width: obj.width, height: obj.height };
+    }
+
+    // 2. OOB clamping - ensure object stays fully within canvas bounds
+    obj.x = Math.max(CANVAS_MIN_X, Math.min(obj.x, CANVAS_MAX_X - obj.width));
+    obj.y = Math.max(CANVAS_MIN_Y, Math.min(obj.y, CANVAS_MAX_Y - obj.height));
+
+    // 3. Overlap nudge - shift right, wrap to next row on OOB, max 20 iterations
+    const NUDGE_STEP = 20;
+    for (let i = 0; i < 20; i++) {
+      if (!aiCreatedBounds.some((b) => overlapFraction(obj, b) > 0.2)) break;
+      const newX = obj.x + NUDGE_STEP;
+      if (newX + obj.width <= CANVAS_MAX_X) {
+        obj.x = newX;
+      } else {
+        obj.x = CANVAS_MIN_X;
+        obj.y = Math.min(obj.y + obj.height + 20, CANVAS_MAX_Y - obj.height);
+      }
+    }
+
+    const result = await createAndMutate(stub, obj);
+    if (!("error" in result)) {
+      aiCreatedBounds.push({ x: obj.x, y: obj.y, width: obj.width, height: obj.height });
+      aiCreateCount++;
+    }
+    return result;
+  }
+
   const baseTools = {
     // 1. createStickyNote
     createStickyNote: tool({
@@ -384,7 +441,7 @@ export function createSDKTools(stub: BoardStub, batchId?: string, ai?: Ai, stora
           },
           batchId,
         );
-        return createAndMutate(stub, obj);
+        return enforcedCreate(obj);
       }),
     }),
 
@@ -418,7 +475,7 @@ export function createSDKTools(stub: BoardStub, batchId?: string, ai?: Ai, stora
           },
           batchId,
         );
-        return createAndMutate(stub, obj);
+        return enforcedCreate(obj);
       }),
     }),
 
@@ -456,7 +513,7 @@ export function createSDKTools(stub: BoardStub, batchId?: string, ai?: Ai, stora
             { fill: palFill, stroke: stroke || palFill },
             batchId,
           );
-          return createAndMutate(stub, obj);
+          return enforcedCreate(obj);
         }
 
         if (shape === "line") {
@@ -468,7 +525,7 @@ export function createSDKTools(stub: BoardStub, batchId?: string, ai?: Ai, stora
             { stroke: stroke || TOOL_DEFAULTS.line.stroke },
             batchId,
           );
-          return createAndMutate(stub, obj);
+          return enforcedCreate(obj);
         }
 
         // Default: rect
@@ -481,7 +538,7 @@ export function createSDKTools(stub: BoardStub, batchId?: string, ai?: Ai, stora
           { fill: palFill, stroke: stroke || palFill },
           batchId,
         );
-        return createAndMutate(stub, obj);
+        return enforcedCreate(obj);
       }),
     }),
 
@@ -507,7 +564,7 @@ export function createSDKTools(stub: BoardStub, batchId?: string, ai?: Ai, stora
           },
           batchId,
         );
-        return createAndMutate(stub, obj);
+        return enforcedCreate(obj);
       }),
     }),
 
@@ -548,7 +605,7 @@ export function createSDKTools(stub: BoardStub, batchId?: string, ai?: Ai, stora
         // Store connection bindings so lines follow when objects move
         obj.startObjectId = fromId;
         obj.endObjectId = toId;
-        const result = await createAndMutate(stub, obj);
+        const result = await enforcedCreate(obj);
         if ("error" in result) return result;
         return { ...result, from: fromId, to: toId };
       }),
@@ -736,7 +793,7 @@ export function createSDKTools(stub: BoardStub, batchId?: string, ai?: Ai, stora
         const displayW = width ?? TOOL_DEFAULTS.image.width;
         const displayH = height ?? TOOL_DEFAULTS.image.height;
         const obj = makeObject("image", randomPos(x, y), displayW, displayH, { src, prompt }, batchId);
-        return createAndMutate(stub, obj);
+        return enforcedCreate(obj);
       }),
     }),
 
@@ -757,7 +814,7 @@ export function createSDKTools(stub: BoardStub, batchId?: string, ai?: Ai, stora
         const width = Math.max(40, text.length * charWidth + 16);
         const height = 24;
         const obj = makeObject("text", { x, y }, width, height, { text, color: color || "#1a1a2e" }, batchId);
-        return createAndMutate(stub, obj);
+        return enforcedCreate(obj);
       }),
     }),
 
@@ -971,7 +1028,7 @@ export function createSDKTools(stub: BoardStub, batchId?: string, ai?: Ai, stora
               : { fill: part.fill || "#3b82f6", stroke: part.stroke };
 
           const obj = makeObject(shapeType, { x: absX, y: absY }, absW, absH, props, compositionBatchId);
-          const result = await createAndMutate(stub, obj);
+          const result = await enforcedCreate(obj);
           if ("error" in result) {
             failed++;
           } else {
@@ -989,7 +1046,7 @@ export function createSDKTools(stub: BoardStub, batchId?: string, ai?: Ai, stora
           { text: label, color: "#1a1a2e" },
           compositionBatchId,
         );
-        const labelResult = await createAndMutate(stub, labelObj);
+        const labelResult = await enforcedCreate(labelObj);
         if (!("error" in labelResult)) partIds.push(labelResult.created as string);
 
         return {
