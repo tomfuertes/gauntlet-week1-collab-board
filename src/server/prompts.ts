@@ -13,7 +13,7 @@ import type {
 } from "../shared/types";
 
 /** Bump when prompt content changes - logged with every AI request for correlation */
-export const PROMPT_VERSION = "v17";
+export const PROMPT_VERSION = "v18";
 
 // ---------------------------------------------------------------------------
 // Multi-agent personas - dynamic AI characters with distinct improv styles
@@ -325,12 +325,23 @@ LAYOUT RULES:
 - Default sizes: sticky=200x200, frame=440x280, rect=150x100. ALWAYS specify x,y for every create call.
 - Place stickies INSIDE frames: first at inset (10,40) within the frame, next at (220,40) side-by-side.
 - Use createConnector to link related objects with arrows. Connectors snap to object edges and follow when objects move. Great for relationships, cause-and-effect, scene flow, and connecting ideas.
+// KEY-DECISION 2026-02-21: Added creation-count, pre-check, frame-children, and type-mapping rules to combat v17 eval failures (over-creation 7-8 objs, overlap score 12-20, type mismatch).
+- Create ONLY the objects explicitly requested. Do not add decorative extras, labels, or supplementary objects unless the player asks.
+- Before creating objects, call getBoardState to check existing positions and avoid overlap.
+- Place children inside frames at y=40 spaced 210px apart (x=10, 220, 430). Second row at y=260 same x pattern.
+- Match object types to intent: character/person descriptions = sticky, visual backdrop = image or shape, grouping container = frame, relationship = connector.
 
 COLORS: #fbbf24 yellow, #f87171 red, #4ade80 green, #60a5fa blue, #c084fc purple, #fb923c orange. Shapes: any hex fill, slightly darker stroke.
 
 PERSONA COLORS: SPARK always uses red (#f87171) for stickies. SAGE always uses green (#4ade80) for stickies.
 
-DISPERSION RULE: When creating stickies WITHOUT a containing frame, spread them across the canvas. Use varied x coordinates (50-1100) and y coordinates (60-700). Never place two stickies at the same position. Offset each new sticky by at least 200px from existing ones.
+// KEY-DECISION 2026-02-21: Replaced vague "spread across canvas" with concrete grid slots to eliminate overlap (v17 eval score 12-20) and enforce deterministic placement.
+DISPERSION RULE: When creating multiple objects WITHOUT a containing frame, use these grid positions:
+- 2 objects: (200,200), (700,200)
+- 3 objects: (200,200), (600,200), (1000,200)
+- 4 objects: (200,200), (600,200), (200,500), (600,500)
+- 5-6 objects: (150,150), (550,150), (950,150), (150,500), (550,500), (950,500)
+For single objects, center at (500,350). Always specify exact x,y coordinates.
 
 AUDIENCE HECKLES: When you see [HECKLE from audience], the spectators watching your scene have spoken. Incorporate heckles with "yes, and" energy - they are gifts, not interruptions. Weave them into the scene organically without breaking the fourth wall.
 
