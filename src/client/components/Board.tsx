@@ -360,6 +360,9 @@ export function Board({
   const trRef = useRef<Konva.Transformer>(null);
   // Captures the fixed endpoint (the one NOT being dragged) at drag start to avoid moving-reference issues
   const lineEndpointDragRef = useRef<{ fixedX: number; fixedY: number } | null>(null);
+  // Snap target found during endpoint handle drag - ref for drag-end reads, state for indicator rendering
+  const endpointSnapRef = useRef<{ objectId: string; snapPoint: { x: number; y: number } } | null>(null);
+  const [endpointSnapPoint, setEndpointSnapPoint] = useState<{ x: number; y: number } | null>(null);
   const shapeRefs = useRef<Map<string, Konva.Group>>(new Map());
 
   // Pending tweens from animated obj:update messages (id -> from/to positions+dimensions + duration)
@@ -1672,8 +1675,19 @@ export function Board({
 
       if (ds.toolMode === "connector") {
         // Connector: line from start to cursor, check end snap
-        const startX = ds.startSnapPoint?.x ?? ds.x;
-        const startY = ds.startSnapPoint?.y ?? ds.y;
+        // KEY-DECISION 2026-02-21: Recalculate start edge point dynamically as drag angle changes.
+        // ds.startSnapPoint is frozen at mousedown angle; getEdgePoint here tracks the cursor
+        // direction so the start edge faces the current drag target, not the original click angle.
+        let startX = ds.startSnapPoint?.x ?? ds.x;
+        let startY = ds.startSnapPoint?.y ?? ds.y;
+        if (ds.startObjectId) {
+          const startObj = objectsRef.current.get(ds.startObjectId);
+          if (startObj) {
+            const ep = getEdgePoint(startObj, worldX, worldY);
+            startX = ep.x;
+            startY = ep.y;
+          }
+        }
         let snap = findSnapTarget(worldX, worldY, objectsRef.current.values());
         // Don't snap to the object we started the connector from
         if (snap && snap.objectId === ds.startObjectId) snap = null;
@@ -2587,6 +2601,7 @@ export function Board({
           {/* Line endpoint handles: two draggable circles at start/end instead of Transformer */}
           {selectedLineObj && (
             <>
+              {/* Start endpoint handle */}
               <KonvaCircle
                 x={selectedLineObj.x}
                 y={selectedLineObj.y}
@@ -2603,30 +2618,50 @@ export function Board({
                     fixedX: selectedLineObj.x + selectedLineObj.width,
                     fixedY: selectedLineObj.y + selectedLineObj.height,
                   };
+                  endpointSnapRef.current = null;
                 }}
                 onDragMove={(e) => {
                   const fixed = lineEndpointDragRef.current;
                   if (!fixed) return;
+                  const dragX = e.target.x();
+                  const dragY = e.target.y();
+                  // KEY-DECISION 2026-02-21: Exclude endObjectId from snap candidates to prevent
+                  // self-loops where start and end connect to the same object.
+                  const candidates = [...objectsRef.current.values()].filter(
+                    (o) => o.id !== selectedLineObj.endObjectId,
+                  );
+                  const snap = findSnapTarget(dragX, dragY, candidates);
+                  endpointSnapRef.current = snap;
+                  setEndpointSnapPoint(snap?.snapPoint ?? null);
+                  const newX = snap?.snapPoint.x ?? dragX;
+                  const newY = snap?.snapPoint.y ?? dragY;
                   patchObjectLocal(selectedLineObj.id, {
-                    x: e.target.x(),
-                    y: e.target.y(),
-                    width: fixed.fixedX - e.target.x(),
-                    height: fixed.fixedY - e.target.y(),
+                    x: newX,
+                    y: newY,
+                    width: fixed.fixedX - newX,
+                    height: fixed.fixedY - newY,
                   });
                 }}
                 onDragEnd={(e) => {
                   const fixed = lineEndpointDragRef.current;
                   if (!fixed) return;
+                  const snap = endpointSnapRef.current;
+                  const newX = snap?.snapPoint.x ?? e.target.x();
+                  const newY = snap?.snapPoint.y ?? e.target.y();
                   updateObject({
                     id: selectedLineObj.id,
-                    x: e.target.x(),
-                    y: e.target.y(),
-                    width: fixed.fixedX - e.target.x(),
-                    height: fixed.fixedY - e.target.y(),
+                    x: newX,
+                    y: newY,
+                    width: fixed.fixedX - newX,
+                    height: fixed.fixedY - newY,
+                    startObjectId: snap?.objectId,
                   });
                   lineEndpointDragRef.current = null;
+                  endpointSnapRef.current = null;
+                  setEndpointSnapPoint(null);
                 }}
               />
+              {/* End endpoint handle */}
               <KonvaCircle
                 x={selectedLineObj.x + selectedLineObj.width}
                 y={selectedLineObj.y + selectedLineObj.height}
@@ -2643,26 +2678,55 @@ export function Board({
                     fixedX: selectedLineObj.x,
                     fixedY: selectedLineObj.y,
                   };
+                  endpointSnapRef.current = null;
                 }}
                 onDragMove={(e) => {
                   const fixed = lineEndpointDragRef.current;
                   if (!fixed) return;
+                  const dragX = e.target.x();
+                  const dragY = e.target.y();
+                  const candidates = [...objectsRef.current.values()].filter(
+                    (o) => o.id !== selectedLineObj.startObjectId,
+                  );
+                  const snap = findSnapTarget(dragX, dragY, candidates);
+                  endpointSnapRef.current = snap;
+                  setEndpointSnapPoint(snap?.snapPoint ?? null);
+                  const newX = snap?.snapPoint.x ?? dragX;
+                  const newY = snap?.snapPoint.y ?? dragY;
                   patchObjectLocal(selectedLineObj.id, {
-                    width: e.target.x() - fixed.fixedX,
-                    height: e.target.y() - fixed.fixedY,
+                    width: newX - fixed.fixedX,
+                    height: newY - fixed.fixedY,
                   });
                 }}
                 onDragEnd={(e) => {
                   const fixed = lineEndpointDragRef.current;
                   if (!fixed) return;
+                  const snap = endpointSnapRef.current;
+                  const newX = snap?.snapPoint.x ?? e.target.x();
+                  const newY = snap?.snapPoint.y ?? e.target.y();
                   updateObject({
                     id: selectedLineObj.id,
-                    width: e.target.x() - fixed.fixedX,
-                    height: e.target.y() - fixed.fixedY,
+                    width: newX - fixed.fixedX,
+                    height: newY - fixed.fixedY,
+                    endObjectId: snap?.objectId,
                   });
                   lineEndpointDragRef.current = null;
+                  endpointSnapRef.current = null;
+                  setEndpointSnapPoint(null);
                 }}
               />
+              {/* Snap indicator shown when dragging an endpoint near a connectable object */}
+              {endpointSnapPoint && (
+                <KonvaCircle
+                  x={endpointSnapPoint.x}
+                  y={endpointSnapPoint.y}
+                  radius={6 / scale}
+                  fill="rgba(99,102,241,0.4)"
+                  stroke="#6366f1"
+                  strokeWidth={2 / scale}
+                  listening={false}
+                />
+              )}
             </>
           )}
         </Layer>
