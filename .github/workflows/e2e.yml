@@ -24,8 +24,8 @@ jobs:
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
 
-      - name: Lint
-        run: npm run lint
+      - name: Format check
+        run: npm run format:check
 
       - name: Build
         run: npm run build
