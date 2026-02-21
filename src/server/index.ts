@@ -9,6 +9,7 @@ import { computeOverlapScore } from "./ai-tools-sdk";
 
 import type { Bindings } from "./env";
 import { recordBoardActivity, markBoardSeen } from "./env";
+import { CANVAS_MIN_X, CANVAS_MIN_Y, CANVAS_MAX_X, CANVAS_MAX_Y } from "../shared/types";
 export { Board } from "./board";
 export { ChatAgent } from "./chat-agent";
 import { containsFlaggedContent } from "./chat-agent";
@@ -171,11 +172,6 @@ app.get("/api/boards/:boardId", async (c) => {
 });
 
 // Board objects endpoint for eval harness (auth-protected)
-// Canvas usable area bounds from LAYOUT RULES in prompts.ts
-const CANVAS_MIN_X = 50,
-  CANVAS_MIN_Y = 60,
-  CANVAS_MAX_X = 1150,
-  CANVAS_MAX_Y = 780;
 
 app.get("/api/boards/:boardId/objects", async (c) => {
   const user = await requireAuth(c);

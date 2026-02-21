@@ -1,6 +1,8 @@
 import { AIChatAgent } from "@cloudflare/ai-chat";
+import type { OnChatMessageOptions } from "@cloudflare/ai-chat";
 import { streamText, generateText, convertToModelMessages, stepCountIs } from "ai";
-import type { UIMessage } from "ai";
+import type { UIMessage, StreamTextOnFinishCallback, ToolSet } from "ai";
+import type { LanguageModelV3 } from "@ai-sdk/provider";
 import { createWorkersAI } from "workers-ai-provider";
 import { createAnthropic } from "@ai-sdk/anthropic";
 import { createOpenAI } from "@ai-sdk/openai";
@@ -50,7 +52,16 @@ import type {
   SceneLifecyclePhase,
   TroupeConfig,
 } from "../shared/types";
-import { SCENE_TURN_BUDGET, DEFAULT_PERSONAS, AI_MODELS, AI_USER_ID } from "../shared/types";
+import {
+  SCENE_TURN_BUDGET,
+  DEFAULT_PERSONAS,
+  AI_MODELS,
+  AI_USER_ID,
+  CANVAS_MIN_X,
+  CANVAS_MIN_Y,
+  CANVAS_MAX_X,
+  CANVAS_MAX_Y,
+} from "../shared/types";
 import { getTemplateById } from "../shared/board-templates";
 
 /**
@@ -198,9 +209,37 @@ function sanitizeMessages(messages: UIMessage[]): { messages: UIMessage[]; repai
   return { messages: sanitized, repairedCount };
 }
 
-export class ChatAgent extends AIChatAgent<Bindings> {
-  /* eslint-disable @typescript-eslint/no-explicit-any */
+/**
+ * Build a shimmed Workers AI language model with tool_choice:"auto" injected.
+ * workers-ai-provider v3.1.1 drops tool_choice from buildRunInputs (CF issue #404).
+ * Shim injects tool_choice:"auto" when tools are present; no-op otherwise.
+ * Used for all 4 Workers AI call sites to avoid repeating the cast pattern.
+ */
+function getShimmedWorkersAI(env: Bindings, modelId: string): LanguageModelV3 {
+  // Partial Ai binding - shim only needs run(). Cast satisfies createWorkersAI's type requirement.
+  const shimmedBinding = {
+    run: (model: string, inputs: Record<string, unknown>, options?: unknown) => {
+      const hasTools = !!(inputs?.tools && (inputs.tools as unknown[]).length > 0);
+      console.debug(
+        JSON.stringify({
+          event: "ai:shim",
+          model,
+          hasTools,
+          toolCount: hasTools ? (inputs.tools as unknown[]).length : 0,
+          hadToolChoice: !!inputs?.tool_choice,
+          injecting: hasTools,
+        }),
+      );
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Ai.run() overloads don't accept generic Record<string,unknown> inputs
+      return (env.AI as any).run(model, hasTools ? { ...inputs, tool_choice: "auto" } : inputs, options);
+    },
+  } as unknown as Ai;
+  const factory = createWorkersAI({ binding: shimmedBinding });
+  // TextGenerationModels is not exported by workers-ai-provider; cast to accept runtime string ID
+  return (factory as unknown as (id: string) => LanguageModelV3)(modelId);
+}
 
+export class ChatAgent extends AIChatAgent<Bindings> {
   // KEY-DECISION 2026-02-20: Cap at 100 messages. Each scene = 1 user msg + 1 AI + 1 reactive
   // per turn. SCENE_TURN_BUDGET caps human turns, so max ~3x turns msgs + overhead fits well
   // under 100. This prevents unbounded DO Storage growth across scenes on the same board.
@@ -389,29 +428,10 @@ export class ChatAgent extends AIChatAgent<Bindings> {
       return createAnthropic({ apiKey: this.env.ANTHROPIC_API_KEY })(entry!.modelId);
     }
 
-    // Workers AI provider (default fallback)
+    // Workers AI provider (default fallback) - shim injects tool_choice:"auto" (CF issue #404)
     const modelId =
       entry?.provider === "workers-ai" ? entry.modelId : this.env.WORKERS_AI_MODEL || "@cf/zai-org/glm-4.7-flash";
-    // workers-ai-provider v3.1.1 drops tool_choice from buildRunInputs (only forwards `tools`).
-    // All Workers AI models benefit from explicit tool_choice:"auto"; shim applies universally.
-    const ai = this.env.AI as any;
-    const shimmedBinding = {
-      run: (model: string, inputs: Record<string, unknown>, options?: unknown) => {
-        const hasTools = !!(inputs?.tools && (inputs.tools as unknown[]).length > 0);
-        console.debug(
-          JSON.stringify({
-            event: "ai:shim",
-            model,
-            hasTools,
-            toolCount: hasTools ? (inputs.tools as unknown[]).length : 0,
-            hadToolChoice: !!inputs?.tool_choice,
-            injecting: hasTools,
-          }),
-        );
-        return ai.run(model, hasTools ? { ...inputs, tool_choice: "auto" } : inputs, options);
-      },
-    };
-    return (createWorkersAI({ binding: shimmedBinding as any }) as any)(modelId);
+    return getShimmedWorkersAI(this.env, modelId);
   }
 
   /** Lazily initialize Langfuse client. Returns null if env vars not configured.
@@ -585,11 +605,23 @@ export class ChatAgent extends AIChatAgent<Bindings> {
     }
   }
 
-  async onChatMessage(onFinish: any, options?: { abortSignal?: AbortSignal }) {
+  async onChatMessage(onFinish: StreamTextOnFinishCallback<ToolSet>, options?: OnChatMessageOptions) {
     // this.name = boardId (set by client connecting to /agents/ChatAgent/<boardId>)
 
-    // Extract body early - used for rate limiting AND throughout the method
-    const body = options && "body" in options ? (options as any).body : undefined;
+    // Extract body early - used for rate limiting AND throughout the method.
+    // Cast Record<string,unknown> to known shape - client always sends these fields per-message.
+    const body = options?.body as
+      | {
+          username?: string;
+          model?: string;
+          gameMode?: string;
+          personaId?: string;
+          intent?: string;
+          selectedIds?: string[];
+          troupeConfig?: TroupeConfig;
+          templateId?: string;
+        }
+      | undefined;
 
     // KEY-DECISION 2026-02-19: Rate limit check before _isGenerating mutex -
     // if _checkUserRateLimit throws, mutex won't leak permanently blocking director/reactive.
@@ -1156,8 +1188,9 @@ export class ChatAgent extends AIChatAgent<Bindings> {
     }
 
     if (body?.selectedIds?.length) {
+      const selectedIds = body.selectedIds;
       const objects = await boardStub.readObjects();
-      const selected = (objects as BoardObject[]).filter((o: BoardObject) => body.selectedIds.includes(o.id));
+      const selected = (objects as BoardObject[]).filter((o: BoardObject) => selectedIds.includes(o.id));
       if (selected.length > 0) {
         const desc = selected
           .map(
@@ -1210,6 +1243,7 @@ export class ChatAgent extends AIChatAgent<Bindings> {
         finishArg?.steps?.reduce((sum: number, s: { toolCalls?: unknown[] }) => sum + (s.toolCalls?.length ?? 0), 0) ??
         0;
       this._logRequestEnd("chat", activePersona.name, startTime, steps, toolCalls);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- StepResult<T> toolCalls are narrowly typed; _traceToolFailures accepts the common shape
       this._traceToolFailures("chat", (finishArg?.steps ?? []) as any[]);
 
       // Quality telemetry: per-response layout scoring for prompt tuning
@@ -1244,7 +1278,11 @@ export class ChatAgent extends AIChatAgent<Bindings> {
               for (const oldObj of otherObjs) if (rectsOverlap(newObj, oldObj)) crossOverlap++;
 
             const inBounds = batchObjs.filter(
-              (o) => o.x >= 50 && o.y >= 60 && o.x + o.width <= 1150 && o.y + o.height <= 780,
+              (o) =>
+                o.x >= CANVAS_MIN_X &&
+                o.y >= CANVAS_MIN_Y &&
+                o.x + o.width <= CANVAS_MAX_X &&
+                o.y + o.height <= CANVAS_MAX_Y,
             ).length;
 
             console.debug(
@@ -1350,7 +1388,8 @@ export class ChatAgent extends AIChatAgent<Bindings> {
         system: systemPrompt,
         messages: await convertToModelMessages(sanitizedMsgs),
         tools,
-        onFinish: wrappedOnFinish,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- base class declares ToolSet; streamText sees specific tool types (variance mismatch, runtime-safe)
+        onFinish: wrappedOnFinish as any,
         stopWhen: stepCountIs(5),
         abortSignal: options?.abortSignal,
       });
@@ -1567,16 +1606,15 @@ export class ChatAgent extends AIChatAgent<Bindings> {
         // Claude Haiku: cheap, much better at creative naming than Workers AI
         const anthropic = createAnthropic({ apiKey: this.env.ANTHROPIC_API_KEY });
         const result = await generateText({
-          model: anthropic("claude-haiku-4-5-20251001"),
+          model: anthropic(AI_MODELS.find((m) => m.id === "claude-haiku-4.5")!.modelId),
           messages: [{ role: "user" as const, content: namingPrompt }],
         });
         rawName = result.text;
       } else {
         // Workers AI fallback - quality varies by model
-        const modelId = (this.env as unknown as Record<string, string>).WORKERS_AI_MODEL || "@cf/zai-org/glm-4.7-flash";
-        const workerAi = createWorkersAI({ binding: this.env.AI as any });
+        const modelId = this.env.WORKERS_AI_MODEL || "@cf/zai-org/glm-4.7-flash";
         const result = await generateText({
-          model: (workerAi as any)(modelId),
+          model: getShimmedWorkersAI(this.env, modelId),
           messages: [{ role: "user" as const, content: namingPrompt }],
         });
         rawName = result.text;
@@ -1652,16 +1690,15 @@ export class ChatAgent extends AIChatAgent<Bindings> {
       if (this.env.ANTHROPIC_API_KEY) {
         const anthropic = createAnthropic({ apiKey: this.env.ANTHROPIC_API_KEY });
         const result = await generateText({
-          model: anthropic("claude-haiku-4-5-20251001"),
+          model: anthropic(AI_MODELS.find((m) => m.id === "claude-haiku-4.5")!.modelId),
           messages: [{ role: "user" as const, content: reviewPrompt }],
         });
         rawResponse = result.text;
         modelName = "claude-haiku-4.5";
       } else {
-        const modelId = (this.env as unknown as Record<string, string>).WORKERS_AI_MODEL || "@cf/zai-org/glm-4.7-flash";
-        const workerAi = createWorkersAI({ binding: this.env.AI as any });
+        const modelId = this.env.WORKERS_AI_MODEL || "@cf/zai-org/glm-4.7-flash";
         const result = await generateText({
-          model: (workerAi as any)(modelId),
+          model: getShimmedWorkersAI(this.env, modelId),
           messages: [{ role: "user" as const, content: reviewPrompt }],
         });
         rawResponse = result.text;
@@ -1688,7 +1725,7 @@ export class ChatAgent extends AIChatAgent<Bindings> {
 
     // Persist via Board DO RPC (same pattern as archiveScene)
     try {
-      await (boardStub as any).saveCriticReview(review, score, modelName);
+      await boardStub.saveCriticReview(review, score, modelName);
       console.debug(JSON.stringify({ event: "critic:saved", boardId: this.name, score, model: modelName }));
     } catch (err) {
       console.error(JSON.stringify({ event: "critic:save-error", boardId: this.name, error: String(err) }));
@@ -1827,6 +1864,7 @@ export class ChatAgent extends AIChatAgent<Bindings> {
     result: {
       text: string;
       steps: {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- toolCalls use AI SDK generics; narrowing here would require re-exporting internal SDK types
         toolCalls: any[];
         toolResults: { toolCallId: string; output: unknown }[];
       }[];
@@ -2104,6 +2142,7 @@ export class ChatAgent extends AIChatAgent<Bindings> {
 
       const totalToolCalls = result.steps.reduce((sum, s) => sum + s.toolCalls.length, 0);
       this._logRequestEnd("reactive", reactivePersona.name, startTime, result.steps.length, totalToolCalls);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- StepResult<T> toolCalls are narrowly typed; _traceToolFailures accepts the common shape
       this._traceToolFailures("reactive", result.steps as any[]);
     } catch (err) {
       console.error(
@@ -2338,6 +2377,7 @@ export class ChatAgent extends AIChatAgent<Bindings> {
       this._logRequestEnd("sfx-reaction", reactionPersona.name, startTime, result.steps.length, totalToolCalls, {
         labels,
       });
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- StepResult<T> toolCalls are narrowly typed; _traceToolFailures accepts the common shape
       this._traceToolFailures("sfx-reaction", result.steps as any[]);
     } catch (err) {
       console.error(
@@ -2522,6 +2562,7 @@ export class ChatAgent extends AIChatAgent<Bindings> {
         score,
         actionCount: actions.length,
       });
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- StepResult<T> toolCalls are narrowly typed; _traceToolFailures accepts the common shape
       this._traceToolFailures("canvas-action", result.steps as any[]);
 
       // Set 30s cooldown to prevent back-to-back canvas reactions
@@ -2722,6 +2763,7 @@ export class ChatAgent extends AIChatAgent<Bindings> {
 
       const totalToolCalls = result.steps.reduce((sum, s) => sum + s.toolCalls.length, 0);
       this._logRequestEnd("director", directorPersona.name, startTime, result.steps.length, totalToolCalls, { phase });
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- StepResult<T> toolCalls are narrowly typed; _traceToolFailures accepts the common shape
       this._traceToolFailures("director", result.steps as any[]);
 
       // Director nudge also triggers the other persona to react

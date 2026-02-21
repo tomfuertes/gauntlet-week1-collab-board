@@ -179,17 +179,6 @@ Voice: dry observations. "...but what if the fire is lonely?"`,
   },
 ] as const;
 
-/** Shared persona display data - kept for backward compat */
-export const PERSONA_META = [
-  { name: "SPARK", color: "#fb923c" },
-  { name: "SAGE", color: "#4ade80" },
-] as const;
-
-/** Persona name -> display color for ChatPanel sender labels (derived from DEFAULT_PERSONAS) */
-export const PERSONA_COLORS: Record<string, string> = Object.fromEntries(
-  DEFAULT_PERSONAS.map((p) => [p.name, p.color]),
-);
-
 /** One AI persona slot in the troupe with its assigned model */
 export interface TroupeMember {
   personaId: string;
@@ -342,6 +331,12 @@ export interface CharacterRelationship {
   updatedAt: number;
 }
 
+/** Canvas usable area bounds - keep in sync with LAYOUT RULES in prompts.ts. */
+export const CANVAS_MIN_X = 50;
+export const CANVAS_MIN_Y = 60;
+export const CANVAS_MAX_X = 1150;
+export const CANVAS_MAX_Y = 780;
+
 /**
  * Minimal interface for the Board DO stub methods used by AI tools.
  * mutate() intentionally narrows to BoardMutation (vs WSClientMessage in Board DO)
@@ -352,6 +347,7 @@ export interface BoardStub {
   readObject(id: string): Promise<BoardObject | null>;
   mutate(msg: BoardMutation): Promise<MutateResult>;
   injectCursor(x: number, y: number): Promise<void>;
+  saveCriticReview(review: string, score: number, model: string): Promise<void>;
 }
 
 /** Canvas mutation notification sent from Board DO to ChatAgent after each player action */
