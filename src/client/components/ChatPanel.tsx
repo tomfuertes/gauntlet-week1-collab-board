@@ -775,22 +775,20 @@ export function ChatPanel({
             </span>
           )}
         </div>
-        {!mobileMode && (
-          <button
-            onClick={onClose}
-            style={{
-              background: "none",
-              border: "none",
-              color: "#94a3b8",
-              cursor: "pointer",
-              fontSize: "1.25rem",
-              lineHeight: 1,
-              padding: "0.25rem",
-            }}
-          >
-            ✕
-          </button>
-        )}
+        <button
+          onClick={onClose}
+          style={{
+            background: "none",
+            border: "none",
+            color: "#94a3b8",
+            cursor: "pointer",
+            fontSize: "1.25rem",
+            lineHeight: 1,
+            padding: "0.25rem",
+          }}
+        >
+          ✕
+        </button>
       </div>
 
       {/* Inline persona claim picker - shown when onClaimChange is provided (Player B or tag-out) */}
