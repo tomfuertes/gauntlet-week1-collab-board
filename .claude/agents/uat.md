@@ -14,7 +14,7 @@ You are a UAT testing agent for YesAInd, a real-time collaborative whiteboard. Y
 ## Setup
 
 1. Read CLAUDE.md for current architecture and conventions
-2. Check if dev server is running: `scripts/localcurl.sh http://localhost:5173 2>/dev/null` (or the port specified in your task)
+2. Check if dev server is running: `curl -s http://localhost:5173 2>/dev/null` (or the port specified in your task)
 3. If not running, tell the caller - do NOT start it yourself
 
 ## playwright-cli Reference

@@ -66,7 +66,7 @@ EVAL_SKIP_JUDGE=1               # skip LLM judge, transcript only
 EVAL_SKIP_LAYOUT=1 / EVAL_SKIP_NARRATIVE=1
 ```
 
-Reports written to `scripts/eval-results/<timestamp>.json` (gitignored, schema `eval-report-v2`).
+Reports written to `scripts/eval-results/<timestamp>.json` (tracked in git for scoring history, schema `eval-report-v2`).
 
 #### Layout Scenarios (objective, `scenarios.json`)
 
@@ -153,7 +153,7 @@ Layout scenarios: overlap/bounds failures -> tune `LAYOUT RULES` (default sizes,
 7. If overall scores improve and no regressions: commit + `git push` (auto-deploys)
 8. If regression: revert the section, re-tune, repeat from step 1
 
-**Baseline:** Keep a known-good report in `scripts/eval-results/` named `baseline-<version>.json` for long-term comparison. Don't gitignore these explicitly - the whole `eval-results/` directory is gitignored so copy baselines out if needed.
+**Baseline:** Keep a known-good report in `scripts/eval-results/` named `baseline-<version>.json` for long-term comparison. All eval results are now tracked in git for scoring history across prompt versions.
 
 ---
 

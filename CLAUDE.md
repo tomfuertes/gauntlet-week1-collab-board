@@ -61,9 +61,10 @@ npm run migrate:local        # apply pending to local only
 npm run migrate:remote       # apply pending to remote only
 
 # Prompt Eval Harness (requires dev server running)
-npx tsx scripts/prompt-eval.ts            # run all scenarios, output pass/fail + JSON report
-# EVAL_USERNAME/EVAL_PASSWORD/EVAL_MODEL env vars override defaults (eval/eval123/glm-4.7-flash)
-# JSON reports written to scripts/eval-results/<timestamp>.json (gitignored)
+# IMPORTANT: source .dev.vars first - eval/judge scripts need API keys as shell env vars
+source .dev.vars && EVAL_MODEL=claude-haiku-4.5 npm run eval   # run all scenarios
+# EVAL_USERNAME/EVAL_PASSWORD/EVAL_MODEL env vars override defaults (eval/eval1234/glm-4.7-flash)
+# JSON reports written to scripts/eval-results/<timestamp>.json (tracked in git for scoring history)
 
 # Format & Audit
 npm run format           # prettier --write
@@ -79,7 +80,7 @@ npm run update-deps      # bumps all deps except vite/plugin-react (major), then
 
 ## Git Worktrees
 
-After worktree creation, run `npm ci` to install deps (lockfile-only, fast).
+After worktree creation, run `npm ci` to install deps (lockfile-only, fast). If the agent needs API keys (eval, dev server), copy `.dev.vars`: `cp /Users/tomfuertes/sandbox/git-repos/gauntlet-week1-collab-board/.dev.vars .dev.vars`.
 
 See `~/.claude/CLAUDE.md` for universal worktree conventions (merge safety, absolute paths, isolation).
 
@@ -203,6 +204,7 @@ Each object stored as separate DO Storage key (`obj:{uuid}`, ~200 bytes). LWW vi
 - Never expose API keys to client bundle - all AI calls server-side.
 - `getUserColor(userId)` is hash-based (not array-index). Same palette in Board.tsx and Cursors.tsx.
 - Dev: `scripts/dev.sh` raises `ulimit -n 10240` (macOS default 256 causes EMFILE in multi-worktree).
+- Wrangler auth: `env.AI` binding is `remote` mode - requires `wrangler login` or `CLOUDFLARE_API_TOKEN` even in local dev. Server won't start without auth. Eval models (Anthropic/OpenAI) don't use this binding but wrangler still requires auth to boot. To stub out for offline dev, comment out `[ai]` block in wrangler.toml.
 
 ## Doc Sync
 
@@ -225,8 +227,7 @@ See `~/.claude/CLAUDE.md` for agent workflow, model selection, and team conventi
 | Codebase exploration | `Explore` (built-in) | sonnet | default | team member or background (atomic) |
 
 **Agent prompts must explicitly mention:**
-- **Dev server startup** (only if UAT needed): `npm run dev` with `run_in_background: true` and `dangerouslyDisableSandbox: true`. Then `npm run health` to wait.
-- `scripts/localcurl.sh` instead of `curl`
+- **Dev server startup** (only if UAT/eval needed): `npx wrangler whoami` first to verify auth. If not authenticated, escalate to team-lead immediately - do not attempt `npm run dev`. If auth OK: `npm run dev` with `run_in_background: true` and `dangerouslyDisableSandbox: true`. Wait 8s, read background task output to confirm no errors, THEN `npm run health`. If dev server errors, do NOT retry - escalate immediately via SendMessage with full error output.
 - "Read CLAUDE.md and relevant source files before implementing"
 - "Commit all changes to the feature branch. Do not open a PR."
 - **KEY-DECISION comments**: `// KEY-DECISION <YYYY-MM-DD>: <rationale>` at the code location.
@@ -241,4 +242,3 @@ See `~/.claude/CLAUDE.md` for agent workflow, model selection, and team conventi
 - Feature-based organization on client side
 - Vertical slices - each increment delivers user-visible behavior
 - Never break sync - every commit should pass the 2-browser test
-- Use `scripts/localcurl.sh` instead of `curl` for local API testing (localhost-only wrapper, whitelisted in worktrees)

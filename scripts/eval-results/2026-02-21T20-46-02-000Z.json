@@ -1,0 +1,477 @@
+{
+  "$schema": "eval-report-v2",
+  "promptVersion": "v17",
+  "model": "claude-haiku-4-5-20251001",
+  "judgeModel": "claude-sonnet-4",
+  "timestamp": "2026-02-21T20:46:02.000Z",
+  "layout": {
+    "passed": 0,
+    "total": 10,
+    "avgOverlap": 13.1,
+    "avgOob": 0.1,
+    "avgLatencyMs": 15002.7,
+    "results": [
+      {
+        "id": "scene-setup",
+        "description": "Tests frame + child positioning (stickies inside frame at inset coords)",
+        "pass": false,
+        "overlapScore": 38,
+        "outOfBounds": 0,
+        "objectCount": 11,
+        "expectedMinObjects": 4,
+        "typesMatch": false,
+        "latencyMs": 18345
+      },
+      {
+        "id": "row-layout",
+        "description": "Tests horizontal layout using 3-object grid slots (x=100, x=420, x=740)",
+        "pass": false,
+        "overlapScore": 17,
+        "outOfBounds": 0,
+        "objectCount": 7,
+        "expectedMinObjects": 3,
+        "typesMatch": true,
+        "latencyMs": 14448
+      },
+      {
+        "id": "complication",
+        "description": "Tests creative placement relative to empty board; no overlap expected",
+        "pass": false,
+        "overlapScore": 24,
+        "outOfBounds": 0,
+        "objectCount": 9,
+        "expectedMinObjects": 1,
+        "typesMatch": null,
+        "latencyMs": 18061
+      },
+      {
+        "id": "image-gen",
+        "description": "Tests generateImage tool - image must land in canvas bounds",
+        "pass": false,
+        "overlapScore": 0,
+        "outOfBounds": 0,
+        "objectCount": 0,
+        "expectedMinObjects": 1,
+        "typesMatch": null,
+        "latencyMs": 30001,
+        "error": "timeout (30s)"
+      },
+      {
+        "id": "grid-2x2",
+        "description": "Tests 2x2 grid layout slots: (100,100), (520,100), (100,420), (520,420)",
+        "pass": false,
+        "overlapScore": 4,
+        "outOfBounds": 0,
+        "objectCount": 5,
+        "expectedMinObjects": 4,
+        "typesMatch": true,
+        "latencyMs": 11835
+      },
+      {
+        "id": "connector-link",
+        "description": "Tests createConnector resolving object IDs from prior tool results",
+        "pass": false,
+        "overlapScore": 7,
+        "outOfBounds": 0,
+        "objectCount": 6,
+        "expectedMinObjects": 3,
+        "typesMatch": true,
+        "latencyMs": 18832
+      },
+      {
+        "id": "color-variety",
+        "description": "Tests color rule adherence - each sticky should use a distinct palette color",
+        "pass": false,
+        "overlapScore": 0,
+        "outOfBounds": 1,
+        "objectCount": 4,
+        "expectedMinObjects": 4,
+        "typesMatch": true,
+        "latencyMs": 5869
+      },
+      {
+        "id": "mixed-types",
+        "description": "Tests multi-tool scene with rect + sticky + frame, no overlaps expected",
+        "pass": false,
+        "overlapScore": 6,
+        "outOfBounds": 0,
+        "objectCount": 4,
+        "expectedMinObjects": 3,
+        "typesMatch": true,
+        "latencyMs": 5403
+      },
+      {
+        "id": "character-intro",
+        "description": "Tests 'a stranger walks in' intent pattern - one character sticky placed near canvas center",
+        "pass": false,
+        "overlapScore": 26,
+        "outOfBounds": 0,
+        "objectCount": 9,
+        "expectedMinObjects": 1,
+        "typesMatch": false,
+        "latencyMs": 14135
+      },
+      {
+        "id": "stakes-escalation",
+        "description": "Tests 'complicate everything' intent pattern - expects 2-3 RED stickies scattered across canvas",
+        "pass": false,
+        "overlapScore": 9,
+        "outOfBounds": 0,
+        "objectCount": 6,
+        "expectedMinObjects": 2,
+        "typesMatch": null,
+        "latencyMs": 13098
+      }
+    ]
+  },
+  "narrative": {
+    "avgOverallScore": 0,
+    "avgDimensions": {
+      "yes_and_quality": 0,
+      "character_voice": 0,
+      "dramatic_arc": 0,
+      "tool_usage": 0,
+      "audience_engagement": 0
+    },
+    "results": [
+      {
+        "id": "scene-arc-dentist",
+        "description": "Full dramatic arc: vampire dentist scene with escalation and callback",
+        "transcript": [
+          {
+            "role": "player",
+            "text": "A vampire walks into a dentist's office",
+            "turnIndex": 0,
+            "timestampMs": 3
+          },
+          {
+            "role": "ai",
+            "text": "",
+            "toolCalls": [
+              "createFrame",
+              "createPerson",
+              "createText"
+            ],
+            "turnIndex": 0,
+            "timestampMs": 5139
+          },
+          {
+            "role": "player",
+            "text": "I'm terrified of garlic toothpaste",
+            "turnIndex": 1,
+            "timestampMs": 5139
+          },
+          {
+            "role": "ai",
+            "text": "",
+            "toolCalls": [
+              "createText",
+              "createStickyNote"
+            ],
+            "turnIndex": 1,
+            "timestampMs": 12716
+          },
+          {
+            "role": "player",
+            "text": "Plot twist!",
+            "turnIndex": 2,
+            "timestampMs": 12716
+          },
+          {
+            "role": "ai",
+            "text": "",
+            "toolCalls": [
+              "createText",
+              "createEffect"
+            ],
+            "turnIndex": 2,
+            "timestampMs": 17717
+          },
+          {
+            "role": "player",
+            "text": "Wrap it up - the dental hygienist just walked in and she's Van Helsing's daughter",
+            "turnIndex": 3,
+            "timestampMs": 17717
+          },
+          {
+            "role": "ai",
+            "text": "",
+            "toolCalls": [
+              "createPerson",
+              "createText",
+              "createStickyNote"
+            ],
+            "turnIndex": 3,
+            "timestampMs": 23470
+          }
+        ],
+        "judgeResult": null,
+        "layoutMetrics": {
+          "objectCount": 11,
+          "overlapScore": 31,
+          "outOfBounds": 0
+        },
+        "latencyMs": 23513
+      },
+      {
+        "id": "character-consistency",
+        "description": "Tests persona voice stability across conflicting offers",
+        "transcript": [
+          {
+            "role": "player",
+            "text": "We're in a library that's secretly a spy headquarters",
+            "turnIndex": 0,
+            "timestampMs": 3
+          },
+          {
+            "role": "ai",
+            "text": "",
+            "toolCalls": [
+              "createFrame",
+              "createPerson",
+              "createText"
+            ],
+            "turnIndex": 0,
+            "timestampMs": 13386
+          },
+          {
+            "role": "player",
+            "text": "The librarian shushes us but she's clearly speaking into her collar",
+            "turnIndex": 1,
+            "timestampMs": 13386
+          },
+          {
+            "role": "ai",
+            "text": "",
+            "toolCalls": [
+              "createText",
+              "createStickyNote"
+            ],
+            "turnIndex": 1,
+            "timestampMs": 19627
+          },
+          {
+            "role": "player",
+            "text": "note: keep your character voice strong, don't slip into narrator mode",
+            "turnIndex": 2,
+            "timestampMs": 19627
+          },
+          {
+            "role": "player",
+            "text": "A group of kindergartners on a field trip just walked in",
+            "turnIndex": 3,
+            "timestampMs": 19627
+          },
+          {
+            "role": "ai",
+            "text": "",
+            "toolCalls": [
+              "createPerson",
+              "createText",
+              "createStickyNote"
+            ],
+            "turnIndex": 3,
+            "timestampMs": 27009
+          }
+        ],
+        "judgeResult": null,
+        "layoutMetrics": {
+          "objectCount": 12,
+          "overlapScore": 39,
+          "outOfBounds": 0
+        },
+        "latencyMs": 27050
+      },
+      {
+        "id": "tool-narrative-sync",
+        "description": "Tests whether canvas objects serve the narrative or just fill space",
+        "transcript": [
+          {
+            "role": "player",
+            "text": "We're at a cooking competition. The secret ingredient is... revenge.",
+            "turnIndex": 0,
+            "timestampMs": 3
+          },
+          {
+            "role": "ai",
+            "text": "",
+            "toolCalls": [
+              "createFrame",
+              "createPerson",
+              "createText"
+            ],
+            "turnIndex": 0,
+            "timestampMs": 10729
+          },
+          {
+            "role": "player",
+            "text": "The judge tastes the dish and his face goes through seven emotions",
+            "turnIndex": 1,
+            "timestampMs": 10729
+          },
+          {
+            "role": "ai",
+            "text": "",
+            "toolCalls": [
+              "createText",
+              "createEffect"
+            ],
+            "turnIndex": 1,
+            "timestampMs": 16863
+          },
+          {
+            "role": "player",
+            "text": "Meanwhile, elsewhere...",
+            "turnIndex": 2,
+            "timestampMs": 16863
+          },
+          {
+            "role": "ai",
+            "text": "",
+            "toolCalls": [
+              "createFrame",
+              "createPerson",
+              "createText"
+            ],
+            "turnIndex": 2,
+            "timestampMs": 30478
+          }
+        ],
+        "judgeResult": null,
+        "layoutMetrics": {
+          "objectCount": 14,
+          "overlapScore": 27,
+          "outOfBounds": 2
+        },
+        "latencyMs": 30519
+      },
+      {
+        "id": "yesand-chain",
+        "description": "Yes-And Chain mode: tests escalation discipline and beat-by-beat building",
+        "transcript": [
+          {
+            "role": "player",
+            "text": "There's a penguin in the break room",
+            "turnIndex": 0,
+            "timestampMs": 4
+          },
+          {
+            "role": "ai",
+            "text": "",
+            "toolCalls": [
+              "createFrame",
+              "createPerson",
+              "createText"
+            ],
+            "turnIndex": 0,
+            "timestampMs": 7874
+          },
+          {
+            "role": "player",
+            "text": "Yes, and he's wearing a tiny business suit",
+            "turnIndex": 1,
+            "timestampMs": 7874
+          },
+          {
+            "role": "ai",
+            "text": "",
+            "toolCalls": [
+              "updateText",
+              "createText",
+              "createStickyNote"
+            ],
+            "turnIndex": 1,
+            "timestampMs": 14007
+          },
+          {
+            "role": "player",
+            "text": "Yes, and he just got promoted to VP of Antarctic Operations",
+            "turnIndex": 2,
+            "timestampMs": 14007
+          },
+          {
+            "role": "ai",
+            "text": "",
+            "toolCalls": [
+              "createText",
+              "createEffect"
+            ],
+            "turnIndex": 2,
+            "timestampMs": 23537
+          },
+          {
+            "role": "player",
+            "text": "Yes, and the other VPs are jealous because he has the corner igloo",
+            "turnIndex": 3,
+            "timestampMs": 23537
+          },
+          {
+            "role": "ai",
+            "text": "",
+            "toolCalls": [
+              "createText",
+              "createStickyNote"
+            ],
+            "turnIndex": 3,
+            "timestampMs": 28103
+          }
+        ],
+        "judgeResult": null,
+        "layoutMetrics": {
+          "objectCount": 12,
+          "overlapScore": 28,
+          "outOfBounds": 1
+        },
+        "latencyMs": 28135
+      },
+      {
+        "id": "audience-engagement-cold",
+        "description": "Cold open with a vague prompt - tests AI's ability to make something from nothing",
+        "transcript": [
+          {
+            "role": "player",
+            "text": "Something weird is happening",
+            "turnIndex": 0,
+            "timestampMs": 3
+          },
+          {
+            "role": "ai",
+            "text": "",
+            "toolCalls": [
+              "createFrame",
+              "createPerson",
+              "createText",
+              "advanceScenePhase"
+            ],
+            "turnIndex": 0,
+            "timestampMs": 6686
+          },
+          {
+            "role": "player",
+            "text": "Make it weirder",
+            "turnIndex": 1,
+            "timestampMs": 6686
+          },
+          {
+            "role": "ai",
+            "text": "",
+            "toolCalls": [
+              "createText",
+              "createShape",
+              "createEffect"
+            ],
+            "turnIndex": 1,
+            "timestampMs": 15234
+          }
+        ],
+        "judgeResult": null,
+        "layoutMetrics": {
+          "objectCount": 8,
+          "overlapScore": 17,
+          "outOfBounds": 0
+        },
+        "latencyMs": 15274
+      }
+    ]
+  }
+}
