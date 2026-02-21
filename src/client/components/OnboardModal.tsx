@@ -42,6 +42,9 @@ export function OnboardModal({ onSubmit, onDismiss, personas = [...DEFAULT_PERSO
   // troupeModels: personaId -> model (presence in map = member is in troupe)
   const [troupeModels, setTroupeModels] = useState<Map<string, AIModel>>(() => buildDefaultTroupeModels(personas));
 
+  // Stage manager model - defaults to first troupe member's model
+  const [stageManagerModel, setStageManagerModel] = useState<AIModel>("claude-haiku-4.5");
+
   // Step 2: The Get
   const [value, setValue] = useState("");
   const [selectedMode, setSelectedMode] = useState<GameMode>("freeform");
@@ -84,8 +87,8 @@ export function OnboardModal({ onSubmit, onDismiss, personas = [...DEFAULT_PERSO
   // Build TroupeConfig from map
   const buildTroupeConfig = useCallback((): TroupeConfig => {
     const members = [...troupeModels.entries()].map(([personaId, model]) => ({ personaId, model }));
-    return { members };
-  }, [troupeModels]);
+    return { members, stageManagerModel };
+  }, [troupeModels, stageManagerModel]);
 
   function submit(templateId?: string): void {
     const troupeConfig = buildTroupeConfig();
@@ -299,6 +302,37 @@ export function OnboardModal({ onSubmit, onDismiss, personas = [...DEFAULT_PERSO
               </div>
             );
           })}
+        </div>
+
+        {/* Stage Manager model selector */}
+        <div
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            gap: 8,
+            marginTop: 16,
+            padding: "12px 14px",
+            borderRadius: 12,
+            border: `1px solid ${colors.border}`,
+            background: "rgba(30, 41, 59, 0.4)",
+          }}
+        >
+          <div
+            style={{
+              fontSize: "0.8125rem",
+              fontWeight: 600,
+              color: colors.text,
+              letterSpacing: "0.04em",
+            }}
+          >
+            Stage Manager Model
+          </div>
+          <Select
+            value={stageManagerModel}
+            onChange={(v) => setStageManagerModel(v as AIModel)}
+            options={MODEL_OPTIONS}
+            style={{ minWidth: "100%" }}
+          />
         </div>
 
         {!canAdvanceFromStep0 && (
