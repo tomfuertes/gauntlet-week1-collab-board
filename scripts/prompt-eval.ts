@@ -1,5 +1,5 @@
 /**
- * Prompt evaluation harness for CollabBoard AI tools.
+ * Prompt evaluation harness for YesAInd AI tools.
  * Run: npx tsx scripts/prompt-eval.ts
  * Requires a running dev server (npm run dev + npm run health).
  *
