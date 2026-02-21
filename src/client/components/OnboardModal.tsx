@@ -24,7 +24,7 @@ interface OnboardModalProps {
 
 // Wizard steps
 type WizardStep = 0 | 1 | 2;
-const STEP_LABELS = ["Build Your Troupe", "Invite Friends", "The Get"];
+const STEP_LABELS = ["Build Your Troupe", "Invite Performers", "The Get"];
 
 const MODEL_OPTIONS = AI_MODELS.map((m) => ({ value: m.id, label: m.label }));
 
@@ -374,7 +374,7 @@ export function OnboardModal({ onSubmit, onDismiss, personas = [...DEFAULT_PERSO
             letterSpacing: "-0.01em",
           }}
         >
-          Invite Friends
+          Invite Performers
         </div>
         <div
           style={{

@@ -24,7 +24,12 @@ export function Select({ value, onChange, options, style }: SelectProps) {
   useEffect(() => {
     if (open && triggerRef.current) {
       const rect = triggerRef.current.getBoundingClientRect();
-      setDropdownPos({ top: rect.bottom + 4, left: rect.left, width: rect.width });
+      // KEY-DECISION 2026-02-21: Position dropdown above if insufficient space below
+      const estimatedHeight = options.length * 32 + 16; // ~32px per option + padding
+      const spaceBelow = window.innerHeight - rect.bottom;
+      const positionAbove = spaceBelow < estimatedHeight && rect.top > estimatedHeight;
+      const top = positionAbove ? rect.top - estimatedHeight - 4 : rect.bottom + 4;
+      setDropdownPos({ top, left: rect.left, width: rect.width });
       setFocusedIndex(options.findIndex((o) => o.value === value));
     }
   }, [open, value, options]);
