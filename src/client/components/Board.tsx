@@ -13,6 +13,7 @@ import type {
   TransientEffect,
   TransientEffectType,
   TroupeConfig,
+  Persona,
 } from "@shared/types";
 import { findSnapTarget, computeConnectedLineGeometry, getEdgePoint } from "@shared/connection-geometry";
 import { AI_MODELS } from "@shared/types";
@@ -322,6 +323,8 @@ export function Board({
   const [claimedPersonaId, setClaimedPersonaId] = useState<string | null>(null);
   // Troupe config from OnboardModal - passed to ChatPanel for first-message scene setup
   const [troupeConfig, setTroupeConfig] = useState<TroupeConfig | undefined>();
+  // Custom board personas fetched from server (passed to OnboardModal wizard)
+  const [personas, setPersonas] = useState<Persona[]>([]);
 
   // "Previously On..." recap narration (null = not ready or not available)
   const [recapNarration, setRecapNarration] = useState<string | null>(null);
@@ -359,6 +362,20 @@ export function Board({
         console.warn("[Board] Failed to fetch game mode, defaulting to freeform:", err);
       });
   }, [boardId, onLogout]);
+
+  // Fetch custom personas for this board (passed to OnboardModal wizard)
+  useEffect(() => {
+    fetch(`/api/boards/${boardId}/personas`, { credentials: "include" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (Array.isArray(data)) setPersonas(data);
+      })
+      .catch((err) => {
+        // Non-critical: OnboardModal falls back to DEFAULT_PERSONAS
+        console.warn("[Board] Failed to fetch personas:", err);
+      });
+  }, [boardId]);
+
   const [showShortcuts, setShowShortcuts] = useState(false);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; objId: string } | null>(null);
   const trRef = useRef<Konva.Transformer>(null);
@@ -2100,6 +2117,7 @@ export function Board({
         {/* Onboard modal - rendered on top when board is empty (mobile-sized, full modal) */}
         {showMobileOnboard && (
           <OnboardModal
+            personas={personas}
             onSubmit={(prompt, mode, model, personaId, _templateId, tc) => {
               setGameMode(mode);
               setAIModel(model);
@@ -2327,6 +2345,7 @@ export function Board({
       {/* Onboard modal - shown on empty boards until user starts a scene or dismisses */}
       {initialized && objects.size === 0 && !boardGenStarted && !chatOpen && (
         <OnboardModal
+          personas={personas}
           onSubmit={(prompt, mode, model, personaId, templateId, tc) => {
             setGameMode(mode);
             setAIModel(model);

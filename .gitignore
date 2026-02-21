@@ -19,3 +19,4 @@ worker-configuration.d.ts
 scripts/eval-results/
 .claude/worktrees/
 plans/
+.ref/
