@@ -16,10 +16,7 @@ test.describe("Board CRUD", () => {
     await expect(page.locator("text=Untitled Board")).toBeVisible();
   });
 
-  test("navigate to board -> canvas + WS connected", async ({
-    context,
-    page,
-  }) => {
+  test("navigate to board -> canvas + WS connected", async ({ context, page }) => {
     await signUp(context);
     const boardId = await createBoard(context);
     await navigateToBoard(page, boardId);
@@ -37,7 +34,10 @@ test.describe("Board CRUD", () => {
 
     // Handle the confirm() dialog
     page.on("dialog", (d) => d.accept());
-    // Click the Delete button (not the board name which contains "Delete")
+    // Delete button is hidden behind a hover menu - hover the card, open "..." menu, then click Delete
+    const boardCard = page.locator("text=Delete Me Board").first();
+    await boardCard.hover();
+    await page.locator('button:has-text("···")').click();
     await page.getByRole("button", { name: "Delete" }).click();
 
     await expect(page.locator("text=Delete Me Board")).not.toBeVisible({
@@ -45,10 +45,7 @@ test.describe("Board CRUD", () => {
     });
   });
 
-  test("navigate back from board -> board list shows", async ({
-    context,
-    page,
-  }) => {
+  test("navigate back from board -> board list shows", async ({ context, page }) => {
     await signUp(context);
     const boardId = await createBoard(context);
     await navigateToBoard(page, boardId);

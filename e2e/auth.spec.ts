@@ -14,10 +14,7 @@ test.describe("Auth", () => {
     });
   });
 
-  test("login with existing user -> lands on board list", async ({
-    page,
-    context,
-  }) => {
+  test("login with existing user -> lands on board list", async ({ page, context }) => {
     // Create user via API first
     const username = `e2e-login-${Date.now()}`;
     await context.request.post("/auth/signup", {
@@ -66,7 +63,7 @@ test.describe("Auth", () => {
     });
 
     await page.getByRole("button", { name: "Logout" }).click();
-    await expect(page.locator('input[placeholder="Username"]')).toBeVisible({
+    await expect(page.locator("text=Use password instead")).toBeVisible({
       timeout: 10_000,
     });
   });
