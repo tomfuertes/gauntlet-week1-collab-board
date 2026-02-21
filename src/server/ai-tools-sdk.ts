@@ -359,8 +359,15 @@ export async function generateImageDataUrl(ai: Ai, prompt: string): Promise<stri
 // Tool registry
 // ---------------------------------------------------------------------------
 
-/** Create the full AI SDK tool registry bound to a specific Board DO stub */
-export function createSDKTools(stub: BoardStub, batchId?: string, ai?: Ai, storage?: DurableObjectStorage) {
+/** Create the full AI SDK tool registry bound to a specific Board DO stub.
+ *  @param maxCreates - per-call object creation budget. Main streamText=4, stageManager=6, reactive/director=2, reactions=1. */
+export function createSDKTools(
+  stub: BoardStub,
+  batchId?: string,
+  ai?: Ai,
+  storage?: DurableObjectStorage,
+  maxCreates = 4,
+) {
   // Rotate through AI_PALETTE per streamText call so multi-entity scenes get distinct colors.
   // Only used as fallback when the LLM doesn't specify an explicit color.
   let paletteIndex = 0;
@@ -369,8 +376,11 @@ export function createSDKTools(stub: BoardStub, batchId?: string, ai?: Ai, stora
   // KEY-DECISION 2026-02-21: Server-side layout enforcement. Per-response counters live in
   // this closure so all tool calls (including batchExecute) share the same budget without
   // changing Zod schemas or the BoardStub interface.
+  // KEY-DECISION 2026-02-21: maxCreates is parameterized because createSDKTools is called 4-6
+  // times per user turn (stageManager, main, reactive, director, canvas/sfx reactions). Each
+  // call gets its own closure - a fixed cap of 4 allowed 6-8 objects per turn total.
   let aiCreateCount = 0;
-  const MAX_AI_CREATES_PER_RESPONSE = 4;
+  const MAX_AI_CREATES_PER_RESPONSE = maxCreates;
   const aiCreatedBounds: Array<{ x: number; y: number; width: number; height: number }> = [];
 
   /**

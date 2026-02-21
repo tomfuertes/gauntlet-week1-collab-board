@@ -1400,7 +1400,7 @@ export class ChatAgent extends AIChatAgent<Bindings> {
     }
 
     const batchId = crypto.randomUUID();
-    const tools = createSDKTools(boardStub, batchId, this.env.AI, this.ctx.storage);
+    const tools = createSDKTools(boardStub, batchId, this.env.AI, this.ctx.storage, 6);
 
     try {
       const result = await generateText({
@@ -1976,7 +1976,7 @@ export class ChatAgent extends AIChatAgent<Bindings> {
       const doId = this.env.BOARD.idFromName(this.name);
       const boardStub = this.env.BOARD.get(doId);
       const batchId = crypto.randomUUID();
-      const tools = createSDKTools(boardStub, batchId, this.env.AI, this.ctx.storage);
+      const tools = createSDKTools(boardStub, batchId, this.env.AI, this.ctx.storage, 2);
 
       // Pass the same game mode block to the reactive persona
       const reactiveGameModeState: GameModeState = {
@@ -2271,7 +2271,7 @@ export class ChatAgent extends AIChatAgent<Bindings> {
       const doId = this.env.BOARD.idFromName(this.name);
       const boardStub = this.env.BOARD.get(doId);
       const batchId = crypto.randomUUID();
-      const tools = createSDKTools(boardStub, batchId, this.env.AI, this.ctx.storage);
+      const tools = createSDKTools(boardStub, batchId, this.env.AI, this.ctx.storage, 1);
 
       await boardStub.setAiPresence(true).catch((err: unknown) => {
         console.debug(
@@ -2458,7 +2458,7 @@ export class ChatAgent extends AIChatAgent<Bindings> {
       const doId = this.env.BOARD.idFromName(this.name);
       const boardStub = this.env.BOARD.get(doId);
       const batchId = crypto.randomUUID();
-      const tools = createSDKTools(boardStub, batchId, this.env.AI, this.ctx.storage);
+      const tools = createSDKTools(boardStub, batchId, this.env.AI, this.ctx.storage, 1);
 
       await boardStub.setAiPresence(true).catch((err: unknown) => {
         console.debug(
@@ -2631,7 +2631,7 @@ export class ChatAgent extends AIChatAgent<Bindings> {
       const doId = this.env.BOARD.idFromName(this.name);
       const boardStub = this.env.BOARD.get(doId);
       const batchId = crypto.randomUUID();
-      const tools = createSDKTools(boardStub, batchId, this.env.AI, this.ctx.storage);
+      const tools = createSDKTools(boardStub, batchId, this.env.AI, this.ctx.storage, 2);
 
       // Show AI presence while generating
       await boardStub.setAiPresence(true).catch((err: unknown) => {
