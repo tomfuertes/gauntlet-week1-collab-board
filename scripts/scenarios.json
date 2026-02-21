@@ -1,14 +1,14 @@
 [
   {
     "id": "scene-setup",
-    "prompt": "Set up a dentist office scene with a frame and 3 character stickies inside it",
+    "prompt": "Set up a dentist office scene with a frame and 3 named characters inside it",
     "expectedMinObjects": 4,
     "expectedTypes": ["frame", "person", "person", "person"],
     "description": "Tests frame + child positioning (createPerson characters inside frame at inset coords)"
   },
   {
     "id": "row-layout",
-    "prompt": "Create 3 stickies in a row: a detective, a suspect, and a witness",
+    "prompt": "Create 3 characters in a row: a detective, a suspect, and a witness",
     "expectedMinObjects": 3,
     "expectedTypes": ["person", "person", "person"],
     "description": "Tests horizontal layout using 3-object grid slots (x=100, x=420, x=740) - createPerson for named characters"
@@ -28,14 +28,14 @@
   },
   {
     "id": "grid-2x2",
-    "prompt": "Create 4 character stickies in a 2x2 grid: a king, a jester, a knight, and a dragon",
+    "prompt": "Create 4 characters in a 2x2 grid: a king, a jester, a knight, and a dragon",
     "expectedMinObjects": 4,
     "expectedTypes": ["person", "person", "person", "person"],
     "description": "Tests 2x2 grid layout slots: (100,100), (520,100), (100,420), (520,420) - createPerson for named characters"
   },
   {
     "id": "connector-link",
-    "prompt": "Create two stickies - a hero and a villain - then draw a connector arrow between them",
+    "prompt": "Create two characters - a hero and a villain - then draw a connector arrow between them",
     "expectedMinObjects": 3,
     "expectedTypes": ["person", "person", "line"],
     "description": "Tests createConnector resolving object IDs from prior tool results - createPerson for hero and villain characters"
