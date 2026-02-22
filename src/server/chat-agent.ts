@@ -1415,6 +1415,7 @@ export class ChatAgent extends AIChatAgent<Bindings> {
             const color = p.color || p.fill || "";
             const parts: string[] = [o.type];
             if (name) parts.push(`"${name}"`);
+            parts.push(`(id:${o.id.slice(0, 6)})`);
             if (color) parts.push(color);
             return parts.join(" ");
           });

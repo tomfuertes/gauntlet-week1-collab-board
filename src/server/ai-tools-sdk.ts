@@ -889,21 +889,38 @@ export function createSDKTools(
       }),
     }),
 
-    // 9. getBoardState (with filtering, summary mode, and overlap scoring)
+    // 9. getBoardState (with filtering, summary mode, overlap scoring, and sense param)
     getBoardState: tool({
       description:
-        "Read objects on the whiteboard. Optionally filter by type or specific IDs. For large boards (20+), returns a summary unless filtered.",
+        "Read objects on the whiteboard. Optionally filter by type or specific IDs. For large boards (20+), returns a summary unless filtered. " +
+        "Use `sense` to scope the response: 'characters' returns only person-type objects; 'recent' returns objects updated in the last 2 minutes; " +
+        "'spatial' returns full x/y/width/height for choreograph or layout reasoning; 'all' (default) is current behavior.",
       inputSchema: z.object({
         filter: z
           .string()
           .optional()
           .describe("Filter by object type: 'sticky', 'rect', 'circle', 'line', 'text', 'frame', 'image', 'person'"),
         ids: z.array(z.string()).optional().describe("Array of specific object IDs to return"),
+        sense: z
+          .enum(["all", "characters", "recent", "spatial"])
+          .optional()
+          .describe(
+            "Scope of response: 'all' (default) returns everything; 'characters' returns only person objects; " +
+              "'recent' returns objects updated in the last 2 minutes; 'spatial' includes x/y/width/height for layout reasoning.",
+          ),
       }),
-      execute: instrumentExecute("getBoardState", async ({ filter, ids }) => {
+      execute: instrumentExecute("getBoardState", async ({ filter, ids, sense }) => {
         const allObjects = await stub.readObjects();
         // Exclude background images from AI context (decorative, huge base64)
-        const objects = allObjects.filter((o: BoardObject) => !o.isBackground);
+        let objects = allObjects.filter((o: BoardObject) => !o.isBackground);
+
+        // Apply sense-based pre-filters before id/type filters
+        if (sense === "characters") {
+          objects = objects.filter((o: BoardObject) => o.type === "person");
+        } else if (sense === "recent") {
+          const cutoff = Date.now() - 2 * 60 * 1000;
+          objects = objects.filter((o: BoardObject) => o.updatedAt >= cutoff);
+        }
 
         if (ids && ids.length > 0) {
           return objects.filter((o: BoardObject) => ids.includes(o.id)).map(stripForLLM);
@@ -925,6 +942,11 @@ export function createSDKTools(
           );
         }
 
+        // spatial sense: skip summary threshold so AI gets full coordinates
+        if (sense === "spatial") {
+          return objects.map(stripForLLM);
+        }
+
         if (objects.length >= 20) {
           const counts: Record<string, number> = {};
           for (const o of objects) counts[o.type] = (counts[o.type] || 0) + 1;
@@ -933,7 +955,7 @@ export function createSDKTools(
             total: objects.length,
             countsByType: counts,
             overlapScore,
-            hint: "Use filter or ids parameter to get specific objects",
+            hint: "Use filter, ids, or sense parameter to get specific objects",
           };
         }
 
