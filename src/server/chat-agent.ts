@@ -869,6 +869,23 @@ export class ChatAgent extends AIChatAgent<Bindings> {
     const _contentPrecheck = _lastTextPrecheck.replace(/^\[[^\]]+\]\s*/, "");
     const qaMode = /^qa:\s*.+/is.test(_contentPrecheck);
 
+    // KEY-DECISION 2026-02-21: Crisis/escalation turns should use effect tools (highlightObject,
+    // play_sfx, advanceScenePhase) rather than flooding the canvas with new objects. Cap creates
+    // at 2 (main) and 1 (stageManager) as a server-side backstop for when Haiku ignores the
+    // CRISIS EVENTS prompt rule. Detection covers intent chips + freetext keywords.
+    const CRISIS_INTENT_CHIPS = ["escalate!", "plot twist!"];
+    const CRISIS_KEYWORDS = /escalat|crisis|emergency|fire|disaster|complicat/i;
+    const intentChipRaw = typeof body?.intent === "string" ? body.intent.toLowerCase() : "";
+    const crisisTrigger =
+      CRISIS_INTENT_CHIPS.find((chip) => intentChipRaw.includes(chip)) ??
+      (CRISIS_KEYWORDS.test(_contentPrecheck) ? (_contentPrecheck.match(CRISIS_KEYWORDS)?.[0] ?? "keyword") : null);
+    const isCrisisTurn = crisisTrigger !== null && !qaMode;
+    if (isCrisisTurn) {
+      console.log(JSON.stringify({ event: "ai:crisis-cap", maxCreates: 2, trigger: crisisTrigger }));
+    }
+    const mainMaxCreates = isCrisisTurn ? 2 : 4;
+    const stageManagerMaxCreates = isCrisisTurn ? 1 : 3;
+
     const createBudget: CreateBudget = { used: 0 };
     const sharedBounds: SharedBounds = [];
     const batchId = crypto.randomUUID();
@@ -877,7 +894,7 @@ export class ChatAgent extends AIChatAgent<Bindings> {
       batchId,
       this.env.AI,
       this.ctx.storage,
-      4,
+      mainMaxCreates,
       createBudget,
       6,
       sharedBounds,
@@ -1313,6 +1330,7 @@ export class ChatAgent extends AIChatAgent<Bindings> {
           createBudget,
           sharedBounds,
           qaMode,
+          stageManagerMaxCreates,
         );
       }
 
@@ -1410,6 +1428,7 @@ export class ChatAgent extends AIChatAgent<Bindings> {
     createBudget?: CreateBudget,
     sharedBounds?: SharedBounds,
     qaMode = false,
+    maxCreates = 3,
   ): Promise<void> {
     // Persist for troupe-aware persona rotation on subsequent messages (survives DO hibernation)
     await this.ctx.storage.put("troupeConfig", troupeConfig);
@@ -1449,7 +1468,7 @@ export class ChatAgent extends AIChatAgent<Bindings> {
       batchId,
       this.env.AI,
       this.ctx.storage,
-      3,
+      maxCreates,
       createBudget,
       6,
       sharedBounds,
