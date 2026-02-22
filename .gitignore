@@ -20,3 +20,4 @@ scripts/eval-results/
 .claude/worktrees/
 plans/
 .ref/
+.devcontainer/
