@@ -1283,9 +1283,11 @@ export class ChatAgent extends AIChatAgent<Bindings> {
         );
       }
 
-      // Trigger reactive persona to "yes, and" the active persona's response
+      // Trigger reactive persona to "yes, and" the active persona's response.
+      // Pass crisis-aware maxCreates so reactive doesn't bypass the turn's create budget.
+      const reactiveMaxCreates = isCrisisTurn ? 1 : 2;
       this.ctx.waitUntil(
-        this._triggerReactivePersona(activeIndex, personas).catch((err: unknown) => {
+        this._triggerReactivePersona(activeIndex, personas, reactiveMaxCreates).catch((err: unknown) => {
           console.error(
             JSON.stringify({
               event: "reactive:unhandled",
@@ -2056,8 +2058,10 @@ export class ChatAgent extends AIChatAgent<Bindings> {
 
   /** After the active persona finishes, trigger the other persona to react.
    *  KEY-DECISION 2026-02-19: Claims _isGenerating mutex BEFORE the 2s UX delay to prevent
-   *  TOCTOU races (human message arriving between check and claim would cause concurrent generation). */
-  private async _triggerReactivePersona(activeIndex: number, personas?: Persona[]) {
+   *  TOCTOU races (human message arriving between check and claim would cause concurrent generation).
+   *  KEY-DECISION 2026-02-21: maxCreates param lets crisis turns cap reactive at 1 (not 2) so
+   *  the total per-turn canvas creation stays within the crisis budget (main=2 + reactive=1 = 3). */
+  private async _triggerReactivePersona(activeIndex: number, personas?: Persona[], maxCreates = 2) {
     // Guard: scene budget exhausted - no reactive exchanges after scene ends
     const reactiveHumanTurns = this.messages.filter((m) => m.role === "user").length;
     if (computeBudgetPhase(reactiveHumanTurns, SCENE_TURN_BUDGET) === "scene-over") {
@@ -2161,7 +2165,7 @@ export class ChatAgent extends AIChatAgent<Bindings> {
       const doId = this.env.BOARD.idFromName(this.name);
       const boardStub = this.env.BOARD.get(doId);
       const batchId = crypto.randomUUID();
-      const tools = createSDKTools(boardStub, batchId, this.env.AI, this.ctx.storage, 2);
+      const tools = createSDKTools(boardStub, batchId, this.env.AI, this.ctx.storage, maxCreates);
 
       // Pass the same game mode block to the reactive persona
       const reactiveGameModeState: GameModeState = {
