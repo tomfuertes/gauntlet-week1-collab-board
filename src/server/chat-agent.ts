@@ -849,16 +849,16 @@ export class ChatAgent extends AIChatAgent<Bindings> {
       );
     }
 
-    // KEY-DECISION 2026-02-21: Shared budget ref so stageManager + main streamText together
-    // respect a single global per-turn cap (~6). Out-of-band calls (reactive, sfx, canvas,
-    // director) run in separate execution contexts and keep independent closure counters.
+    // KEY-DECISION 2026-02-21: main=4, stageManager=3, globalMax=6. Shared budget ref so
+    // stageManager + main streamText together respect a single global per-turn cap (~6).
+    // Out-of-band calls (reactive, sfx, canvas, director) run in separate execution contexts.
     // KEY-DECISION 2026-02-21: sharedBounds mirrors createBudget pattern - a mutable array ref
     // so stageManager objects are visible to main's flowPlace and vice versa. Fixes overlap=12
     // on grid-2x2 where stageManager + main were placing objects without awareness of each other.
     const createBudget: CreateBudget = { used: 0 };
     const sharedBounds: SharedBounds = [];
     const batchId = crypto.randomUUID();
-    const tools = createSDKTools(boardStub, batchId, this.env.AI, this.ctx.storage, 3, createBudget, 6, sharedBounds);
+    const tools = createSDKTools(boardStub, batchId, this.env.AI, this.ctx.storage, 4, createBudget, 6, sharedBounds);
 
     // Update game mode from client (sent on every message so it survives DO hibernation)
     if (body?.gameMode && ["yesand", "freeform", "harold"].includes(body.gameMode)) {

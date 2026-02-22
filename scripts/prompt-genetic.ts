@@ -253,7 +253,7 @@ interface RunResult {
 async function runHaiku(genome: Genome): Promise<RunResult> {
   const systemPrompt = buildSystemPrompt(genome);
   const { stub, getCreatedTypes } = createMockStub();
-  const tools = createSDKTools(stub);
+  const tools = createSDKTools(stub, undefined, undefined, undefined, 4);
 
   const { toolCalls = [], usage } = await generateText({
     model: anthropic(MODEL_ID),
