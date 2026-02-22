@@ -527,10 +527,40 @@ async function runNarrativeScenario(
               if (bodyParsed["type"] === "text-delta" && typeof bodyParsed["delta"] === "string") {
                 textBuffer += bodyParsed["delta"];
               }
-              // Tool call name
+              // Tool call name - expand batchExecute inner ops so judge sees real tools
               if (typeof bodyParsed["toolName"] === "string") {
                 const toolName = bodyParsed["toolName"] as string;
-                if (!toolNames.includes(toolName)) toolNames.push(toolName);
+                if (toolName === "batchExecute") {
+                  // Extract inner operation names from args.operations[].tool
+                  const rawArgs = bodyParsed["args"] ?? bodyParsed["input"];
+                  const argsObj =
+                    typeof rawArgs === "string"
+                      ? (() => {
+                          try {
+                            return JSON.parse(rawArgs) as Record<string, unknown>;
+                          } catch {
+                            return null;
+                          }
+                        })()
+                      : (rawArgs as Record<string, unknown> | null);
+                  const ops = Array.isArray(argsObj?.["operations"]) ? argsObj["operations"] : null;
+                  if (ops && ops.length > 0) {
+                    // Remove any fallback "batchExecute" entry recorded before args arrived
+                    const fallbackIdx = toolNames.indexOf("batchExecute");
+                    if (fallbackIdx !== -1) toolNames.splice(fallbackIdx, 1);
+                    // List inner tools with "(via batchExecute)" suffix instead of the wrapper name
+                    for (const op of ops as { tool?: string }[]) {
+                      if (typeof op.tool === "string" && !toolNames.includes(`${op.tool} (via batchExecute)`)) {
+                        toolNames.push(`${op.tool} (via batchExecute)`);
+                      }
+                    }
+                  } else {
+                    // Args not yet available in this frame - fall back to recording batchExecute
+                    if (!toolNames.includes(toolName)) toolNames.push(toolName);
+                  }
+                } else {
+                  if (!toolNames.includes(toolName)) toolNames.push(toolName);
+                }
               }
             } catch {
               if (body.startsWith("{") || body.startsWith("[")) {
