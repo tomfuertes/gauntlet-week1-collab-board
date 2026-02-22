@@ -39,16 +39,10 @@ interface PerfOverlayProps {
   cursorCount: number;
   connectionState: string;
   stageRef: React.RefObject<unknown>;
-  lastServerMessageAt: React.RefObject<number>;
+  lastRttMs: React.RefObject<number>;
 }
 
-export function PerfOverlay({
-  objectCount,
-  cursorCount,
-  connectionState,
-  stageRef,
-  lastServerMessageAt,
-}: PerfOverlayProps) {
+export function PerfOverlay({ objectCount, cursorCount, connectionState, stageRef, lastRttMs }: PerfOverlayProps) {
   const [visible, setVisible] = useState(SHOW_BY_DEFAULT);
   const [fps, setFps] = useState<number | null>(null);
   const [msgAge, setMsgAge] = useState<number | null>(null);
@@ -104,10 +98,10 @@ export function PerfOverlay({
     const id = setInterval(() => {
       setFps(Math.round(fpsRef.current));
 
-      // Time since last server message (0 = no messages yet)
-      const lastMsg = lastServerMessageAt.current;
-      if (lastMsg > 0) {
-        setMsgAge(Math.round(performance.now() - lastMsg));
+      // DO round-trip latency from last ping/pong (-1 = no measurement yet)
+      const rtt = lastRttMs.current;
+      if (rtt >= 0) {
+        setMsgAge(rtt);
       }
 
       // Konva node count - guard handles ref-not-ready; let real errors surface
@@ -136,7 +130,7 @@ export function PerfOverlay({
     ["FPS", fps !== null ? fps : "--", fps !== null ? statusColor(fps, TARGETS.fps) : colors.textDim],
     ["Objects", objectCount, statusColor(objectCount, TARGETS.objects, true)],
     [
-      "Msg age",
+      "DO RTT",
       msgAge !== null ? (msgAge > 5000 ? ">5s" : `${msgAge}ms`) : "--",
       msgAge !== null ? statusColor(msgAge, TARGETS.msgAge, true) : colors.textDim,
     ],

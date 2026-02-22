@@ -125,7 +125,8 @@ export type WSClientMessage =
   | { type: "blackout" }
   | { type: "sfx"; effect: string; x: number; y: number }
   | { type: "mood"; mood: SceneMood; intensity: number }
-  | { type: "poll:vote"; pollId: string; optionId: string };
+  | { type: "poll:vote"; pollId: string; optionId: string }
+  | { type: "ping"; sentAt: number };
 
 /** Visual effect triggered by a collective audience wave */
 export type WaveEffect = "confetti" | "shake" | "glow" | "spotlight" | "hearts" | "dramatic";
@@ -159,7 +160,8 @@ export type WSServerMessage =
   | { type: "mood"; mood: SceneMood; intensity: number }
   | { type: "audience:wave"; emoji: string; count: number; effect: WaveEffect }
   | { type: "poll:start"; poll: Poll }
-  | { type: "poll:result"; result: PollResult };
+  | { type: "poll:result"; result: PollResult }
+  | { type: "pong"; sentAt: number };
 
 export const AI_USER_ID = "ai-agent" as const;
 export const AI_USERNAME = "AI Assistant" as const;

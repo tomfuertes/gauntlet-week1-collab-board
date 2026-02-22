@@ -359,6 +359,12 @@ export class Board extends DurableObject<Bindings> {
       return;
     }
 
+    // ping: echo sentAt back to the sender only - used by client to measure DO round-trip latency
+    if (msg.type === "ping") {
+      ws.send(JSON.stringify({ type: "pong", sentAt: msg.sentAt }));
+      return;
+    }
+
     // Spectators can only send cursor updates, reactions, heckles, and poll votes
     if (
       meta.role === "spectator" &&

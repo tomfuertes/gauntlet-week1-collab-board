@@ -70,6 +70,7 @@ interface UseWebSocketReturn {
   patchObjectLocal: (id: string, patch: Partial<BoardObject>) => void;
   batchUndo: (batchId: string) => void;
   lastServerMessageAt: React.RefObject<number>;
+  lastRttMs: React.RefObject<number>;
 }
 
 const BACKOFF_BASE_MS = 1000;
@@ -120,6 +121,8 @@ export function useWebSocket(
   const onMoodRef = useRef(onMood);
   onMoodRef.current = onMood;
   const lastServerMessageAt = useRef(0);
+  // Stores the most recent DO round-trip latency in ms (-1 = no measurement yet)
+  const lastRttMs = useRef(-1);
   const [connectionState, setConnectionState] = useState<ConnectionState>("connecting");
   const [initialized, setInitialized] = useState(false);
   const [cursors, setCursors] = useState<Map<string, CursorState>>(new Map());
@@ -361,6 +364,9 @@ export function useWebSocket(
             setActivePoll(null);
             setPollResult(msg.result);
             break;
+          case "pong":
+            lastRttMs.current = Math.round(performance.now() - msg.sentAt);
+            break;
           case "board:deleted":
             // Board was deleted by owner - navigate away
             intentionalClose = true;
@@ -418,6 +424,16 @@ export function useWebSocket(
         return next.length === prev.length ? prev : next;
       });
     }, 500);
+    return () => clearInterval(id);
+  }, []);
+
+  // Send a ping every 5s to measure DO round-trip latency
+  useEffect(() => {
+    const id = setInterval(() => {
+      if (wsRef.current?.readyState === WebSocket.OPEN) {
+        wsRef.current.send(JSON.stringify({ type: "ping", sentAt: performance.now() }));
+      }
+    }, 5000);
     return () => clearInterval(id);
   }, []);
 
@@ -518,5 +534,6 @@ export function useWebSocket(
     patchObjectLocal,
     batchUndo,
     lastServerMessageAt,
+    lastRttMs,
   };
 }
