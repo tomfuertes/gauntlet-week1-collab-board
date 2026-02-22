@@ -95,6 +95,8 @@ interface TranscriptEntry {
   role: "player" | "ai";
   text: string;
   toolCalls?: string[];
+  /** Number of canvas objects added to the board this turn (AI turns only) */
+  canvasObjectsAdded?: number;
   turnIndex: number;
   timestampMs: number;
 }
@@ -417,6 +419,9 @@ async function runNarrativeScenario(
     createdAt: string;
   }[] = [];
 
+  // Track cumulative canvas object count to compute per-turn deltas
+  let prevObjectCount = 0;
+
   let scenarioError: string | undefined;
 
   // Process each turn sequentially via a single persistent WS connection
@@ -581,11 +586,22 @@ async function runNarrativeScenario(
         ws.on("message", onMessage);
       });
 
+      // Fetch board state to compute per-turn object delta for judge evidence
+      let canvasObjectsAdded: number | undefined;
+      try {
+        const { metrics } = await getBoardObjects(cookie, boardId);
+        canvasObjectsAdded = Math.max(0, metrics.total - prevObjectCount);
+        prevObjectCount = metrics.total;
+      } catch {
+        // Non-fatal - judge will rely on toolCalls alone
+      }
+
       // Record AI transcript entry
       transcript.push({
         role: "ai",
         text: aiText,
         toolCalls: toolCallNames.length > 0 ? toolCallNames : undefined,
+        canvasObjectsAdded,
         turnIndex,
         timestampMs: Date.now() - scenarioStart,
       });
@@ -629,7 +645,12 @@ async function runNarrativeScenario(
   if (!scenarioError && process.env.EVAL_SKIP_JUDGE !== "1" && transcript.length > 0) {
     try {
       judgeResult = await judgeTranscript(
-        transcript.map((t) => ({ role: t.role, text: t.text })),
+        transcript.map((t) => ({
+          role: t.role,
+          text: t.text,
+          toolCalls: t.toolCalls,
+          canvasObjectsAdded: t.canvasObjectsAdded,
+        })),
         scenario.id,
       );
     } catch (err) {

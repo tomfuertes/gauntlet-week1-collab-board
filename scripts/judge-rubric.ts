@@ -65,11 +65,19 @@ Does the scene build, escalate, and resolve (or at least attempt to)?
 
 ### 4. tool_usage
 Does the AI use canvas tools (stickies, frames, images, connectors, effects, sfx) to enhance the scene rather than just narrate?
+
+IMPORTANT - Canvas tool evidence in transcripts:
+- "[TOOLS USED: batchExecute]" means the AI used the batch canvas creation tool to place multiple objects (persons, frames, stickies, etc.) at once. This is ACTIVE canvas tool use - score it accordingly.
+- "[TOOLS USED: createPerson, createFrame, highlightObject, play_sfx, ...]" are individual canvas tools.
+- "[CANVAS OBJECTS ADDED THIS TURN: N]" is the authoritative ground-truth count of objects placed on the canvas this turn. Use this as the primary signal for tool_usage.
+- If CANVAS OBJECTS ADDED > 0, the AI definitely used canvas tools. Score at minimum 3.
+
+Scoring:
 - 5: Tools serve the narrative perfectly. Objects appear at dramatically appropriate moments. Effects (highlights, sound, mood) punctuate beats. Canvas tells part of the story the text doesn't.
 - 4: Good tool usage that adds to the scene. Occasional missed opportunity where a visual would have been stronger than text.
 - 3: Uses tools but mechanically - objects created because the prompt says to, not because the scene demands it. Or overuses tools cluttering the canvas.
 - 2: Minimal tool use despite opportunities. Scene is mostly text with token objects.
-- 1: No tools used, or tools used incorrectly (wrong types, objects outside bounds, overlapping).
+- 1: No tools used (CANVAS OBJECTS ADDED = 0 across all turns), or tools used incorrectly (wrong types, objects outside bounds, overlapping).
 
 ### 5. audience_engagement
 Would spectators watching this scene be entertained? Is there humor, surprise, or emotional resonance?
@@ -259,7 +267,7 @@ function parseAndValidate(text: string): RawJudgeResponse {
  * @throws if API key missing, model unreachable, or response unparseable after 2 retries
  */
 export async function judgeTranscript(
-  transcript: { role: string; text: string; toolCalls?: string[] }[],
+  transcript: { role: string; text: string; toolCalls?: string[]; canvasObjectsAdded?: number }[],
   scenarioId: string,
   options?: { model?: string; apiKey?: string },
 ): Promise<JudgeResult> {
@@ -274,13 +282,19 @@ export async function judgeTranscript(
   const modelId = options?.model ?? process.env.EVAL_JUDGE_MODEL ?? "claude-sonnet-4-6";
   const anthropic = createAnthropic({ apiKey });
 
-  // KEY-DECISION 2026-02-21: Include toolCalls in judge transcript. Previously only .text was sent,
-  // making tool_usage scoring blind - judge scored 1/5 even when 14+ objects were created.
+  // KEY-DECISION 2026-02-21: Include toolCalls + canvasObjectsAdded in judge transcript.
+  // Previously only .text was sent, making tool_usage scoring blind.
+  // KEY-DECISION 2026-02-22: canvasObjectsAdded is the ground-truth for tool_usage since
+  // batchExecute tool name is opaque (inner tool names not extractable from WS stream frames).
+  // The board objects API gives exact object counts; delta per turn = concrete canvas activity.
   const transcriptText = transcript
     .map((entry, i) => {
       let line = `[Turn ${i + 1}] ${entry.role.toUpperCase()}: ${entry.text}`;
       if (entry.toolCalls?.length) {
         line += `\n[TOOLS USED: ${entry.toolCalls.join(", ")}]`;
+      }
+      if (typeof entry.canvasObjectsAdded === "number") {
+        line += `\n[CANVAS OBJECTS ADDED THIS TURN: ${entry.canvasObjectsAdded}]`;
       }
       return line;
     })
