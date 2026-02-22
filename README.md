@@ -6,6 +6,8 @@ Multiplayer improv canvas where players and AI personas perform scenes together 
 
 486 commits. 6 days. ~95% AI-generated code. One lesson: code enforces what prompts suggest.
 
+> **[Deliverables](deliverables/README.md)** | **[Blog Post](https://tomfuertes.com/2026/02/22/yesaind)**
+
 ## Features
 
 **Collaborative Canvas**

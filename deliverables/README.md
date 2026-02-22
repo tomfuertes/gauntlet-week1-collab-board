@@ -9,4 +9,5 @@
 | AI Cost Analysis     | Dev spend + projections for 100/1K/10K/100K users                                | [ai-cost-analysis.md](ai-cost-analysis.md)     |
 | Project History      | Day-by-day engineering narrative, pivots, breakthroughs                          | [project-history.md](project-history.md)       |
 | Deployed Application | Publicly accessible, supports 5+ users with auth                                 | [yesaind.com](https://yesaind.com)             |
-| Social Post          | Share on X or LinkedIn: description, features, demo/screenshots, tag @GauntletAI | TBD                                            |
+| Blog Post            | Project write-up with features, architecture, learnings                          | [tomfuertes.com](https://tomfuertes.com/2026/02/22/yesaind) |
+| Social Post          | Share on X or LinkedIn: description, features, demo/screenshots, tag @GauntletAI | [X post](https://x.com/thisbetom/status/2025662676349624322) |
