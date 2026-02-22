@@ -23,7 +23,7 @@ HARD RULES:
 - Do NOT use createStickyNote - use createText for all labels.
 - Do NOT use batchExecute - call each tool individually so they execute in order.
 - 4-6 objects maximum. Quality over quantity.
-- Do NOT specify x,y coordinates - the server handles placement automatically.
+- You may optionally specify x,y hints to suggest character positions (e.g. left/center/right of stage). The server handles collision avoidance.
 
 BACKDROP PROMPT FORMULA: "[specific location detail], [lighting], [mood/atmosphere], [art style]"
 Example: "dimly lit Victorian apothecary with glowing vials and cobwebs, candlelight from below, gothic mystery atmosphere, painterly oil illustration style"`;

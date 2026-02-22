@@ -660,9 +660,9 @@ export function createSDKTools(
     // 1. createStickyNote
     createStickyNote: tool({
       description:
-        "Create a sticky note (colored card) on the whiteboard. Use ONLY for action words, exclamations, " +
-        "or status callouts that benefit from the colored card background (e.g. 'BANG!', 'DUCK!', 'DANGER!'). " +
-        "For dialogue, narration, labels, and descriptions, use createText instead (it's the default for text content). " +
+        "Create a sticky note (colored card) on the whiteboard. Use sparingly - only when the player " +
+        "explicitly requests sticky notes or card-based layouts. For action words, exclamations, dialogue, " +
+        "narration, and labels, prefer createText instead. " +
         "Position is auto-placed by the layout engine. Optionally provide x,y hints for preferred placement.",
       inputSchema: z.object({
         text: z.string().describe("The text content of the sticky note"),

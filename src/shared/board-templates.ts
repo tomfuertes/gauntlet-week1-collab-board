@@ -1,8 +1,10 @@
 /** Scene starter templates - single source of truth for overlay chips + chat panel + server seeding.
  *
  *  KEY-DECISION 2026-02-19: Templates define typed BoardObject arrays instead of pseudocode text.
- *  The server seeds objects via Board DO RPC (guaranteed 7 objects), then sends the AI a narrative
- *  description to react to. This replaced LLM-parsed pseudocode which produced 1-4 objects unreliably. */
+ *  The server seeds objects via Board DO RPC (guaranteed objects), then sends the AI a narrative
+ *  description to react to. This replaced LLM-parsed pseudocode which produced 1-4 objects unreliably.
+ *  KEY-DECISION 2026-02-22: Templates use person + text objects (not stickies in frames).
+ *  Characters are persons, props/items are text labels. Stickies reserved for player use. */
 
 import type { BoardObject } from "./types";
 
@@ -14,29 +16,29 @@ export interface BoardTemplate {
   displayText: string;
   /** Narrative description sent to the AI after objects are seeded */
   description: string;
-  /** Predefined objects: 1 frame + 6 stickies. Server assigns id, createdBy, updatedAt at seed time. */
+  /** Predefined objects seeded on the board. Server assigns id, createdBy, updatedAt at seed time. */
   objects: Omit<BoardObject, "id" | "createdBy" | "updatedAt">[];
 }
 
-/** Helper to define a sticky for a template (positions are relative to the frame) */
-function sticky(
-  text: string,
+/** Helper to define a person (stick figure character) for a template */
+function person(
+  name: string,
   x: number,
   y: number,
   color: string,
 ): Omit<BoardObject, "id" | "createdBy" | "updatedAt"> {
-  return { type: "sticky", x, y, width: 200, height: 200, rotation: 0, props: { text, color } };
+  return { type: "person", x, y, width: 80, height: 120, rotation: 0, props: { text: name, color } };
 }
 
-/** Helper to define a frame for a template */
-function frame(
-  text: string,
+/** Helper to define a text label for a template */
+function text(
+  content: string,
   x: number,
   y: number,
-  width: number,
-  height: number,
+  color = "#1a1a2e",
 ): Omit<BoardObject, "id" | "createdBy" | "updatedAt"> {
-  return { type: "frame", x, y, width, height, rotation: 0, props: { text } };
+  const width = Math.max(40, content.length * 8 + 16);
+  return { type: "text", x, y, width, height: 24, rotation: 0, props: { text: content, color } };
 }
 
 export const BOARD_TEMPLATES: BoardTemplate[] = [
@@ -48,13 +50,12 @@ export const BOARD_TEMPLATES: BoardTemplate[] = [
     description:
       "A homeowners association meeting for superheroes. The HOA President has laser eyes and keeps accidentally melting the gavel. The Invisible Woman is here but nobody can tell. The weather-control guy is blamed for every bad BBQ. There's a noise complaint about someone breaking the sound barrier at 3am, an agenda item about 'capes in the pool filter AGAIN', and a parking dispute because the Batmobile takes up 4 spaces.",
     objects: [
-      frame("Heroes' Landing HOA - Monthly Meeting", 50, 80, 900, 600),
-      sticky("HOA President (laser eyes) - keeps accidentally melting the gavel", 60, 120, "#f87171"),
-      sticky("The Invisible Woman - nobody can tell if she's here", 280, 120, "#60a5fa"),
-      sticky("Guy who controls weather - blamed for every bad BBQ", 500, 120, "#fbbf24"),
-      sticky("Noise complaint: 'Someone keeps breaking the sound barrier at 3am'", 60, 350, "#fb923c"),
-      sticky("Agenda item: 'Capes in the pool filter AGAIN'", 280, 350, "#c084fc"),
-      sticky("Parking dispute - the Batmobile takes up 4 spaces", 500, 350, "#4ade80"),
+      person("HOA President", 100, 150, "#f87171"),
+      person("Invisible Woman", 250, 150, "#60a5fa"),
+      person("Weather Guy", 400, 150, "#fbbf24"),
+      text("Noise complaint: breaking the sound barrier at 3am", 80, 320, "#fb923c"),
+      text("Agenda: capes in the pool filter AGAIN", 80, 360, "#c084fc"),
+      text("Parking dispute: Batmobile takes 4 spaces", 80, 400, "#4ade80"),
     ],
   },
   {
@@ -65,13 +66,12 @@ export const BOARD_TEMPLATES: BoardTemplate[] = [
     description:
       "A group therapy session for retired pirates. The therapist keeps saying 'and how did that make you feel' to people who say 'ARRR'. Captain Blackbeard is having trouble with landlocked retirement. One-Eyed Peggy refuses to do trust falls. There's a comfort parrot that repeats your trauma back to you, a stress ball shaped like a cannonball, and a box of tissues with a treasure map to 'inner peace'.",
     objects: [
-      frame("Anchors Aweigh Wellness Center", 50, 80, 900, 600),
-      sticky("Therapist - keeps saying 'and how did that make you feel' to people who say 'ARRR'", 60, 120, "#60a5fa"),
-      sticky("Captain Blackbeard - having trouble with landlocked retirement", 280, 120, "#c084fc"),
-      sticky("One-Eyed Peggy - refuses to do trust falls", 500, 120, "#fbbf24"),
-      sticky("A comfort parrot that repeats your trauma back to you", 60, 350, "#4ade80"),
-      sticky("Stress ball shaped like a cannonball", 280, 350, "#f87171"),
-      sticky("Box of tissues and a treasure map to 'inner peace'", 500, 350, "#fb923c"),
+      person("Therapist", 100, 150, "#60a5fa"),
+      person("Capt. Blackbeard", 250, 150, "#c084fc"),
+      person("One-Eyed Peggy", 400, 150, "#fbbf24"),
+      text("Comfort parrot that repeats your trauma", 80, 320, "#4ade80"),
+      text("Stress ball shaped like a cannonball", 80, 360, "#f87171"),
+      text("Tissues + treasure map to inner peace", 80, 400, "#fb923c"),
     ],
   },
 ];
