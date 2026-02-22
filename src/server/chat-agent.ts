@@ -2181,23 +2181,28 @@ export class ChatAgent extends AIChatAgent<Bindings> {
       return;
     }
 
-    // Guard: need at least one assistant message to react to
-    if (!this.messages.some((m) => m.role === "assistant")) {
-      console.debug(
-        JSON.stringify({
-          event: "reactive:skip",
-          reason: "no-assistant-message",
-          boardId: this.name,
-        }),
-      );
-      return;
-    }
-
     // Claim mutex BEFORE the delay to prevent TOCTOU races
     this._autonomousExchangeCount++;
     await this.withGenerating(async () => {
-      // UX delay - let the active persona's message settle before the reaction
+      // UX delay - let the active persona's message settle before the reaction.
+      // KEY-DECISION 2026-02-22: "no-assistant-message" guard moved to here (after delay) from
+      // before withGenerating. Guard previously fired synchronously before onFinish() added the
+      // assistant message to this.messages, causing SAGE to always skip turn 1. After 2s the
+      // base class has long since persisted the message.
       await new Promise((r) => setTimeout(r, 2000));
+
+      // Guard: need at least one assistant message to react to (checked after delay so onFinish
+      // has had time to persist the active persona's response)
+      if (!this.messages.some((m) => m.role === "assistant")) {
+        console.debug(
+          JSON.stringify({
+            event: "reactive:skip",
+            reason: "no-assistant-message",
+            boardId: this.name,
+          }),
+        );
+        return;
+      }
 
       // Re-check: human may have interrupted during the delay (onChatMessage resets count)
       if (this._autonomousExchangeCount === 0) {
