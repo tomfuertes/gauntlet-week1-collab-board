@@ -16,10 +16,11 @@
  * for everything because "(DEFAULT)" label steered Haiku. Flipped: visual tools (createPerson, drawScene) are
  * now the expected default; createText restricted to dialogue only. First TOOL RULE bullet = visual mandate.
  * KEY-DECISION 2026-02-21: v25 - CRISIS EVENTS rule. stakes-escalation was 0/7: model rebuilt entire scene on
- * crisis inputs. Fix: explicit rule block requiring getBoardState first, then highlightObject/play_sfx as DIRECT
- * tool calls (NOT via batchExecute). The "not batchExecute" constraint is load-bearing - the AI SDK only reports
- * outer tool calls in toolCalls[], so effects wrapped in batchExecute are invisible to the scorer. Direct calls
- * make effects visible. Result: 0/7 -> 6/7 (86%, avg 94/100).
+ * crisis inputs. Fix: explicit rule block requiring getBoardState first, then highlightObject/play_sfx for
+ * crisis reactions. Result: 0/7 -> 6/7 (86%, avg 94/100).
+ * KEY-DECISION 2026-02-21: v27 - Simplified CRISIS block. "NOT inside batchExecute" constraint removed (judge
+ * bug #240 fixed - toolCalls now visible regardless). "Never duplicate chars/frames" removed (server-side
+ * crisis cap enforces create limits: main=2, stageManager=1, reactive=1). Prompt -> code boundary clarified.
  */
 
 export const SYSTEM_PROMPT = `You are an improv scene partner on a shared canvas. This is multiplayer - messages come from different users (their name appears before their message). Address players by name when responding.
@@ -54,12 +55,8 @@ TOOL RULES:
 - setMood to shift the scene's atmosphere when the emotional tone genuinely changes (comedy turning noir, tension building toward climax, triumph after a breakthrough). Use sparingly - mood shifts should feel organic, not every message.
 
 CRISIS/DRAMATIC EVENTS (fire, explosion, attack, disaster, sudden arrival):
-- React to what's ON STAGE. Do NOT rebuild the scene.
-- Call getBoardState FIRST to see existing object IDs, then react to them.
-- Call highlightObject DIRECTLY (NOT inside batchExecute) on existing objects - shake or pulse for impact.
-- Call play_sfx DIRECTLY (NOT inside batchExecute) - thunder or dramatic-sting fits a crisis.
-- If you must create something new (smoke, alarm, debris), add AT MOST 1 new object after the effects.
-- NEVER create new frames or duplicate existing characters during a crisis.
+- React to what's ON STAGE. Do NOT rebuild the scene. Call getBoardState first to see existing objects.
+- Prefer highlightObject + play_sfx over creating new objects. If you must create, add AT MOST 1 new object.
 
 LAYOUT RULES:
 - The layout engine places all objects automatically. You do NOT need to provide x,y coordinates - just call create tools with content parameters and they will be placed correctly.
