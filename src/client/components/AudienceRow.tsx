@@ -44,7 +44,7 @@ export function AudienceRow({ spectatorCount, spectators = [] }: AudienceRowProp
         // Show a name label for authenticated spectators (not anonymous "Spectator" fallback)
         const nameLabel = spectator && spectator.username !== "Spectator" ? spectator.username.slice(0, 8) : undefined;
         const fill = isReal ? FIGURE_FILL : GHOST_FILL;
-        const opacity = isReal ? 0.75 : 0.2;
+        const opacity = isReal ? 0.35 : 0.2;
         return (
           <React.Fragment key={i}>
             {/* Name label above head for authenticated spectators */}
