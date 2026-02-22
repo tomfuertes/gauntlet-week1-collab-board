@@ -39,7 +39,7 @@ React + Vite + react-konva + TypeScript | Cloudflare Workers + Hono + Durable Ob
 - Class-level state resets on DO hibernation. Client re-sends model/gameMode/personaId each message.
 - Canvas bounds exported as `CANVAS_MIN_X/Y`, `CANVAS_MAX_X/Y` from shared/types.ts. Used in prompts, index.ts, chat-agent.ts.
 - Default model is Claude Haiku 4.5.
-- `createSDKTools()` called 6 times per user turn with per-context maxCreates budget (main=4, stageManager=6, reactive=2, director=2, sfx=1, canvas=1).
+- `createSDKTools()` called 6 times per user turn with per-context maxCreates budget (main=4, stageManager=3, globalMaxCreates=6 shared CreateBudget ref). SharedBounds array shares position tracking across closures.
 - Game modes: `yesand` (beginner), `freeform` (mid), `harold` (advanced). Harold uses `humanTurns` for phase coaching (Opening/First Beats/Second Beats/Third Beats).
 - Templates: 2 only (superhero-hoa, pirate-therapy), shown only in yesand (beginner) mode.
 - Deploy via `git push` to main (CF git integration). Never `wrangler deploy` manually.
@@ -53,6 +53,7 @@ React + Vite + react-konva + TypeScript | Cloudflare Workers + Hono + Durable Ob
 - **v21 fixes:** (1) Judge pipeline now includes toolCalls in transcript (was blind to tool_usage). (2) Visual tool mandate - createPerson/drawScene required, createText restricted to dialogue. (3) maxCreates parameterized per call site (was 4 per closure x 6 closures = uncapped). (4) Game mode restructure: hat/freezetag removed, Harold added.
 - **v22 fix:** Zero-tolerance overlap enforcement in `enforcedCreate()`. Threshold 0.2->0, nudge step 20px->objectWidth+16px gap, lines/connectors exempted. LLMs can't do spatial reasoning; code handles it.
 - **v23 architecture:** Server-side auto-layout engine. LLMs no longer specify x,y - `flowPlace()` in `createSDKTools` closure reads existing board state (lazy-init, cached per closure) and shelf-packs new objects left-to-right, top-to-bottom with 16px gaps. Frame-aware: objects created after a frame go inside it. `drawScene` compositions bypass per-part count cap (entire composition = 1 create). `enforcedCreate()` simplified to count cap + OOB clamping only (no nudge loop). Tool schemas stripped of x,y params.
+- **v25 fix:** Added CRISIS EVENTS rule. stakes-escalation eval 0/7->6/7 (86%). "NOT inside batchExecute" is load-bearing for effect tools - wrapping them makes them invisible to AI SDK toolCalls[]. maxCreates reverted main 3->4 (4th object was silently dropped at 3).
 - **Eval command:** `set -a && source .dev.vars && set +a && EVAL_MODEL=claude-haiku-4.5 npm run eval` (must use `set -a` to export vars to child processes).
 
 ## Commands
@@ -80,6 +81,10 @@ set -a && source .dev.vars && set +a && EVAL_MODEL=claude-haiku-4.5 npm run eval
 # JSON reports written to scripts/eval-results/<timestamp>.json (gitignored, kept on disk for reference)
 # Quick summary: jq '{model, layout: "\(.layout.passed)/\(.layout.total)", overlap: .layout.avgOverlap}' scripts/eval-results/*.json
 # Compare runs: npm run eval:compare scripts/eval-results/A.json scripts/eval-results/B.json
+
+# Prompt Diagnostic Scripts (require dev server running + .dev.vars sourced)
+npx tsx scripts/prompt-genetic.ts          # genetic prompt tuner (30 iterations, ~2min)
+npx tsx scripts/prompt-scenarios-diag.ts   # multi-scenario diagnostic (7 runs each, ~3min)
 
 # Format & Audit
 npm run format           # prettier --write
@@ -220,6 +225,7 @@ Each object stored as separate DO Storage key (`obj:{uuid}`, ~200 bytes). LWW vi
 - `getUserColor(userId)` is hash-based (not array-index). Same palette in Board.tsx and Cursors.tsx.
 - Dev: `scripts/dev.sh` raises `ulimit -n 10240` (macOS default 256 causes EMFILE in multi-worktree).
 - Wrangler auth: `env.AI` binding is `remote` mode - requires `wrangler login` or `CLOUDFLARE_API_TOKEN` even in local dev. Server won't start without auth. Eval models (Anthropic/OpenAI) don't use this binding but wrangler still requires auth to boot. To stub out for offline dev, comment out `[ai]` block in wrangler.toml.
+- `batchExecute` wraps create tools only. Effect/control tools (`highlightObject`, `play_sfx`, `getBoardState`, `askAudience`) must be called directly - wrapping them in `batchExecute` makes them invisible to AI SDK `toolCalls[]`.
 
 ## Doc Sync
 
