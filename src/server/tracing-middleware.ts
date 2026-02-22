@@ -56,6 +56,7 @@ function recordLangfuseGeneration(
       output: resolvedOutput,
       metadata,
       tags: [ctx.trigger, ctx.model, `persona:${ctx.persona}`],
+      sessionId: ctx.boardId,
     });
     const generation = trace.generation({
       name: `${ctx.trigger}:${ctx.persona}`,
