@@ -161,7 +161,8 @@ export type WSServerMessage =
   | { type: "audience:wave"; emoji: string; count: number; effect: WaveEffect }
   | { type: "poll:start"; poll: Poll }
   | { type: "poll:result"; result: PollResult }
-  | { type: "pong"; sentAt: number };
+  | { type: "pong"; sentAt: number }
+  | { type: "board:renamed"; name: string };
 
 export const AI_USER_ID = "ai-agent" as const;
 export const AI_USERNAME = "AI Assistant" as const;

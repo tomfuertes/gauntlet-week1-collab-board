@@ -701,6 +701,7 @@ export function Board({
     onSfxReceived,
     onTransientEffect,
     onMoodReceived,
+    (name: string) => setBoardName(name),
   );
 
   const handleSfxSend = useCallback(

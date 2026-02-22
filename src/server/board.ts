@@ -226,10 +226,20 @@ export class Board extends DurableObject<Bindings> {
     return { ok: true };
   }
 
-  /** DO alarm handler - fires when poll expires, tallies votes, notifies ChatAgent. */
+  /** DO alarm handler - fires for poll expiry OR idle-rename. Single alarm slot shared.
+   *  KEY-DECISION 2026-02-22: Poll expiry takes priority (checked via activePoll class prop).
+   *  After poll resolves, reschedule idle rename alarm if board still needs one. */
   async alarm(): Promise<void> {
+    if (this.activePoll) {
+      await this.handlePollAlarm();
+    } else {
+      await this.handleIdleRenameAlarm();
+    }
+  }
+
+  private async handlePollAlarm(): Promise<void> {
     const poll = this.activePoll;
-    if (!poll) return; // stale alarm (e.g. after hibernation reset)
+    if (!poll) return;
 
     const votes = this.pollVotes;
     const tally: Record<string, number> = {};
@@ -265,6 +275,133 @@ export class Board extends DurableObject<Bindings> {
 
     // Notify ChatAgent so result injects into next AI response
     this.notifyPollResult(result);
+
+    // After poll ends, reschedule idle rename alarm if needed
+    await this.rescheduleIdleAlarmIfNeeded();
+  }
+
+  private async handleIdleRenameAlarm(): Promise<void> {
+    const boardId = await this.getBoardId();
+    if (!boardId) return;
+
+    // Guard: check last activity - if recent activity reset the alarm, skip
+    const lastActivity = await this.ctx.storage.get<number>("meta:lastActivityAt");
+    const idleAlarmAt = await this.ctx.storage.get<number>("meta:idleAlarmAt");
+    const now = Date.now();
+
+    // If last activity was within 10 min, this alarm is stale - reschedule
+    if (lastActivity && now - lastActivity < 600_000) {
+      await this.ctx.storage.setAlarm(lastActivity + 600_000);
+      return;
+    }
+
+    // If idleAlarmAt is in the future, we fired too early (alarm conflict) - reschedule
+    if (idleAlarmAt && idleAlarmAt > now) {
+      await this.ctx.storage.setAlarm(idleAlarmAt);
+      return;
+    }
+
+    // Check if board is still named "Untitled Board"
+    let currentName: string | null = null;
+    try {
+      const row = await this.env.DB.prepare("SELECT name FROM boards WHERE id = ?")
+        .bind(boardId)
+        .first<{ name: string }>();
+      currentName = row?.name ?? null;
+    } catch (err) {
+      console.error(JSON.stringify({ event: "idle-rename:d1-read-error", boardId, error: String(err) }));
+      return;
+    }
+
+    if (currentName !== "Untitled Board") {
+      console.debug(JSON.stringify({ event: "idle-rename:skip", boardId, reason: "user-renamed", name: currentName }));
+      return;
+    }
+
+    // Gather objects for summarization
+    const objects = await this.getAllObjects();
+    if (objects.length === 0) {
+      console.debug(JSON.stringify({ event: "idle-rename:skip", boardId, reason: "empty-board" }));
+      return;
+    }
+
+    // Build compact object summary (keep under 500 tokens)
+    const summary = objects
+      .filter((o) => o.type !== "line")
+      .slice(0, 20)
+      .map((o) => {
+        const text = (o.props as { text?: string }).text;
+        return text ? `${o.type}: "${text.slice(0, 30)}"` : o.type;
+      })
+      .join(", ");
+
+    // Call Haiku to generate a theatrical title
+    let newName: string | null = null;
+    try {
+      const response = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-api-key": this.env.ANTHROPIC_API_KEY,
+          "anthropic-version": "2023-06-01",
+        },
+        body: JSON.stringify({
+          model: "claude-haiku-4-5-20251001",
+          max_tokens: 30,
+          messages: [
+            {
+              role: "user",
+              content: `You are a theatrical naming AI. Given canvas objects from an improv scene, create a short punchy theatrical scene title (3-8 words). Be specific to the content. Reply with ONLY the title, no quotes or punctuation at the end.\n\nCanvas objects: ${summary}`,
+            },
+          ],
+        }),
+      });
+      if (response.ok) {
+        const data = (await response.json()) as { content: { type: string; text: string }[] };
+        const text = data.content?.find((c) => c.type === "text")?.text?.trim();
+        if (text && text.length > 0 && text.length < 100) {
+          newName = text;
+        }
+      } else {
+        console.error(JSON.stringify({ event: "idle-rename:haiku-error", boardId, status: response.status }));
+      }
+    } catch (err) {
+      console.error(JSON.stringify({ event: "idle-rename:haiku-fetch-error", boardId, error: String(err) }));
+    }
+
+    if (!newName) return;
+
+    // Update D1
+    try {
+      await this.env.DB.prepare("UPDATE boards SET name = ?, updated_at = datetime('now') WHERE id = ?")
+        .bind(newName, boardId)
+        .run();
+    } catch (err) {
+      console.error(JSON.stringify({ event: "idle-rename:d1-write-error", boardId, error: String(err) }));
+      return;
+    }
+
+    // Broadcast to connected clients
+    this.broadcast({ type: "board:renamed", name: newName });
+    console.debug(JSON.stringify({ event: "idle-rename:renamed", boardId, name: newName }));
+
+    // Clear scheduled alarm marker
+    await this.ctx.storage.delete("meta:idleAlarmAt");
+  }
+
+  /** Schedule idle rename alarm 10 min from now, tracking it in storage. */
+  private async scheduleIdleAlarm(): Promise<void> {
+    const fireAt = Date.now() + 600_000;
+    await this.ctx.storage.put("meta:idleAlarmAt", fireAt);
+    await this.ctx.storage.setAlarm(fireAt);
+  }
+
+  /** After a poll ends, re-check if idle rename alarm should be rescheduled. */
+  private async rescheduleIdleAlarmIfNeeded(): Promise<void> {
+    const idleAlarmAt = await this.ctx.storage.get<number>("meta:idleAlarmAt");
+    if (idleAlarmAt && idleAlarmAt > Date.now()) {
+      await this.ctx.storage.setAlarm(idleAlarmAt);
+    }
   }
 
   /** Set AI presence visibility in the presence list */
@@ -882,9 +1019,19 @@ export class Board extends DurableObject<Bindings> {
     });
   }
 
-  /** Fire-and-forget D1 activity increment (non-blocking) */
+  /** Fire-and-forget D1 activity increment + idle alarm refresh (non-blocking) */
   private trackActivity(): void {
     this.withBoardId("activity:record", (id) => recordBoardActivity(this.env.DB, id));
+    // Record last activity timestamp and schedule idle rename alarm (reset on each activity)
+    this.ctx.waitUntil(
+      (async () => {
+        const now = Date.now();
+        await this.ctx.storage.put("meta:lastActivityAt", now);
+        await this.scheduleIdleAlarm();
+      })().catch((err: unknown) => {
+        console.error(JSON.stringify({ event: "idle-alarm:schedule-error", error: String(err) }));
+      }),
+    );
   }
 
   /** Fire-and-forget challenge reaction count increment (no-op if board not linked to a challenge) */

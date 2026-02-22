@@ -101,6 +101,7 @@ export function useWebSocket(
   onSfx?: (effect: string, emoji: string, label: string, x: number, y: number) => void,
   onTransient?: (effect: TransientEffect) => void,
   onMood?: (mood: string, intensity: number) => void,
+  onBoardRenamed?: (name: string) => void,
 ): UseWebSocketReturn {
   const wsRef = useRef<WebSocket | null>(null);
   // Refs so the WS closure always calls the latest callbacks without reconnecting
@@ -120,6 +121,8 @@ export function useWebSocket(
   onTransientRef.current = onTransient;
   const onMoodRef = useRef(onMood);
   onMoodRef.current = onMood;
+  const onBoardRenamedRef = useRef(onBoardRenamed);
+  onBoardRenamedRef.current = onBoardRenamed;
   const lastServerMessageAt = useRef(0);
   // Stores the most recent DO round-trip latency in ms (-1 = no measurement yet)
   const lastRttMs = useRef(-1);
@@ -374,6 +377,9 @@ export function useWebSocket(
             setConnectionState("disconnected");
             setObjects(new Map());
             setPresence([]);
+            break;
+          case "board:renamed":
+            onBoardRenamedRef.current?.(msg.name);
             break;
         }
       };
