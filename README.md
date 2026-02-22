@@ -26,7 +26,9 @@ Multiplayer improv canvas with AI agent integration. Real-time collaborative whi
 - Stage Manager: AI sets up scene before first exchange
 - Spectator mode with audience polls and collective wave effects
 - Public scene gallery and replay viewer
-- Emoji reactions, heckles, director notes, keyword prefixes (note:/qa:)
+- AI Show: autonomous two-performer improv (DO alarm-driven, 12 turns, zero human input)
+- Chat prefixes: `SM:` (stage direction), `QA:` (test bypass)
+- Emoji reactions, audience polls, collective wave effects
 
 ## Architecture
 
@@ -49,6 +51,17 @@ npm run dev          # build + wrangler dev
 ```
 
 Requires: Node.js 20+, Cloudflare account with Workers Paid plan ($5/mo for DOs).
+
+## v2 Roadmap
+
+- [ ] Remove `Note:` prefix (half-baked, no client UI) and replace with `SM:` intent chip in ChatPanel
+- [ ] v28 Sonnet prompt tuning - Sonnet scores 80% vs Haiku 97% due to over-creation during crises; needs model-tier-aware prompt injection
+- [ ] Rebaseline narrative eval with fixed judge (tool_usage dimension was broken pre-v27)
+- [ ] AI Show: audience interaction during shows (polls, heckle-to-influence)
+- [ ] AI Show: "next show in X minutes" scheduled shows
+- [ ] AI Show: custom persona/model selection for shows
+- [ ] Heckle interaction (spectators influence the scene via typed heckles)
+- [ ] Per-user show daily budget cap (separate from main AI budget)
 
 ## Documentation
 
