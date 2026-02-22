@@ -366,7 +366,8 @@ export type SharedBounds = Array<{ x: number; y: number; width: number; height: 
  *  @param maxCreates - per-closure object creation budget (local cap).
  *  @param createBudget - shared ref for cross-closure global cap (stageManager + main turn).
  *  @param globalMaxCreates - max total creates across all closures sharing createBudget.
- *  @param sharedBounds - shared array for cross-closure layout awareness (stageManager + main turn). */
+ *  @param sharedBounds - shared array for cross-closure layout awareness (stageManager + main turn).
+ *  @param qaMode - when true, bypasses per-turn maxCreates caps for QA stress testing. OOB clamping stays active. */
 export function createSDKTools(
   stub: BoardStub,
   batchId?: string,
@@ -376,6 +377,7 @@ export function createSDKTools(
   createBudget?: CreateBudget,
   globalMaxCreates?: number,
   sharedBounds?: SharedBounds,
+  qaMode = false,
 ) {
   // Rotate through AI_PALETTE per streamText call so multi-entity scenes get distinct colors.
   // Only used as fallback when the LLM doesn't specify an explicit color.
@@ -473,23 +475,45 @@ export function createSDKTools(
    * Position should already be set by flowPlace() before calling this.
    */
   async function enforcedCreate(obj: BoardObject) {
-    // Local per-closure cap - return success-shaped result so LLM doesn't retry
-    if (aiCreateCount >= MAX_AI_CREATES_PER_RESPONSE) {
-      console.debug(JSON.stringify({ event: "ai:layout:cap", dropped: obj.type, count: aiCreateCount }));
-      return { created: obj.id, type: obj.type, x: obj.x, y: obj.y, width: obj.width, height: obj.height };
+    if (!qaMode) {
+      // Local per-closure cap - return success-shaped result so LLM doesn't retry
+      if (aiCreateCount >= MAX_AI_CREATES_PER_RESPONSE) {
+        console.log(
+          JSON.stringify({
+            event: "ai:create:capped",
+            objType: obj.type,
+            localCount: aiCreateCount,
+            localMax: MAX_AI_CREATES_PER_RESPONSE,
+            globalUsed: createBudget?.used,
+            globalMax: globalMaxCreates,
+          }),
+        );
+        return { created: obj.id, type: obj.type, x: obj.x, y: obj.y, width: obj.width, height: obj.height };
+      }
+
+      // Global cross-closure cap (shared between stageManager + main streamText)
+      if (createBudget && globalMaxCreates !== undefined && createBudget.used >= globalMaxCreates) {
+        console.log(
+          JSON.stringify({
+            event: "ai:create:capped",
+            objType: obj.type,
+            localCount: aiCreateCount,
+            localMax: MAX_AI_CREATES_PER_RESPONSE,
+            globalUsed: createBudget?.used,
+            globalMax: globalMaxCreates,
+          }),
+        );
+        return { created: obj.id, type: obj.type, x: obj.x, y: obj.y, width: obj.width, height: obj.height };
+      }
     }
 
-    // Global cross-closure cap (shared between stageManager + main streamText)
-    if (createBudget && globalMaxCreates !== undefined && createBudget.used >= globalMaxCreates) {
-      console.debug(
-        JSON.stringify({ event: "ai:layout:global-cap", dropped: obj.type, globalUsed: createBudget.used }),
-      );
-      return { created: obj.id, type: obj.type, x: obj.x, y: obj.y, width: obj.width, height: obj.height };
-    }
-
-    // OOB clamping - ensure object stays fully within canvas bounds
+    // OOB clamping - ensure object stays fully within canvas bounds (active even in qaMode)
     obj.x = Math.max(CANVAS_MIN_X, Math.min(obj.x, CANVAS_MAX_X - obj.width));
     obj.y = Math.max(CANVAS_MIN_Y, Math.min(obj.y, CANVAS_MAX_Y - obj.height));
+
+    if (qaMode) {
+      console.log(JSON.stringify({ event: "ai:create:qa-bypass", objType: obj.type, count: aiCreateCount }));
+    }
 
     const result = await createAndMutate(stub, obj);
     if (!("error" in result)) {
@@ -500,6 +524,14 @@ export function createSDKTools(
       }
       aiCreateCount++;
       if (createBudget) createBudget.used++;
+      console.log(
+        JSON.stringify({
+          event: "ai:create:ok",
+          objType: obj.type,
+          localCount: aiCreateCount,
+          globalUsed: createBudget?.used,
+        }),
+      );
     }
     return result;
   }
@@ -1094,16 +1126,21 @@ export function createSDKTools(
         const w = width ?? 200;
         const h = height ?? 300;
 
-        // Count cap: entire composition counts as 1 create (check local + global)
-        if (aiCreateCount >= MAX_AI_CREATES_PER_RESPONSE) {
-          console.debug(JSON.stringify({ event: "ai:layout:cap", dropped: "drawScene", count: aiCreateCount }));
-          return { created: 0, label, bounds: { x: 0, y: 0, width: w, height: h }, batchId: "", partIds: [] };
+        // Count cap: entire composition counts as 1 create (check local + global; skipped in qaMode)
+        if (!qaMode) {
+          if (aiCreateCount >= MAX_AI_CREATES_PER_RESPONSE) {
+            console.debug(JSON.stringify({ event: "ai:layout:cap", dropped: "drawScene", count: aiCreateCount }));
+            return { created: 0, label, bounds: { x: 0, y: 0, width: w, height: h }, batchId: "", partIds: [] };
+          }
+          if (createBudget && globalMaxCreates !== undefined && createBudget.used >= globalMaxCreates) {
+            console.debug(
+              JSON.stringify({ event: "ai:layout:global-cap", dropped: "drawScene", globalUsed: createBudget.used }),
+            );
+            return { created: 0, label, bounds: { x: 0, y: 0, width: w, height: h }, batchId: "", partIds: [] };
+          }
         }
-        if (createBudget && globalMaxCreates !== undefined && createBudget.used >= globalMaxCreates) {
-          console.debug(
-            JSON.stringify({ event: "ai:layout:global-cap", dropped: "drawScene", globalUsed: createBudget.used }),
-          );
-          return { created: 0, label, bounds: { x: 0, y: 0, width: w, height: h }, batchId: "", partIds: [] };
+        if (qaMode) {
+          console.log(JSON.stringify({ event: "ai:create:qa-bypass", objType: "drawScene", count: aiCreateCount }));
         }
 
         // Flow-place the bounding box (parts go inside it via relative coordinates)
@@ -1394,6 +1431,13 @@ export function createSDKTools(
         }
 
         const completed = operations.length - failed;
+        console.log(
+          JSON.stringify({
+            event: "ai:batch:done",
+            total: operations.length,
+            succeeded: results.filter((r) => !(isPlainObject(r) && "error" in r)).length,
+          }),
+        );
         return {
           completed,
           failed,

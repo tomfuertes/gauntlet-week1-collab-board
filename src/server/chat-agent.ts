@@ -855,10 +855,34 @@ export class ChatAgent extends AIChatAgent<Bindings> {
     // KEY-DECISION 2026-02-21: sharedBounds mirrors createBudget pattern - a mutable array ref
     // so stageManager objects are visible to main's flowPlace and vice versa. Fixes overlap=12
     // on grid-2x2 where stageManager + main were placing objects without awareness of each other.
+    // Pre-detect qa: prefix so qaMode can be passed to createSDKTools before the main streamText call.
+    // Full detection + message rewrite happens below; this is a lightweight read-only check.
+    const _lastMsgPrecheck = this.messages[this.messages.length - 1];
+    const _lastTextPrecheck =
+      _lastMsgPrecheck?.role === "user"
+        ? (_lastMsgPrecheck.parts
+            ?.filter((p) => p.type === "text")
+            .map((p) => (p as { type: "text"; text: string }).text)
+            .join("") ?? "")
+        : "";
+    // Strip [username] prefix, then check for qa: (case-insensitive, trimmed)
+    const _contentPrecheck = _lastTextPrecheck.replace(/^\[[^\]]+\]\s*/, "");
+    const qaMode = /^qa:\s*.+/is.test(_contentPrecheck);
+
     const createBudget: CreateBudget = { used: 0 };
     const sharedBounds: SharedBounds = [];
     const batchId = crypto.randomUUID();
-    const tools = createSDKTools(boardStub, batchId, this.env.AI, this.ctx.storage, 4, createBudget, 6, sharedBounds);
+    const tools = createSDKTools(
+      boardStub,
+      batchId,
+      this.env.AI,
+      this.ctx.storage,
+      4,
+      createBudget,
+      6,
+      sharedBounds,
+      qaMode,
+    );
 
     // Update game mode from client (sent on every message so it survives DO hibernation)
     if (body?.gameMode && ["yesand", "freeform", "harold"].includes(body.gameMode)) {
@@ -1288,6 +1312,7 @@ export class ChatAgent extends AIChatAgent<Bindings> {
           personas,
           createBudget,
           sharedBounds,
+          qaMode,
         );
       }
 
@@ -1384,6 +1409,7 @@ export class ChatAgent extends AIChatAgent<Bindings> {
     personas: Persona[],
     createBudget?: CreateBudget,
     sharedBounds?: SharedBounds,
+    qaMode = false,
   ): Promise<void> {
     // Persist for troupe-aware persona rotation on subsequent messages (survives DO hibernation)
     await this.ctx.storage.put("troupeConfig", troupeConfig);
@@ -1418,7 +1444,17 @@ export class ChatAgent extends AIChatAgent<Bindings> {
     }
 
     const batchId = crypto.randomUUID();
-    const tools = createSDKTools(boardStub, batchId, this.env.AI, this.ctx.storage, 3, createBudget, 6, sharedBounds);
+    const tools = createSDKTools(
+      boardStub,
+      batchId,
+      this.env.AI,
+      this.ctx.storage,
+      3,
+      createBudget,
+      6,
+      sharedBounds,
+      qaMode,
+    );
 
     try {
       const result = await generateText({
