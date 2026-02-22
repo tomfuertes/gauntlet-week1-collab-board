@@ -2288,8 +2288,8 @@ export class ChatAgent extends AIChatAgent<Bindings> {
         ) +
         reactiveLifecycleBlock +
         `\n\n[REACTIVE MODE] ${activePersona.name} just placed: ${lastActionSummary || "objects on the canvas"}. ` +
-        `React in character with exactly 1 spoken sentence (required - always produce text). ` +
-        `Optionally place 1 canvas object that BUILDS on theirs (same area, related content) - do NOT use batchExecute.`;
+        `React in character with exactly 1 spoken sentence (required). ` +
+        `A visual tool call is OPTIONAL - speaking alone is sufficient. If you do place an object, do NOT use batchExecute.`;
 
       const reactiveScenePhase = computeScenePhase(this.messages.filter((m) => m.role === "user").length);
       const model = this._getTracedModel("reactive", reactivePersona.name, {
