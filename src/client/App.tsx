@@ -300,6 +300,12 @@ function AppContent() {
     <BoardList
       user={user}
       onSelectBoard={(id) => {
+        // Mark as initiator before navigating - this user actively chose the board from their list
+        try {
+          sessionStorage.setItem(`yesaind:initiator:${id}`, "1");
+        } catch {
+          // storage unavailable - Board component falls back to assuming initiator
+        }
         location.hash = `board/${id}`;
         setBoardId(id);
       }}

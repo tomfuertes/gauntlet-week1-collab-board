@@ -72,6 +72,12 @@ export function LeaderboardPanel({ user, onBack }: { user: AuthUser | null; onBa
         return;
       }
       const { boardId } = (await res.json()) as { boardId: string };
+      // Mark as initiator - user actively entered this challenge board
+      try {
+        sessionStorage.setItem(`yesaind:initiator:${boardId}`, "1");
+      } catch {
+        // storage unavailable - Board component falls back to assuming initiator
+      }
       location.hash = `board/${boardId}`;
     } catch (err) {
       console.error(JSON.stringify({ event: "challenge:enter:fetch:error", error: String(err) }));

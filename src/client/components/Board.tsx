@@ -34,6 +34,7 @@ import { AiCursor } from "./AiCursor";
 import { ChatPanel } from "./ChatPanel";
 import { CanvasPreview } from "./CanvasPreview";
 import { OnboardModal } from "./OnboardModal";
+import { WaitingCurtainsModal } from "./WaitingCurtainsModal";
 import { ConfettiBurst } from "./ConfettiBurst";
 import { WaveEffect, useWaveEffect, getWaveContainerClass, waveNeedsOverlay } from "./WaveEffect";
 import { BoardGrid } from "./BoardGrid";
@@ -315,6 +316,16 @@ export function Board({
   const [chatInitialPrompt, setChatInitialPrompt] = useState<string | undefined>();
   const [chatInitialTemplateId, setChatInitialTemplateId] = useState<string | undefined>();
   const [boardGenStarted, setBoardGenStarted] = useState(false);
+  // KEY-DECISION 2026-02-22: sessionStorage tracks whether this browser tab has gone through
+  // the OnboardModal wizard for this board. Invitees who land on an empty board won't have
+  // this key set, so they see WaitingCurtainsModal instead of the initiator wizard.
+  const [isInitiator, setIsInitiator] = useState(() => {
+    try {
+      return sessionStorage.getItem(`yesaind:initiator:${boardId}`) === "1";
+    } catch {
+      return true; // storage unavailable -> assume initiator to avoid blocking
+    }
+  });
   const [gameMode, setGameMode] = useState<GameMode>("freeform");
   const [boardName, setBoardName] = useState<string>("");
   // Claude Haiku 4.5 default; sent on every message so server knows which provider to use
@@ -363,6 +374,17 @@ export function Board({
         console.warn("[Board] Failed to fetch game mode, defaulting to freeform:", err);
       });
   }, [boardId, onLogout]);
+
+  // Mark this tab as the scene initiator - persists for the session so refreshes don't
+  // re-show WaitingCurtainsModal to the person who started the scene.
+  const markInitiator = useCallback(() => {
+    try {
+      sessionStorage.setItem(`yesaind:initiator:${boardId}`, "1");
+    } catch {
+      // storage unavailable - ignore
+    }
+    setIsInitiator(true);
+  }, [boardId]);
 
   // Fetch custom personas for this board (passed to OnboardModal wizard)
   useEffect(() => {
@@ -668,7 +690,7 @@ export function Board({
     deleteObject: wsDelete,
     patchObjectLocal,
     batchUndo,
-    lastServerMessageAt,
+    lastRttMs,
   } = useWebSocket(
     boardId,
     onAnimatedUpdate,
@@ -1982,7 +2004,8 @@ export function Board({
     const previewHeight = Math.round(size.height * 0.3);
     // KEY-DECISION 2026-02-19: Show OnboardModal on mobile when board is empty and no scene has started.
     // boardGenStarted doubles as the "dismissed onboarding" flag on mobile too.
-    const showMobileOnboard = initialized && objects.size === 0 && !boardGenStarted;
+    // isInitiator distinguishes the scene creator from an invitee (same WS state, different UX).
+    const showMobileOnboard = initialized && objects.size === 0 && !boardGenStarted && isInitiator;
     return (
       <div
         style={{
@@ -2116,6 +2139,7 @@ export function Board({
           <OnboardModal
             personas={personas}
             onSubmit={(prompt, mode, model, personaId, _templateId, tc) => {
+              markInitiator();
               setGameMode(mode);
               setAIModel(model);
               setClaimedPersonaId(personaId);
@@ -2131,8 +2155,16 @@ export function Board({
                 }).catch((e) => console.error("Failed to save game mode:", e));
               }
             }}
-            onDismiss={() => setBoardGenStarted(true)}
+            onDismiss={() => {
+              markInitiator();
+              setBoardGenStarted(true);
+            }}
           />
+        )}
+
+        {/* Waiting for curtains - invitee lands on empty board before scene starts (mobile) */}
+        {initialized && objects.size === 0 && !boardGenStarted && !isInitiator && (
+          <WaitingCurtainsModal hasObjects={objects.size > 0} />
         )}
 
         {/* Connection status toast */}
@@ -2339,11 +2371,12 @@ export function Board({
         </div>
       )}
 
-      {/* Onboard modal - shown on empty boards until user starts a scene or dismisses */}
-      {initialized && objects.size === 0 && !boardGenStarted && !chatOpen && (
+      {/* Onboard modal - shown to the scene initiator on empty boards */}
+      {initialized && objects.size === 0 && !boardGenStarted && !chatOpen && isInitiator && (
         <OnboardModal
           personas={personas}
           onSubmit={(prompt, mode, model, personaId, templateId, tc) => {
+            markInitiator();
             setGameMode(mode);
             setAIModel(model);
             setClaimedPersonaId(personaId);
@@ -2362,8 +2395,16 @@ export function Board({
               }).catch((e) => console.error("Failed to save game mode:", e));
             }
           }}
-          onDismiss={() => setBoardGenStarted(true)}
+          onDismiss={() => {
+            markInitiator();
+            setBoardGenStarted(true);
+          }}
         />
+      )}
+
+      {/* Waiting for curtains - shown to invitees on empty boards until first object arrives */}
+      {initialized && objects.size === 0 && !boardGenStarted && !isInitiator && (
+        <WaitingCurtainsModal hasObjects={objects.size > 0} />
       )}
 
       {/* Ambient mood lighting - full-canvas gradient behind Konva Stage */}
@@ -3310,7 +3351,7 @@ export function Board({
         cursorCount={cursors.size}
         connectionState={connectionState}
         stageRef={stageRef}
-        lastServerMessageAt={lastServerMessageAt}
+        lastRttMs={lastRttMs}
       />
 
       {/* Curtain call confetti bursts - spread across viewport */}
