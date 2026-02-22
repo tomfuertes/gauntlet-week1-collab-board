@@ -1772,7 +1772,18 @@ export class ChatAgent extends AIChatAgent<Bindings> {
     const dims = ["yesAnd", "characterConsistency", "sceneAdvancement", "toolAppropriateness"] as const;
     const allValid = dims.every((d) => typeof scores[d] === "number" && scores[d] >= 0 && scores[d] <= 3);
     if (!allValid) {
-      console.warn(JSON.stringify({ event: "quality-signal:invalid", boardId: this.name, raw: scores }));
+      console.warn(
+        JSON.stringify({
+          event: "quality-signal:invalid",
+          boardId: this.name,
+          raw: {
+            yesAnd: scores.yesAnd,
+            characterConsistency: scores.characterConsistency,
+            sceneAdvancement: scores.sceneAdvancement,
+            toolAppropriateness: scores.toolAppropriateness,
+          },
+        }),
+      );
       return;
     }
 
@@ -1788,7 +1799,6 @@ export class ChatAgent extends AIChatAgent<Bindings> {
         sceneAdvancement: scores.sceneAdvancement,
         toolAppropriateness: scores.toolAppropriateness,
         total,
-        reasoning: scores.reasoning,
       }),
     );
 
