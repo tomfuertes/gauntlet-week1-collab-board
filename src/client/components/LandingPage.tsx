@@ -34,6 +34,7 @@ export function LandingPage({ onAuth }: LandingPageProps) {
     <div
       style={{
         minHeight: "100vh",
+        width: "100%",
         background: colors.bg,
         color: colors.text,
         display: "flex",
