@@ -49,6 +49,9 @@ DEFAULT_AI_MODEL = "gpt-4o-mini"
 LANGFUSE_PUBLIC_KEY = "pk-lf-683e2ebc-6e3d-4f02-bd85-9d7d67d06a94"
 LANGFUSE_BASE_URL = "https://us.cloud.langfuse.com"
 
+# Per-turn quality signal scoring via Haiku judge (off by default - set to "true" to enable)
+QUALITY_SIGNAL_ENABLED = ""
+
 # AUTH_SECRET set via: wrangler secret put AUTH_SECRET
 # ANTHROPIC_API_KEY set via: wrangler secret put ANTHROPIC_API_KEY
 # OPENAI_API_KEY set via: wrangler secret put OPENAI_API_KEY

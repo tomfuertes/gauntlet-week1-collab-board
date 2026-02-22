@@ -17,6 +17,8 @@ export type Bindings = Env & {
   LANGFUSE_PUBLIC_KEY?: string;
   LANGFUSE_SECRET_KEY?: string;
   LANGFUSE_BASE_URL?: string; // default: https://cloud.langfuse.com
+  // Quality signal scoring (off by default - enable via wrangler.toml var)
+  QUALITY_SIGNAL_ENABLED?: string;
 };
 
 /** Increment activity counter for a board (obj:create, obj:delete, chat message) */

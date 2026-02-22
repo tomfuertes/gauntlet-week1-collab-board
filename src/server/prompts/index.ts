@@ -58,3 +58,7 @@ export {
 
 // Critic
 export { CRITIC_PROMPT } from "./critic";
+
+// Quality signal
+export type { QualitySignalContext, QualitySignalScores } from "./quality-signal";
+export { buildQualitySignalPrompt } from "./quality-signal";

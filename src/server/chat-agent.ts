@@ -39,8 +39,9 @@ import {
   buildDirectorNotePrompt,
   buildQACommandPrompt,
   buildStageManagerPrompt,
+  buildQualitySignalPrompt,
 } from "./prompts";
-import type { GameModeState } from "./prompts";
+import type { GameModeState, QualitySignalScores } from "./prompts";
 import type { Bindings } from "./env";
 import { recordBoardActivity } from "./env";
 import type {
@@ -1295,6 +1296,31 @@ export class ChatAgent extends AIChatAgent<Bindings> {
         }),
       );
 
+      // Per-turn quality signal: score 4 improv dimensions via Haiku judge (after reactive persona)
+      if (String(this.env.QUALITY_SIGNAL_ENABLED) === "true") {
+        const lastUserMsg = [...this.messages].reverse().find((m) => m.role === "user");
+        const lastAiMsg = [...this.messages].reverse().find((m) => m.role === "assistant");
+        const userMsgText =
+          lastUserMsg?.parts
+            ?.filter((p) => p.type === "text")
+            .map((p) => (p as { type: "text"; text: string }).text)
+            .join("") ?? "";
+        const aiMsgText =
+          lastAiMsg?.parts
+            ?.filter((p) => p.type === "text")
+            .map((p) => (p as { type: "text"; text: string }).text)
+            .join("") ?? "";
+        const toolCallNames: string[] =
+          (finishArg?.steps as any[])?.flatMap((s: any) =>
+            (s.toolCalls ?? []).map((tc: any) => tc.toolName ?? "unknown"),
+          ) ?? [];
+        this.ctx.waitUntil(
+          this._scoreQualitySignal(userMsgText, aiMsgText, toolCallNames, personas).catch((err: unknown) => {
+            console.warn(JSON.stringify({ event: "quality-signal:unhandled", boardId: this.name, error: String(err) }));
+          }),
+        );
+      }
+
       return onFinish(...args);
     };
 
@@ -1701,6 +1727,92 @@ export class ChatAgent extends AIChatAgent<Bindings> {
       console.debug(JSON.stringify({ event: "critic:saved", boardId: this.name, score, model: modelName }));
     } catch (err) {
       console.error(JSON.stringify({ event: "critic:save-error", boardId: this.name, error: String(err) }));
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Per-turn quality signal (fires via ctx.waitUntil after reactive persona)
+  // ---------------------------------------------------------------------------
+
+  /** Score the current turn on 4 improv dimensions using a Haiku judge call.
+   *  Silent failure - never affects user experience.
+   *  Gated by QUALITY_SIGNAL_ENABLED env var (off by default). */
+  private async _scoreQualitySignal(
+    userMessage: string,
+    aiResponse: string,
+    toolCallNames: string[],
+    personas: Persona[],
+  ): Promise<void> {
+    if (!this.env.ANTHROPIC_API_KEY) return;
+
+    const prompt = buildQualitySignalPrompt({
+      userMessage,
+      aiResponse,
+      toolCalls: toolCallNames,
+      personas: personas.map((p) => p.name),
+      gameMode: this._gameMode ?? "freeform",
+    });
+
+    let scores: QualitySignalScores;
+    try {
+      const anthropic = createAnthropic({ apiKey: this.env.ANTHROPIC_API_KEY });
+      const result = await generateText({
+        model: anthropic("claude-haiku-4-5-20251001"),
+        messages: [{ role: "user" as const, content: prompt }],
+      });
+      scores = JSON.parse(result.text) as QualitySignalScores;
+    } catch (err) {
+      console.warn(JSON.stringify({ event: "quality-signal:error", boardId: this.name, error: String(err) }));
+      return;
+    }
+
+    // Validate scores are in expected 0-3 range
+    const dims = ["yesAnd", "characterConsistency", "sceneAdvancement", "toolAppropriateness"] as const;
+    const allValid = dims.every((d) => typeof scores[d] === "number" && scores[d] >= 0 && scores[d] <= 3);
+    if (!allValid) {
+      console.warn(JSON.stringify({ event: "quality-signal:invalid", boardId: this.name, raw: scores }));
+      return;
+    }
+
+    const total = dims.reduce((sum, d) => sum + scores[d], 0);
+    console.debug(
+      JSON.stringify({
+        event: "ai:quality-signal",
+        boardId: this.name,
+        promptVersion: PROMPT_VERSION,
+        gameMode: this._gameMode,
+        yesAnd: scores.yesAnd,
+        characterConsistency: scores.characterConsistency,
+        sceneAdvancement: scores.sceneAdvancement,
+        toolAppropriateness: scores.toolAppropriateness,
+        total,
+        reasoning: scores.reasoning,
+      }),
+    );
+
+    // Push scores to Langfuse if configured
+    const lf = this._getLangfuse();
+    if (lf) {
+      try {
+        const traceId = `quality-signal:${this.name}:${Date.now()}`;
+        const trace = lf.trace({
+          name: "quality-signal",
+          metadata: { boardId: this.name, promptVersion: PROMPT_VERSION, gameMode: this._gameMode },
+          tags: ["quality-signal"],
+        });
+        dims.forEach((dim) => {
+          trace.score({ name: dim, value: scores[dim], dataType: "NUMERIC" });
+        });
+        lf.flushAsync().catch((err: unknown) => {
+          console.warn(
+            JSON.stringify({ event: "quality-signal:langfuse-flush-error", boardId: this.name, error: String(err) }),
+          );
+        });
+      } catch (err) {
+        console.warn(
+          JSON.stringify({ event: "quality-signal:langfuse-error", boardId: this.name, error: String(err) }),
+        );
+      }
     }
   }
 
