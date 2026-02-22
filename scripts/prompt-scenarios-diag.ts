@@ -177,14 +177,7 @@ interface Scenario {
 }
 
 /** Tool names that are "creative effects" (not canvas object creation) */
-const EFFECT_TOOLS = new Set([
-  "highlightObject",
-  "choreograph",
-  "spotlight",
-  "blackout",
-  "setMood",
-  "play_sfx",
-]);
+const EFFECT_TOOLS = new Set(["highlightObject", "choreograph", "spotlight", "blackout", "setMood", "play_sfx"]);
 
 const SCENARIOS: Scenario[] = [
   {
@@ -339,26 +332,18 @@ function analyzeFailures(scenario: Scenario, results: RunResult[]): string[] {
     modes.push(`TEXT-ONLY in ${textOnlyCount}/${failures.length} failures (no tools called)`);
   }
 
-  const wrongTypeCount = failures.filter(
-    (r) => r.totalToolCalls > 0 && r.createdTypes.length > 0,
-  ).length;
+  const wrongTypeCount = failures.filter((r) => r.totalToolCalls > 0 && r.createdTypes.length > 0).length;
   if (wrongTypeCount > 0) {
     const typesUsed = new Set(failures.flatMap((r) => r.createdTypes));
     modes.push(`WRONG TYPE in ${wrongTypeCount} failures - used: [${[...typesUsed].join(", ")}]`);
   }
 
-  const noCreatesCount = failures.filter(
-    (r) => r.totalToolCalls > 0 && r.createdTypes.length === 0,
-  ).length;
+  const noCreatesCount = failures.filter((r) => r.totalToolCalls > 0 && r.createdTypes.length === 0).length;
   if (noCreatesCount > 0) {
     const effectsUsed = new Set(
-      failures.filter((r) => r.totalToolCalls > 0 && r.createdTypes.length === 0).flatMap((r) =>
-        r.toolCallNames,
-      ),
+      failures.filter((r) => r.totalToolCalls > 0 && r.createdTypes.length === 0).flatMap((r) => r.toolCallNames),
     );
-    modes.push(
-      `EFFECTS-ONLY in ${noCreatesCount} failures - called: [${[...effectsUsed].join(", ")}]`,
-    );
+    modes.push(`EFFECTS-ONLY in ${noCreatesCount} failures - called: [${[...effectsUsed].join(", ")}]`);
   }
 
   if (scenario.id === "stakes-escalation") {
@@ -369,13 +354,8 @@ function analyzeFailures(scenario: Scenario, results: RunResult[]): string[] {
   }
 
   if (scenario.id === "grid-2x2") {
-    const underCreateCount = failures.filter(
-      (r) => r.createdTypes.filter((t) => t === "frame").length < 4,
-    ).length;
-    const frameTotal = failures.reduce(
-      (sum, r) => sum + r.createdTypes.filter((t) => t === "frame").length,
-      0,
-    );
+    const underCreateCount = failures.filter((r) => r.createdTypes.filter((t) => t === "frame").length < 4).length;
+    const frameTotal = failures.reduce((sum, r) => sum + r.createdTypes.filter((t) => t === "frame").length, 0);
     if (underCreateCount > 0) {
       modes.push(
         `UNDER-CREATION in ${underCreateCount} failures (avg ${(frameTotal / underCreateCount).toFixed(1)} frames, need 4)`,
@@ -477,7 +457,9 @@ async function main() {
   for (const r of sorted) {
     const bar = passRateBar(r.passRate);
     const status = r.passRate >= 0.8 ? "SOLVED" : r.passRate >= 0.4 ? "PARTIAL" : "BROKEN";
-    console.log(`  ${status.padEnd(8)} ${r.scenarioId.padEnd(20)} ${bar} ${(r.passRate * 100).toFixed(0)}% (avg ${r.avgScore.toFixed(0)}/100)`);
+    console.log(
+      `  ${status.padEnd(8)} ${r.scenarioId.padEnd(20)} ${bar} ${(r.passRate * 100).toFixed(0)}% (avg ${r.avgScore.toFixed(0)}/100)`,
+    );
   }
 
   console.log("\nTop failure modes:");

@@ -1791,32 +1791,40 @@ export class ChatAgent extends AIChatAgent<Bindings> {
       gameMode: this._gameMode ?? "freeform",
     });
 
-    let scores: QualitySignalScores;
+    let rawResponse: unknown;
     try {
       const anthropic = createAnthropic({ apiKey: this.env.ANTHROPIC_API_KEY });
       const result = await generateText({
         model: anthropic("claude-haiku-4-5-20251001"),
         messages: [{ role: "user" as const, content: prompt }],
       });
-      scores = JSON.parse(result.text) as QualitySignalScores;
+      rawResponse = JSON.parse(result.text);
     } catch (err) {
       console.warn(JSON.stringify({ event: "quality-signal:error", boardId: this.name, error: String(err) }));
       return;
     }
 
-    // Validate scores are in expected 0-3 range
+    // Extract ONLY numeric scores, discarding reasoning field to prevent PII leak
     const dims = ["yesAnd", "characterConsistency", "sceneAdvancement", "toolAppropriateness"] as const;
-    const allValid = dims.every((d) => typeof scores[d] === "number" && scores[d] >= 0 && scores[d] <= 3);
+    const scores: Record<string, number> = {};
+    const allValid = dims.every((d) => {
+      const val = (rawResponse as Record<string, unknown>)?.[d];
+      if (typeof val === "number" && val >= 0 && val <= 3) {
+        scores[d] = val;
+        return true;
+      }
+      return false;
+    });
     if (!allValid) {
       console.warn(
         JSON.stringify({
           event: "quality-signal:invalid",
           boardId: this.name,
           raw: {
-            yesAnd: scores.yesAnd,
-            characterConsistency: scores.characterConsistency,
-            sceneAdvancement: scores.sceneAdvancement,
-            toolAppropriateness: scores.toolAppropriateness,
+            yesAnd: scores["yesAnd"],
+            characterConsistency: scores["characterConsistency"],
+            sceneAdvancement: scores["sceneAdvancement"],
+            toolAppropriateness: scores["toolAppropriateness"],
           },
         }),
       );
@@ -1830,10 +1838,10 @@ export class ChatAgent extends AIChatAgent<Bindings> {
         boardId: this.name,
         promptVersion: PROMPT_VERSION,
         gameMode: this._gameMode,
-        yesAnd: scores.yesAnd,
-        characterConsistency: scores.characterConsistency,
-        sceneAdvancement: scores.sceneAdvancement,
-        toolAppropriateness: scores.toolAppropriateness,
+        yesAnd: scores["yesAnd"],
+        characterConsistency: scores["characterConsistency"],
+        sceneAdvancement: scores["sceneAdvancement"],
+        toolAppropriateness: scores["toolAppropriateness"],
         total,
       }),
     );

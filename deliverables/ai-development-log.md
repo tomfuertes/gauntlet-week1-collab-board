@@ -20,6 +20,7 @@
 ## MCP Usage
 
 **playwright-cli** was the primary MCP. Used for:
+
 - Two-browser multiplayer sync verification (two named sessions, interacting independently)
 - UAT on production (`https://yesaind.com`) after every significant feature
 - Accessibility tree snapshots (`playwright-cli snapshot`) for understanding page structure without visual screenshots
@@ -33,26 +34,31 @@ No other MCPs were used. Langfuse was integrated directly via its SDK for observ
 ## Effective Prompts
 
 **1. Initial AI agent architecture (Feb 16, session f8e4fcae):**
+
 > "Implement the following plan: AI Agent: Workers AI + Board Manipulation. Users type natural language in a chat sidebar, the AI manipulates the board (create stickies, organize content, answer questions), and all connected clients see changes in real-time via the existing WebSocket sync."
 
 Worked because it gave the complete architecture diagram and the key insight: "AI mutations go through the same DO path as user mutations, so LWW + broadcast work automatically."
 
 **2. CEO Mode delegation (Feb 20, session ca0d28f0):**
+
 > "Let's keep going with the swarm of agents on tasks in parallel. Play an agent person was on first principle rather than giving them one task to follow through. And last time all of the agents ran out of context, so try to break tasks up into bite-sized chunks. That can be handled well by Sonnet or Haiku."
 
 This established the parallel delegation pattern that dominated the second half of the week. Breaking tasks small enough for Haiku was the key efficiency unlock.
 
 **3. Server-side layout enforcement (Feb 21, session 0f95fcea):**
+
 > "Move layout correctness from prompt instructions to server-side enforcement. After the AI creates objects via tool calls, the server should validate and fix positions before persisting. This frees the prompt from mechanical spatial rules."
 
 This was the architectural pivot of the week - recognizing that LLMs cannot do spatial reasoning reliably, so the right fix was code, not prompting. Led to the `flowPlace()` auto-layout engine and `enforcedCreate()` validation layer.
 
 **4. Root cause debugging (Feb 22, session 235b2d5e):**
+
 > "The auto-layout engine (flowPlace) should prevent overlap, but eval shows overlap=12 on grid-2x2. Root cause: each createSDKTools closure has its own `aiCreatedBounds` array. When stageManager and main both create objects, they place objects without knowing about each other's positions."
 
 Effective because it provided the diagnosis, not just the symptom. The agent could implement `SharedBounds` immediately without investigation.
 
 **5. Orient and proceed (Feb 22, session 3560dad4):**
+
 > "Read the task list to orient and then let me know where you think we should go. And if you have a strong recommendation, just start doing it in CEO mode."
 
 The most efficient prompt type: trust the orchestrator to triage, recommend, and execute without a checkpoint. Combined with a full TaskList, this kept momentum without requiring constant human direction.
@@ -111,27 +117,27 @@ The CEO Mode workflow is enforced by a system of Claude Code hooks - shell scrip
 
 ### Security Hooks
 
-| Hook | Event | Purpose |
-|------|-------|---------|
-| `bash-secrets-warn.sh` | PreToolUse (Bash) | Blocks API keys/tokens from appearing in shell commands |
-| `detect-secrets.sh` | PreToolUse (Edit/Write) | Blocks secrets from being written to files, suggests env vars |
-| `secret-patterns.sh` | (shared library) | 25+ regex patterns for AWS, GitHub, Stripe, OpenAI, Anthropic keys, private keys, DB URLs |
-| `git-clean-guard.sh` | PreToolUse (Bash) | Prevents `git clean -f` which permanently destroys untracked files |
-| `npm-malware-scan.sh` | SessionStart + PreToolUse | Detects supply-chain malware (Shai-Hulud campaign, Sep-Oct 2025) |
+| Hook                   | Event                     | Purpose                                                                                   |
+| ---------------------- | ------------------------- | ----------------------------------------------------------------------------------------- |
+| `bash-secrets-warn.sh` | PreToolUse (Bash)         | Blocks API keys/tokens from appearing in shell commands                                   |
+| `detect-secrets.sh`    | PreToolUse (Edit/Write)   | Blocks secrets from being written to files, suggests env vars                             |
+| `secret-patterns.sh`   | (shared library)          | 25+ regex patterns for AWS, GitHub, Stripe, OpenAI, Anthropic keys, private keys, DB URLs |
+| `git-clean-guard.sh`   | PreToolUse (Bash)         | Prevents `git clean -f` which permanently destroys untracked files                        |
+| `npm-malware-scan.sh`  | SessionStart + PreToolUse | Detects supply-chain malware (Shai-Hulud campaign, Sep-Oct 2025)                          |
 
 ### Team Orchestration Hooks
 
-| Hook | Event | Purpose |
-|------|-------|---------|
-| `force-background-tasks.sh` | PreToolUse (Task) | Injects `run_in_background: true` into named teammate spawns so the lead never blocks |
-| `ceo-stop-guard.sh` | Stop | Prevents lead from stopping session while workers are active |
-| `task-completion-gate.sh` | TaskCompleted | Enforces structured metadata (changes, learnings, risks) before workers can mark tasks complete |
-| `task-call-logger.sh` | PreToolUse (Task) | Diagnostic logger for debugging team orchestration issues |
+| Hook                        | Event             | Purpose                                                                                         |
+| --------------------------- | ----------------- | ----------------------------------------------------------------------------------------------- |
+| `force-background-tasks.sh` | PreToolUse (Task) | Injects `run_in_background: true` into named teammate spawns so the lead never blocks           |
+| `ceo-stop-guard.sh`         | Stop              | Prevents lead from stopping session while workers are active                                    |
+| `task-completion-gate.sh`   | TaskCompleted     | Enforces structured metadata (changes, learnings, risks) before workers can mark tasks complete |
+| `task-call-logger.sh`       | PreToolUse (Task) | Diagnostic logger for debugging team orchestration issues                                       |
 
 ### Knowledge Management Hooks
 
-| Hook | Event | Purpose |
-|------|-------|---------|
+| Hook                     | Event      | Purpose                                                                                 |
+| ------------------------ | ---------- | --------------------------------------------------------------------------------------- |
 | `session-end-promote.sh` | SessionEnd | Auto-promotes learnings appearing in 2+ completed tasks to CLAUDE.md with deduplication |
 
 ### How They Wire Together

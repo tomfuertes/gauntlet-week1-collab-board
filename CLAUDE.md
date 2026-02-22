@@ -12,27 +12,28 @@ React + Vite + react-konva + TypeScript | Cloudflare Workers + Hono + Durable Ob
 
 **Key server files:**
 
-| File | What it does |
-|------|-------------|
-| `src/server/index.ts` | Hono routes, board CRUD, DO exports, WS upgrade, persona/replay/gallery APIs |
-| `src/server/chat-agent.ts` | ChatAgent DO - AI chat, troupe config, stage manager, audience polls/waves, persona claims, director nudges |
-| `src/server/ai-tools-sdk.ts` | 19 AI tools incl. askAudience (Zod schemas, batchExecute meta-tool) |
-| `src/server/prompts/` | Prompt modules: `system.ts` (core prompt), `intents.ts`, `personas.ts`, `game-modes.ts`, `dramatic-arc.ts`, `stage-manager.ts`, `reactions.ts`, `critic.ts`, `index.ts` (barrel + PROMPT_VERSION) |
-| `src/server/tracing-middleware.ts` | AI SDK middleware -> D1 traces + optional Langfuse |
-| `src/server/auth.ts` | Passkey/WebAuthn primary auth + password fallback (PBKDF2 timing-safe, D1 sessions, rate limiting) |
-| `src/shared/types.ts` | Persona, BoardObject, GameMode, AIModel, AI_MODELS, TroupeConfig, Poll, WaveEffect, canvas bounds constants |
-| `src/shared/board-templates.ts` | Template registry: typed BoardObject arrays, displayText, `getTemplateById()` for server-side seeding |
+| File                               | What it does                                                                                                                                                                                      |
+| ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `src/server/index.ts`              | Hono routes, board CRUD, DO exports, WS upgrade, persona/replay/gallery APIs                                                                                                                      |
+| `src/server/chat-agent.ts`         | ChatAgent DO - AI chat, troupe config, stage manager, audience polls/waves, persona claims, director nudges                                                                                       |
+| `src/server/ai-tools-sdk.ts`       | 19 AI tools incl. askAudience (Zod schemas, batchExecute meta-tool)                                                                                                                               |
+| `src/server/prompts/`              | Prompt modules: `system.ts` (core prompt), `intents.ts`, `personas.ts`, `game-modes.ts`, `dramatic-arc.ts`, `stage-manager.ts`, `reactions.ts`, `critic.ts`, `index.ts` (barrel + PROMPT_VERSION) |
+| `src/server/tracing-middleware.ts` | AI SDK middleware -> D1 traces + optional Langfuse                                                                                                                                                |
+| `src/server/auth.ts`               | Passkey/WebAuthn primary auth + password fallback (PBKDF2 timing-safe, D1 sessions, rate limiting)                                                                                                |
+| `src/shared/types.ts`              | Persona, BoardObject, GameMode, AIModel, AI_MODELS, TroupeConfig, Poll, WaveEffect, canvas bounds constants                                                                                       |
+| `src/shared/board-templates.ts`    | Template registry: typed BoardObject arrays, displayText, `getTemplateById()` for server-side seeding                                                                                             |
 
 **Key client files:**
 
-| File | What it does |
-|------|-------------|
-| `src/client/components/Board.tsx` | Canvas + chat integration, mobile layout, model/persona state |
-| `src/client/components/ChatPanel.tsx` | AI chat sidebar, persona claim pills, intent chips, useAgentChat |
+| File                                     | What it does                                                                  |
+| ---------------------------------------- | ----------------------------------------------------------------------------- |
+| `src/client/components/Board.tsx`        | Canvas + chat integration, mobile layout, model/persona state                 |
+| `src/client/components/ChatPanel.tsx`    | AI chat sidebar, persona claim pills, intent chips, useAgentChat              |
 | `src/client/components/OnboardModal.tsx` | 3-step wizard: troupe builder (per-character model select) + invite + the get |
-| `src/client/components/AuthForm.tsx` | Passkey/WebAuthn registration + login UI with password fallback |
+| `src/client/components/AuthForm.tsx`     | Passkey/WebAuthn registration + login UI with password fallback               |
 
 **AI architecture (gotchas that will bite you):**
+
 - Anthropic + OpenAI models only (Workers AI removed in v21). `body.model` sent per-message for DO hibernation resilience.
 - Per-player persona claims via `body.personaId` (same per-message pattern). Fallback: round-robin.
 - Reactive persona fires via `ctx.waitUntil` after each response. First exchange unreliable (timing gap).
@@ -155,6 +156,7 @@ npx playwright test --reporter=dot     # minimal output (default 'list' floods c
 ```
 
 **Known gotchas:**
+
 - **Reactive persona UAT timing:** SAGE/reactive persona reliably triggers on the 2nd+ exchange, not the 1st (timing gap: `ctx.waitUntil` fires before base class adds the new assistant message to `this.messages`). GLM reactive `generateText` takes 30-40s. UAT must send a follow-up message before testing SAGE, then wait 45-60s.
 - **WS flakiness in local dev is expected.** First WS connection often drops with wrangler dev (DO cold start during WS handshake). The app reconnects but E2E/UAT tests must account for this. **After navigating to a board, always wait for `[data-state="connected"]` before interacting.** This selector is on the connection status dot in the header. Use `createObjectsViaWS()` helper (in `e2e/helpers.ts`) instead of UI double-click for reliable object creation. `wsRef.current` can be null after a drop even when React state shows "connected".
 - **HMR hook-order false positive:** "React has detected a change in the order of Hooks called by Board" during dev = Vite HMR artifact, not a real bug. Full page reload fixes it. Never investigate this error in a live dev session.
@@ -252,17 +254,18 @@ See `~/.claude/CLAUDE.md` for session start ritual and doc sync conventions.
 
 See `~/.claude/CLAUDE.md` for agent workflow, model selection, and team conventions. Below is project-specific delegation config.
 
-| Task | Agent | Model | Mode | How |
-|------|-------|-------|------|-----|
-| Feature worktree | `general-purpose` | sonnet | `bypassPermissions` | team member |
-| Design / architecture | `general-purpose` | opus | `bypassPermissions` | team member |
-| UAT / smoke test | `uat` | sonnet | `bypassPermissions` | team member |
-| Quality exploration | `general-purpose` | sonnet | `bypassPermissions` | team member |
-| PR review | `pr-review-toolkit:*` | sonnet | default | invoked by worktree agent via Skill |
-| E2E / eval harness | `general-purpose` | sonnet | `bypassPermissions` | team member (reports via SendMessage) |
-| Codebase exploration | `Explore` (built-in) | sonnet | default | team member or background (atomic) |
+| Task                  | Agent                 | Model  | Mode                | How                                   |
+| --------------------- | --------------------- | ------ | ------------------- | ------------------------------------- |
+| Feature worktree      | `general-purpose`     | sonnet | `bypassPermissions` | team member                           |
+| Design / architecture | `general-purpose`     | opus   | `bypassPermissions` | team member                           |
+| UAT / smoke test      | `uat`                 | sonnet | `bypassPermissions` | team member                           |
+| Quality exploration   | `general-purpose`     | sonnet | `bypassPermissions` | team member                           |
+| PR review             | `pr-review-toolkit:*` | sonnet | default             | invoked by worktree agent via Skill   |
+| E2E / eval harness    | `general-purpose`     | sonnet | `bypassPermissions` | team member (reports via SendMessage) |
+| Codebase exploration  | `Explore` (built-in)  | sonnet | default             | team member or background (atomic)    |
 
 **Agent prompts must explicitly mention:**
+
 - **Dev server startup** (only if UAT/eval needed): `npx wrangler whoami` first to verify auth. If not authenticated, escalate to team-lead immediately - do not attempt `npm run dev`. If auth OK: `npm run dev` with `run_in_background: true` and `dangerouslyDisableSandbox: true`. Wait 8s, read background task output to confirm no errors, THEN `npm run health`. If dev server errors, do NOT retry - escalate immediately via SendMessage with full error output.
 - "Read CLAUDE.md and relevant source files before implementing"
 - "Commit all changes to the feature branch. Do not open a PR."

@@ -13,10 +13,7 @@ const baseURL = `http://localhost:${process.env.WRANGLER_PORT || process.env.VIT
 test.describe("Performance", () => {
   test.setTimeout(60_000);
 
-  test("rapid creation: 100 objects via WebSocket", async ({
-    context,
-    page,
-  }) => {
+  test("rapid creation: 100 objects via WebSocket", async ({ context, page }) => {
     await signUp(context);
     const boardId = await createBoard(context);
     await navigateToBoard(page, boardId);
@@ -40,11 +37,7 @@ test.describe("Performance", () => {
   });
 
   test("5 concurrent users on same board", { tag: "@heavy" }, async ({ browser }) => {
-    const contexts = await Promise.all(
-      Array.from({ length: 5 }, () =>
-        browser.newContext({ baseURL }),
-      ),
-    );
+    const contexts = await Promise.all(Array.from({ length: 5 }, () => browser.newContext({ baseURL })));
 
     // Sign up all 5 users in parallel
     await Promise.all(contexts.map((ctx) => signUp(ctx)));
@@ -66,9 +59,7 @@ test.describe("Performance", () => {
     }
 
     // Verify all 5 objects are visible on every page
-    await Promise.all(
-      pages.map((p) => waitForObjectCount(p, 5, 20_000)),
-    );
+    await Promise.all(pages.map((p) => waitForObjectCount(p, 5, 20_000)));
 
     // Wait for any extra WS connections from createObjectsViaWS to close
     await pages[0].waitForTimeout(1000);
@@ -77,9 +68,7 @@ test.describe("Performance", () => {
     // Presence avatars are single-letter spans with a title attribute (username)
     // Note: extra WS connections from createObjectsViaWS may briefly inflate the count,
     // so we check >= 5, not exactly 5.
-    const avatars = pages[0].locator(
-      'div[style*="display: flex"] > span[title][style*="border-radius: 50%"]',
-    );
+    const avatars = pages[0].locator('div[style*="display: flex"] > span[title][style*="border-radius: 50%"]');
     const avatarCount = await avatars.count();
     expect(avatarCount).toBeGreaterThanOrEqual(5);
 

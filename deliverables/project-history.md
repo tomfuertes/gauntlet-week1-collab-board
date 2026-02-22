@@ -1,6 +1,6 @@
 # YesAInd: Project History
 
-*A day-by-day engineering narrative of building a multiplayer improv canvas with AI agents in one week.*
+_A day-by-day engineering narrative of building a multiplayer improv canvas with AI agents in one week._
 
 ---
 
@@ -144,12 +144,12 @@ The development methodology was AI-first throughout. Claude Code was the primary
 
 ## Key Pivots
 
-| What Changed | Why | When |
-|---|---|---|
-| Better Auth -> custom PBKDF2 | CF Workers doesn't support Node.js crypto APIs Better Auth needs | Day 1 |
-| LLM layout (x,y in tool schema) -> `flowPlace()` server-side packing | LLMs can't do spatial reasoning; soft prompt rules get ignored | Day 3-5 |
-| Soft prompt rules -> hard server-side caps | Haiku treats "ONLY N objects" as a suggestion, not a constraint | Day 4 |
-| hat/freezetag game modes -> Harold improv | Harold maps to actual improv pedagogy; phase coaching via turn tracking | Day 4 |
-| Workers AI -> Anthropic + OpenAI only | Workers AI required CF auth even for local dev; adding friction with no quality benefit | Day 4 |
-| Eval judge (prompt-only) -> judge + board object delta | Judge was blind to tools inside `batchExecute`; board delta captures ground truth | Day 6 |
-| Sonnet as default model -> Haiku as tuned default | Capability inversion: Sonnet scores 80% vs Haiku 97% on constrained improv task | Day 6 |
+| What Changed                                                         | Why                                                                                     | When    |
+| -------------------------------------------------------------------- | --------------------------------------------------------------------------------------- | ------- |
+| Better Auth -> custom PBKDF2                                         | CF Workers doesn't support Node.js crypto APIs Better Auth needs                        | Day 1   |
+| LLM layout (x,y in tool schema) -> `flowPlace()` server-side packing | LLMs can't do spatial reasoning; soft prompt rules get ignored                          | Day 3-5 |
+| Soft prompt rules -> hard server-side caps                           | Haiku treats "ONLY N objects" as a suggestion, not a constraint                         | Day 4   |
+| hat/freezetag game modes -> Harold improv                            | Harold maps to actual improv pedagogy; phase coaching via turn tracking                 | Day 4   |
+| Workers AI -> Anthropic + OpenAI only                                | Workers AI required CF auth even for local dev; adding friction with no quality benefit | Day 4   |
+| Eval judge (prompt-only) -> judge + board object delta               | Judge was blind to tools inside `batchExecute`; board delta captures ground truth       | Day 6   |
+| Sonnet as default model -> Haiku as tuned default                    | Capability inversion: Sonnet scores 80% vs Haiku 97% on constrained improv task         | Day 6   |

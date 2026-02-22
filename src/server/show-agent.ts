@@ -72,21 +72,15 @@ function buildTurnUserMessage(turnCount: number, premise: string): string {
   ];
 
   if (turnCount === 0) {
-    lines.push(
-      "SCENE SETUP: Establish the world. Create 1 location frame with 2 characters inside it.",
-    );
+    lines.push("SCENE SETUP: Establish the world. Create 1 location frame with 2 characters inside it.");
   }
 
   if (turnCount >= 6 && turnCount <= 8) {
-    lines.push(
-      "CRISIS MOMENT: Escalate the stakes. React to what is ON STAGE. Prefer effects over new objects.",
-    );
+    lines.push("CRISIS MOMENT: Escalate the stakes. React to what is ON STAGE. Prefer effects over new objects.");
   }
 
   if (turnCount === SHOW_TURN_BUDGET - 1) {
-    lines.push(
-      'FINAL BEAT: Resolve the scene. Use advanceScenePhase("curtain") and play_sfx("applause").',
-    );
+    lines.push('FINAL BEAT: Resolve the scene. Use advanceScenePhase("curtain") and play_sfx("applause").');
   }
 
   return lines.join("\n");
@@ -131,7 +125,12 @@ export class ShowAgent extends DurableObject<Bindings> {
   }
 
   /** Return current show status for the API status endpoint */
-  async getStatus(): Promise<{ turnCount: number; status: ShowState["status"]; premise: string; boardId: string } | null> {
+  async getStatus(): Promise<{
+    turnCount: number;
+    status: ShowState["status"];
+    premise: string;
+    boardId: string;
+  } | null> {
     const state = await this.ctx.storage.get<ShowState>("show:state");
     if (!state) return null;
     return {
@@ -208,12 +207,7 @@ export class ShowAgent extends DurableObject<Bindings> {
   // ---------------------------------------------------------------------------
 
   /** Run one AI persona turn: build prompt, call generateText, tools mutate the board */
-  private async _runTurn(
-    boardId: string,
-    premise: string,
-    turnCount: number,
-    personaIndex: number,
-  ): Promise<void> {
+  private async _runTurn(boardId: string, premise: string, turnCount: number, personaIndex: number): Promise<void> {
     // KEY-DECISION 2026-02-22: BOARD binding uses idFromString (boardId is a DO ID string
     // stored by the API route when creating the show). Same pattern as ChatAgent.
     const doId = this.env.BOARD.idFromString(boardId);
@@ -244,11 +238,7 @@ export class ShowAgent extends DurableObject<Bindings> {
     // KEY-DECISION 2026-02-22: No game mode block for shows - the turn phase instructions
     // in the user message replace game mode coaching. buildPersonaSystemPrompt handles the
     // [CHARACTER IDENTITY] and [IMPROV PARTNER] sections.
-    const systemPrompt = buildPersonaSystemPrompt(
-      activePersona,
-      otherPersona,
-      SYSTEM_PROMPT,
-    );
+    const systemPrompt = buildPersonaSystemPrompt(activePersona, otherPersona, SYSTEM_PROMPT);
 
     const userMessage = buildTurnUserMessage(turnCount, premise);
 

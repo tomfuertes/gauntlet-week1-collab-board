@@ -58,6 +58,7 @@ playwright-cli close-all
 ## Test Patterns
 
 ### Smoke Test (default if no specific task given)
+
 1. Open app, sign up with test user (e.g., `uat-test-{timestamp}` / `password123`)
 2. Create a new board
 3. Create one of each object type (sticky, rect, circle, line)
@@ -66,6 +67,7 @@ playwright-cli close-all
 6. Report pass/fail for each step
 
 ### Two-Browser Sync Test
+
 1. Open two sessions (`-s=uat-user1`, `-s=uat-user2`)
 2. Sign up different users in each
 3. Navigate both to the same board (use board URL from first user)
@@ -74,6 +76,7 @@ playwright-cli close-all
 6. Report sync pass/fail
 
 ### AI Chat Test
+
 1. Open app, auth, navigate to board
 2. Open AI chat panel
 3. Send a command: "create a yellow sticky note that says hello"
@@ -82,6 +85,7 @@ playwright-cli close-all
 6. Report pass/fail
 
 ### Audience Poll Test (requires spectator + player)
+
 1. Open two sessions: player (`-s=uat-player`) and spectator (`-s=uat-spectator`)
 2. Player navigates to board, spectator opens `#watch/{boardId}`
 3. Player triggers AI to ask audience (e.g. "ask the audience what should happen next")
@@ -91,6 +95,7 @@ playwright-cli close-all
 7. Report pass/fail
 
 ### Audience Wave Test (requires 3+ spectators)
+
 1. Open 3 spectator sessions on same board
 2. All 3 send same emoji reaction within 5 seconds
 3. Verify `audience:wave` effect appears on canvas (confetti for applause, shake for laugh, etc.)
@@ -99,6 +104,7 @@ playwright-cli close-all
 ## Reporting
 
 Return a structured summary:
+
 ```
 ## UAT Results
 - **Test:** <name>

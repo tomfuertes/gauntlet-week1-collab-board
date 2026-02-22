@@ -7,7 +7,7 @@ const args = Object.fromEntries(
   process.argv.slice(2).map((a) => {
     const [k, v] = a.replace(/^--/, "").split("=");
     return [k, v ?? true];
-  })
+  }),
 );
 
 const port = Number(args.port ?? process.env.WRANGLER_PORT ?? process.env.VITE_PORT ?? 8787);

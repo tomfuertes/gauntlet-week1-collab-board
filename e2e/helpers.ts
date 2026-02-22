@@ -35,7 +35,7 @@ export async function navigateToBoard(page: Page, boardId: string) {
   await page.goto(`/#board/${boardId}`);
   // Wait for either the empty hint (fresh board, init received) or connected + stable
   try {
-    await page.waitForSelector('text=Double-click to add a sticky', {
+    await page.waitForSelector("text=Double-click to add a sticky", {
       timeout: 15_000,
     });
   } catch {
@@ -49,18 +49,12 @@ export async function navigateToBoard(page: Page, boardId: string) {
  * Bulk-create objects via a second WebSocket connection from within the page.
  * The page's existing WS receives broadcasts and renders the objects.
  */
-export async function createObjectsViaWS(
-  page: Page,
-  boardId: string,
-  count: number,
-) {
+export async function createObjectsViaWS(page: Page, boardId: string, count: number) {
   await page.evaluate(
     ({ boardId, count }) => {
       return new Promise<void>((resolve, reject) => {
         const protocol = location.protocol === "https:" ? "wss:" : "ws:";
-        const ws = new WebSocket(
-          `${protocol}//${location.host}/ws/board/${boardId}`,
-        );
+        const ws = new WebSocket(`${protocol}//${location.host}/ws/board/${boardId}`);
         ws.onopen = () => {
           for (let i = 0; i < count; i++) {
             ws.send(
@@ -118,11 +112,7 @@ export async function getObjectCount(page: Page): Promise<number> {
  * Wait until the Konva stage has at least `count` object Groups.
  * Uses polling with page.evaluate (more reliable than waitForFunction for Konva access).
  */
-export async function waitForObjectCount(
-  page: Page,
-  count: number,
-  timeout = 15_000,
-) {
+export async function waitForObjectCount(page: Page, count: number, timeout = 15_000) {
   const start = Date.now();
   while (Date.now() - start < timeout) {
     const current = await getObjectCount(page);
@@ -130,7 +120,5 @@ export async function waitForObjectCount(
     await page.waitForTimeout(250);
   }
   const final = await getObjectCount(page);
-  throw new Error(
-    `Timeout waiting for ${count} objects, got ${final} after ${timeout}ms`,
-  );
+  throw new Error(`Timeout waiting for ${count} objects, got ${final} after ${timeout}ms`);
 }

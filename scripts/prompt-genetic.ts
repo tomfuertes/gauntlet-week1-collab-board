@@ -159,10 +159,7 @@ function buildSystemPrompt(genome: Genome): string {
   const [spark, sage] = DEFAULT_PERSONAS;
 
   // Apply tool mandate mutation: replace first TOOL RULES bullet in SYSTEM_PROMPT
-  const mutatedSystemPrompt = SYSTEM_PROMPT.replace(
-    BASE_TOOL_MANDATE,
-    TOOL_MANDATE_GENES[genome.toolMandateIdx],
-  );
+  const mutatedSystemPrompt = SYSTEM_PROMPT.replace(BASE_TOOL_MANDATE, TOOL_MANDATE_GENES[genome.toolMandateIdx]);
 
   // Assemble full system prompt (mirrors chat-agent.ts onChatMessage logic, turn=1)
   const lifecyclePhase = computeLifecyclePhase(1);
@@ -410,7 +407,9 @@ async function main() {
   // Final summary for team-lead report
   console.log("\n====== SUMMARY ======");
   console.log(`Model: ${MODEL_ID}`);
-  console.log(`Rounds: ${ROUNDS} | Unique genomes tested: ${seen.size}/${SCENE_SETUP_GENES.length * TOOL_MANDATE_GENES.length}`);
+  console.log(
+    `Rounds: ${ROUNDS} | Unique genomes tested: ${seen.size}/${SCENE_SETUP_GENES.length * TOOL_MANDATE_GENES.length}`,
+  );
   console.log(`Base score: ${allRounds[0].details.score}/100`);
   console.log(`Best score: ${best.details.score}/100`);
   console.log(`Best genome: ${describeGenome(best.genome)}`);
