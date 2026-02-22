@@ -39,7 +39,10 @@ React + Vite + react-konva + TypeScript | Cloudflare Workers + Hono + Durable Ob
 - Class-level state resets on DO hibernation. Client re-sends model/gameMode/personaId each message.
 - Canvas bounds exported as `CANVAS_MIN_X/Y`, `CANVAS_MAX_X/Y` from shared/types.ts. Used in prompts, index.ts, chat-agent.ts.
 - Default model is Claude Haiku 4.5.
-- `createSDKTools()` called 6 times per user turn with per-context maxCreates budget (main=4, stageManager=3, globalMaxCreates=6 shared CreateBudget ref). SharedBounds array shares position tracking across closures.
+- `createSDKTools()` called 6 times per user turn with per-context maxCreates budget (main=4 normal / 2 crisis, stageManager=3 normal / 1 crisis, globalMaxCreates=6 shared CreateBudget ref). SharedBounds array shares position tracking across closures.
+- **Crisis-aware maxCreates:** Messages matching `CRISIS_INTENT_CHIPS` ("escalate!", "plot twist!") or `CRISIS_KEYWORDS` regex get main=2, stageManager=1 cap. Server-side backstop for when Haiku ignores the CRISIS EVENTS prompt rule. Disabled when `qaMode=true`.
+- **QA bypass:** Messages starting with `qa:` (case-insensitive) set `qaMode=true`, bypassing all per-turn maxCreates caps. OOB clamping stays active. Used for stress-testing and UAT.
+- **Client WS debug logging:** `localStorage.setItem('debug-ws', '1')` enables console logging of WS open/close/error/obj:create/obj:update/obj:delete events in `useWebSocket.ts`.
 - Game modes: `yesand` (beginner), `freeform` (mid), `harold` (advanced). Harold uses `humanTurns` for phase coaching (Opening/First Beats/Second Beats/Third Beats).
 - Templates: 2 only (superhero-hoa, pirate-therapy), shown only in yesand (beginner) mode.
 - Deploy via `git push` to main (CF git integration). Never `wrangler deploy` manually.
@@ -54,6 +57,8 @@ React + Vite + react-konva + TypeScript | Cloudflare Workers + Hono + Durable Ob
 - **v22 fix:** Zero-tolerance overlap enforcement in `enforcedCreate()`. Threshold 0.2->0, nudge step 20px->objectWidth+16px gap, lines/connectors exempted. LLMs can't do spatial reasoning; code handles it.
 - **v23 architecture:** Server-side auto-layout engine. LLMs no longer specify x,y - `flowPlace()` in `createSDKTools` closure reads existing board state (lazy-init, cached per closure) and shelf-packs new objects left-to-right, top-to-bottom with 16px gaps. Frame-aware: objects created after a frame go inside it. `drawScene` compositions bypass per-part count cap (entire composition = 1 create). `enforcedCreate()` simplified to count cap + OOB clamping only (no nudge loop). Tool schemas stripped of x,y params.
 - **v25 fix:** Added CRISIS EVENTS rule. stakes-escalation eval 0/7->6/7 (86%). "NOT inside batchExecute" is load-bearing for effect tools - wrapping them makes them invisible to AI SDK toolCalls[]. maxCreates reverted main 3->4 (4th object was silently dropped at 3).
+- **v26 fixes:** (1) `computeOverlapScore` excludes frames + lines - false positive fix (3 persons inside a frame were counting as 3 overlaps). (2) `flowPlace` two-pass scan: Pass 1 coarse grid (object-sized steps), Pass 2 fine-grained fallback below all content (step=objectWidth/4). Eliminates "place at origin" fallback that caused overlap=12 on dense scenes. (3) Crisis-aware maxCreates: 2/1 for escalation turns vs 4/3 normal. (4) QA bypass via `qa:` prefix. (5) Judge transcript now expands batchExecute inner tools (was blind to create tools nested inside batch). (6) GPT-4.1 Mini + Nano added to AI_MODELS.
+- **v26 baseline (Haiku):** 3/10 layout pass, avg overlap 3.3. Narrative tool_usage still 1/5 (Haiku wrapping creates in batchExecute → judge sees batch call, not inner tools → score 1 despite canvas activity).
 - **Eval command:** `set -a && source .dev.vars && set +a && EVAL_MODEL=claude-haiku-4.5 npm run eval` (must use `set -a` to export vars to child processes).
 
 ## Commands
