@@ -270,8 +270,8 @@ export class Board extends DurableObject<Bindings> {
   /** Set AI presence visibility in the presence list */
   async setAiPresence(active: boolean): Promise<void> {
     this.aiActiveUntil = active ? Date.now() + 60_000 : 0;
-    const { users, spectatorCount } = this.getPresenceList();
-    this.broadcast({ type: "presence", users, spectatorCount });
+    const { users, spectatorCount, spectators } = this.getPresenceList();
+    this.broadcast({ type: "presence", users, spectatorCount, spectators });
   }
 
   /** Delete all objects created by a specific AI batch, broadcast deletions */
@@ -319,9 +319,13 @@ export class Board extends DurableObject<Bindings> {
     server.serializeAttachment(initialMeta);
 
     const objects = await this.getAllObjects();
-    const { users, spectatorCount } = this.getPresenceList();
+    const { users, spectatorCount, spectators } = this.getPresenceList();
     server.send(JSON.stringify({ type: "init", objects } satisfies WSServerMessage));
-    server.send(JSON.stringify({ type: "presence", users, spectatorCount } satisfies WSServerMessage));
+    server.send(JSON.stringify({ type: "presence", users, spectatorCount, spectators } satisfies WSServerMessage));
+    // Echo resolved identity back to the spectator so the client can display "Watching as: name"
+    if (role === "spectator") {
+      server.send(JSON.stringify({ type: "identity", userId, username } satisfies WSServerMessage));
+    }
     // Sync current mood to new connections so late-joiners see the active atmosphere
     if (this.currentMood !== "neutral") {
       server.send(JSON.stringify({ type: "mood", mood: this.currentMood, intensity: 0.3 } satisfies WSServerMessage));
@@ -368,6 +372,9 @@ export class Board extends DurableObject<Bindings> {
     }
 
     if (msg.type === "cursor") {
+      // KEY-DECISION 2026-02-21: Spectator cursors are not broadcast to players.
+      // Spectators can still send cursor messages (used for heckle positioning client-side).
+      if (meta.role === "spectator") return;
       this.broadcast({ type: "cursor", userId: meta.userId, username: meta.username, x: msg.x, y: msg.y }, ws);
       return;
     }
@@ -517,8 +524,8 @@ export class Board extends DurableObject<Bindings> {
     if (meta && meta.role === "player" && meta.editingObjectId) {
       this.broadcast({ type: "text:blur", userId: meta.userId, objectId: meta.editingObjectId });
     }
-    const { users, spectatorCount } = this.getPresenceList();
-    this.broadcast({ type: "presence", users, spectatorCount });
+    const { users, spectatorCount, spectators } = this.getPresenceList();
+    this.broadcast({ type: "presence", users, spectatorCount, spectators });
 
     // Mark board as seen on disconnect (catches activity created during the session)
     if (meta) {
@@ -548,15 +555,23 @@ export class Board extends DurableObject<Bindings> {
     return [...entries.values()];
   }
 
-  private getPresenceList(): { users: { id: string; username: string }[]; spectatorCount: number } {
+  private getPresenceList(): {
+    users: { id: string; username: string }[];
+    spectatorCount: number;
+    spectators: { id: string; username: string }[];
+  } {
     const seen = new Set<string>();
+    const seenSpectators = new Set<string>();
     const users: { id: string; username: string }[] = [];
-    let spectatorCount = 0;
+    const spectators: { id: string; username: string }[] = [];
     for (const ws of this.getWebSockets()) {
       const meta = ws.deserializeAttachment() as ConnectionMeta | null;
       if (!meta) continue;
       if (meta.role === "spectator") {
-        spectatorCount++;
+        if (!seenSpectators.has(meta.userId)) {
+          seenSpectators.add(meta.userId);
+          spectators.push({ id: meta.userId, username: meta.username });
+        }
         continue;
       }
       if (!seen.has(meta.userId)) {
@@ -567,7 +582,7 @@ export class Board extends DurableObject<Bindings> {
     if (this.aiActiveUntil > Date.now()) {
       users.push({ id: AI_USER_ID, username: AI_USERNAME });
     }
-    return { users, spectatorCount };
+    return { users, spectatorCount: spectators.length, spectators };
   }
 
   private async recordEvent(event: ReplayEvent, debounceMs = 500): Promise<void> {

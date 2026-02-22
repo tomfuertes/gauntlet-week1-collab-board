@@ -40,6 +40,8 @@ export function SpectatorView({ boardId, onBack }: SpectatorViewProps) {
     objects,
     presence,
     spectatorCount,
+    spectators,
+    myIdentity,
     reactions,
     canvasBubbles,
     audienceWave,
@@ -265,6 +267,10 @@ export function SpectatorView({ boardId, onBack }: SpectatorViewProps) {
           {spectatorCount > 0 && (
             <span style={{ color: colors.textDim, fontSize: "0.75rem" }}>{spectatorCount} watching</span>
           )}
+          {/* Own identity - shown only for authenticated spectators */}
+          {myIdentity && myIdentity.username !== "Spectator" && (
+            <span style={{ color: colors.textDim, fontSize: "0.75rem" }}>· {myIdentity.username}</span>
+          )}
           <span style={{ color: colors.textDim }}>{Math.round(scale * 100)}%</span>
           <Button
             onClick={() => {
@@ -354,7 +360,7 @@ export function SpectatorView({ boardId, onBack }: SpectatorViewProps) {
             <Cursors cursors={cursors} />
           </Layer>
           {/* Audience silhouettes - always show 3 ghost seats, more when spectators present */}
-          <AudienceRow spectatorCount={spectatorCount} />
+          <AudienceRow spectatorCount={spectatorCount} spectators={spectators} />
         </Stage>
 
         {/* Floating reactions overlay */}

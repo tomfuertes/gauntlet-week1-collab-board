@@ -135,7 +135,13 @@ export type WSServerMessage =
   | { type: "obj:create"; obj: BoardObject }
   | { type: "obj:update"; obj: BoardObject; anim?: { duration: number } }
   | { type: "obj:delete"; id: string }
-  | { type: "presence"; users: { id: string; username: string }[]; spectatorCount: number }
+  | {
+      type: "presence";
+      users: { id: string; username: string }[];
+      spectatorCount: number;
+      spectators?: { id: string; username: string }[];
+    }
+  | { type: "identity"; userId: string; username: string }
   | { type: "init"; objects: BoardObject[] }
   | { type: "board:deleted" }
   | { type: "text:cursor"; userId: string; username: string; objectId: string; position: number }

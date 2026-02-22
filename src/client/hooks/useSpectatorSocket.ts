@@ -32,6 +32,8 @@ interface UseSpectatorSocketReturn {
   objects: Map<string, BoardObject>;
   presence: { id: string; username: string }[];
   spectatorCount: number;
+  spectators: { id: string; username: string }[];
+  myIdentity: { userId: string; username: string } | null;
   reactions: Reaction[];
   heckleEvents: HeckleEvent[];
   canvasBubbles: CanvasBubble[];
@@ -59,6 +61,8 @@ export function useSpectatorSocket(boardId: string): UseSpectatorSocketReturn {
   const [objects, setObjects] = useState<Map<string, BoardObject>>(new Map());
   const [presence, setPresence] = useState<{ id: string; username: string }[]>([]);
   const [spectatorCount, setSpectatorCount] = useState(0);
+  const [spectators, setSpectators] = useState<{ id: string; username: string }[]>([]);
+  const [myIdentity, setMyIdentity] = useState<{ userId: string; username: string } | null>(null);
   const [reactions, setReactions] = useState<Reaction[]>([]);
   const [heckleEvents, setHeckleEvents] = useState<HeckleEvent[]>([]);
   const [canvasBubbles, setCanvasBubbles] = useState<CanvasBubble[]>([]);
@@ -126,13 +130,13 @@ export function useSpectatorSocket(boardId: string): UseSpectatorSocketReturn {
           case "presence":
             setPresence(msg.users);
             setSpectatorCount(msg.spectatorCount);
-            // Skip spectator-* IDs in cursor cleanup - they aren't in the users list
+            if (msg.spectators) setSpectators(msg.spectators);
+            // Remove cursors for players no longer present
             setCursors((prev) => {
               const activeIds = new Set(msg.users.map((u) => u.id));
               let changed = false;
               const next = new Map(prev);
               for (const userId of next.keys()) {
-                if (userId.startsWith("spectator-")) continue;
                 if (!activeIds.has(userId)) {
                   next.delete(userId);
                   changed = true;
@@ -140,6 +144,9 @@ export function useSpectatorSocket(boardId: string): UseSpectatorSocketReturn {
               }
               return changed ? next : prev;
             });
+            break;
+          case "identity":
+            setMyIdentity({ userId: msg.userId, username: msg.username });
             break;
           case "obj:create":
             setObjects((prev) => new Map(prev).set(msg.obj.id, msg.obj));
@@ -286,6 +293,8 @@ export function useSpectatorSocket(boardId: string): UseSpectatorSocketReturn {
     objects,
     presence,
     spectatorCount,
+    spectators,
+    myIdentity,
     reactions,
     heckleEvents,
     canvasBubbles,

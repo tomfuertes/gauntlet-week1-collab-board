@@ -628,12 +628,15 @@ app.get("/ws/watch/:boardId", async (c) => {
   const doId = c.env.BOARD.idFromName(boardId);
   const stub = c.env.BOARD.get(doId);
 
-  // Generate a unique spectator identity (no auth - anonymous viewer)
-  const spectatorId = `spectator-${crypto.randomUUID()}`;
+  // Resolve identity: use session user if available, else anonymous spectator
+  const sessionId = getCookie(c, "session");
+  const sessionUser = sessionId ? await getSessionUser(c.env.DB, sessionId) : null;
+  const spectatorId = sessionUser ? sessionUser.id : `spectator-${crypto.randomUUID()}`;
+  const spectatorName = sessionUser ? sessionUser.displayName : "Spectator";
 
   const url = new URL(c.req.url);
   url.searchParams.set("userId", spectatorId);
-  url.searchParams.set("username", "Spectator");
+  url.searchParams.set("username", spectatorName);
   url.searchParams.set("boardId", boardId);
   url.searchParams.set("role", "spectator");
 

@@ -27,9 +27,10 @@ export function getAudienceFigureXs(count: number): number[] {
 
 interface AudienceRowProps {
   spectatorCount: number;
+  spectators?: { id: string; username: string }[];
 }
 
-export function AudienceRow({ spectatorCount }: AudienceRowProps) {
+export function AudienceRow({ spectatorCount, spectators = [] }: AudienceRowProps) {
   // Always show at least 3 default ghost seats so the stage always has an "audience".
   const displayCount = Math.max(DEFAULT_AUDIENCE, spectatorCount);
   const xs = getAudienceFigureXs(displayCount);
@@ -39,10 +40,25 @@ export function AudienceRow({ spectatorCount }: AudienceRowProps) {
     <Layer listening={false}>
       {xs.map((cx, i) => {
         const isReal = i < spectatorCount;
+        const spectator = isReal ? spectators[i] : undefined;
+        // Show a name label for authenticated spectators (not anonymous "Spectator" fallback)
+        const nameLabel = spectator && spectator.username !== "Spectator" ? spectator.username.slice(0, 8) : undefined;
         const fill = isReal ? FIGURE_FILL : GHOST_FILL;
         const opacity = isReal ? 0.75 : 0.2;
         return (
           <React.Fragment key={i}>
+            {/* Name label above head for authenticated spectators */}
+            {nameLabel && (
+              <KonvaText
+                x={cx - GAP / 2}
+                y={AUDIENCE_Y - 30}
+                width={GAP}
+                text={nameLabel}
+                fill="rgba(255,255,255,0.55)"
+                fontSize={8}
+                align="center"
+              />
+            )}
             {/* Head silhouette */}
             <Ellipse
               x={cx}
