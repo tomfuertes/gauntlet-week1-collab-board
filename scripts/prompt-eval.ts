@@ -980,7 +980,9 @@ async function main() {
 
   // Compact one-liner summary for easy copy-paste into commits/PRs
   const layoutSummary =
-    layoutResults.length > 0 ? `layout: ${layoutPassed}/${layoutResults.length} | overlap: ${layoutAvgOverlap.toFixed(1)}` : "layout: n/a";
+    layoutResults.length > 0
+      ? `layout: ${layoutPassed}/${layoutResults.length} | overlap: ${layoutAvgOverlap.toFixed(1)}`
+      : "layout: n/a";
   const narrativeSummary =
     judgedNarrative.length > 0 ? `narrative: ${narrativeAvgOverall.toFixed(1)}/5` : "narrative: n/a";
   console.log(`\n${promptVersion} | ${MODEL} | ${layoutSummary} | ${narrativeSummary}`);

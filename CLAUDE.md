@@ -78,6 +78,11 @@ npm run migrate:remote       # apply pending to remote only
 # IMPORTANT: use set -a to export .dev.vars - eval/judge scripts need API keys as child process env vars
 set -a && source .dev.vars && set +a && EVAL_MODEL=claude-haiku-4.5 npm run eval   # run all scenarios
 # EVAL_USERNAME/EVAL_PASSWORD/EVAL_MODEL env vars override defaults (eval/eval1234/glm-4.7-flash)
+# EVAL_SCENARIO=scene-setup npm run eval   # single scenario (T1, ~30s)
+# npm run eval:smoke                        # smoke suite: scene-setup, complication, character-intro, stakes-escalation (T2, ~2min)
+# npm run eval                              # full suite (T3, ~5min)
+# EVAL_SCENARIO=scene-setup,grid-2x2 npm run eval  # comma-separated scenario IDs
+# EVAL_TAG=smoke npm run eval               # filter by tag (equivalent to eval:smoke)
 # JSON reports written to scripts/eval-results/<timestamp>.json (gitignored, kept on disk for reference)
 # Quick summary: jq '{model, layout: "\(.layout.passed)/\(.layout.total)", overlap: .layout.avgOverlap}' scripts/eval-results/*.json
 # Compare runs: npm run eval:compare scripts/eval-results/A.json scripts/eval-results/B.json
