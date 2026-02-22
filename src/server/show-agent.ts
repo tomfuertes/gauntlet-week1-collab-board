@@ -257,7 +257,7 @@ export class ShowAgent extends DurableObject<Bindings> {
     // KEY-DECISION 2026-02-22: generateText (not streamText) - no client to stream to.
     // Always Haiku for shows: cost-optimal ($0.007/turn), well-tuned for this prompt.
     const result = await generateText({
-      model: anthropic("claude-haiku-4-5-20250414"),
+      model: anthropic("claude-haiku-4-5-20251001"),
       system: systemPrompt,
       messages: [{ role: "user", content: userMessage }],
       tools,
