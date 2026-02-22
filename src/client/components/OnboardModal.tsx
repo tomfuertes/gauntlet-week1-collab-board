@@ -1,11 +1,12 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { colors } from "../theme";
+import { getUserColor } from "../theme";
 import { Button } from "./Button";
 import { Modal } from "./Modal";
 import { TextInput } from "./TextInput";
 import { Select } from "./Select";
 import { BOARD_TEMPLATES } from "../../shared/board-templates";
-import { GAME_MODES, AI_MODELS, DEFAULT_PERSONAS } from "../../shared/types";
+import { GAME_MODES, AI_MODELS, DEFAULT_PERSONAS, AI_USER_ID } from "../../shared/types";
 import type { GameMode, AIModel, Persona, TroupeConfig } from "../../shared/types";
 import "../styles/animations.css";
 
@@ -20,6 +21,10 @@ interface OnboardModalProps {
   ) => void;
   onDismiss: () => void;
   personas?: Persona[];
+  /** Live presence list from WS - used to show connected collaborators on step 1 */
+  presence?: { id: string; username: string }[];
+  /** Board ID for generating collaborator/spectator invite links */
+  boardId?: string;
 }
 
 // Wizard steps
@@ -37,7 +42,13 @@ function buildDefaultTroupeModels(personas: Persona[]): Map<string, AIModel> {
   return map;
 }
 
-export function OnboardModal({ onSubmit, onDismiss, personas = [...DEFAULT_PERSONAS] }: OnboardModalProps) {
+export function OnboardModal({
+  onSubmit,
+  onDismiss,
+  personas = [...DEFAULT_PERSONAS],
+  presence = [],
+  boardId,
+}: OnboardModalProps) {
   const [step, setStep] = useState<WizardStep>(0);
   // troupeModels: personaId -> model (presence in map = member is in troupe)
   const [troupeModels, setTroupeModels] = useState<Map<string, AIModel>>(() => buildDefaultTroupeModels(personas));
@@ -343,10 +354,16 @@ export function OnboardModal({ onSubmit, onDismiss, personas = [...DEFAULT_PERSO
 
   // ── Step 1: Invite Friends ──────────────────────────────────────────────────
   function renderInviteFriends() {
-    const boardUrl = window.location.href;
+    const origin = window.location.origin;
+    const collaboratorUrl = boardId ? `${origin}/#board/${boardId}` : window.location.href;
+    const spectatorUrl = boardId ? `${origin}/#watch/${boardId}` : null;
 
-    function copyLink() {
-      navigator.clipboard.writeText(boardUrl).catch(() => {});
+    // Filter out AI agent from collaborators display
+    const humanCollaborators = presence.filter((p) => p.id !== AI_USER_ID);
+    const hasCollaborators = humanCollaborators.length > 0;
+
+    function copyToClipboard(url: string) {
+      navigator.clipboard.writeText(url).catch(() => {});
     }
 
     return (
@@ -375,47 +392,164 @@ export function OnboardModal({ onSubmit, onDismiss, personas = [...DEFAULT_PERSO
           Share this scene with collaborators - or fly solo
         </div>
 
-        <div
-          style={{
-            display: "flex",
-            gap: 8,
-            alignItems: "center",
-            padding: "10px 14px",
-            borderRadius: 10,
-            background: "rgba(30, 41, 59, 0.6)",
-            border: `1px solid ${colors.border}`,
-            marginBottom: 16,
-          }}
-        >
-          <span
+        {/* Collaborator link */}
+        <div style={{ marginBottom: 6 }}>
+          <div
             style={{
-              flex: 1,
-              fontSize: "0.75rem",
-              color: colors.textMuted,
-              overflow: "hidden",
-              textOverflow: "ellipsis",
-              whiteSpace: "nowrap",
+              fontSize: "0.6875rem",
+              color: colors.textSubtle,
+              marginBottom: 4,
+              fontWeight: 600,
+              letterSpacing: "0.05em",
+              textTransform: "uppercase",
             }}
           >
-            {boardUrl}
-          </span>
-          <Button
-            variant="secondary"
-            onClick={copyLink}
-            style={{ fontSize: "0.75rem", padding: "4px 12px", flexShrink: 0 }}
+            Performer link
+          </div>
+          <div
+            style={{
+              display: "flex",
+              gap: 8,
+              alignItems: "center",
+              padding: "10px 14px",
+              borderRadius: 10,
+              background: "rgba(30, 41, 59, 0.6)",
+              border: `1px solid ${colors.border}`,
+            }}
           >
-            Copy
-          </Button>
+            <span
+              style={{
+                flex: 1,
+                fontSize: "0.75rem",
+                color: colors.textMuted,
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+              }}
+            >
+              {collaboratorUrl}
+            </span>
+            <Button
+              variant="secondary"
+              onClick={() => copyToClipboard(collaboratorUrl)}
+              style={{ fontSize: "0.75rem", padding: "4px 12px", flexShrink: 0 }}
+            >
+              Copy
+            </Button>
+          </div>
         </div>
 
-        {/* Skip is prominent - solo play is the primary flow */}
+        {/* Spectator link */}
+        {spectatorUrl && (
+          <div style={{ marginBottom: 16 }}>
+            <div
+              style={{
+                fontSize: "0.6875rem",
+                color: colors.textSubtle,
+                marginBottom: 4,
+                fontWeight: 600,
+                letterSpacing: "0.05em",
+                textTransform: "uppercase",
+              }}
+            >
+              Spectator link
+            </div>
+            <div
+              style={{
+                display: "flex",
+                gap: 8,
+                alignItems: "center",
+                padding: "10px 14px",
+                borderRadius: 10,
+                background: "rgba(30, 41, 59, 0.6)",
+                border: `1px solid ${colors.border}`,
+              }}
+            >
+              <span
+                style={{
+                  flex: 1,
+                  fontSize: "0.75rem",
+                  color: colors.textMuted,
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                {spectatorUrl}
+              </span>
+              <Button
+                variant="secondary"
+                onClick={() => copyToClipboard(spectatorUrl)}
+                style={{ fontSize: "0.75rem", padding: "4px 12px", flexShrink: 0 }}
+              >
+                Copy
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {/* Connected collaborators */}
+        {hasCollaborators && (
+          <div style={{ marginBottom: 16 }}>
+            <div
+              style={{
+                fontSize: "0.6875rem",
+                color: colors.accentLight,
+                marginBottom: 8,
+                fontWeight: 600,
+                letterSpacing: "0.05em",
+                textTransform: "uppercase",
+              }}
+            >
+              Connected now
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              {humanCollaborators.map((p) => (
+                <div
+                  key={p.id}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 10,
+                    padding: "8px 12px",
+                    borderRadius: 8,
+                    background: `${getUserColor(p.id)}18`,
+                    border: `1px solid ${getUserColor(p.id)}40`,
+                  }}
+                >
+                  <div
+                    style={{
+                      width: 24,
+                      height: 24,
+                      borderRadius: "50%",
+                      background: getUserColor(p.id),
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      fontSize: "0.6875rem",
+                      fontWeight: 700,
+                      color: "#fff",
+                      flexShrink: 0,
+                    }}
+                  >
+                    {p.username.charAt(0).toUpperCase()}
+                  </div>
+                  <span style={{ fontSize: "0.875rem", color: colors.text, fontWeight: 500 }}>{p.username}</span>
+                  <span style={{ fontSize: "0.6875rem", color: colors.accentLight, marginLeft: "auto" }}>ready</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Continue button - text changes when collaborators are present */}
         <div style={{ textAlign: "center", marginBottom: 8 }}>
           <Button
             variant="primary"
             onClick={() => setStep(2)}
             style={{ background: colors.accent, fontWeight: 600, padding: "0.75rem 2.5rem" }}
           >
-            Continue solo →
+            {hasCollaborators ? "Raise curtains →" : "Continue solo →"}
           </Button>
         </div>
 

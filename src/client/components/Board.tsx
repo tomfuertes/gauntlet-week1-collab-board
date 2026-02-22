@@ -2139,6 +2139,8 @@ export function Board({
         {showMobileOnboard && (
           <OnboardModal
             personas={personas}
+            presence={presence}
+            boardId={boardId}
             onSubmit={(prompt, mode, model, personaId, _templateId, tc) => {
               markInitiator();
               setGameMode(mode);
@@ -2376,6 +2378,8 @@ export function Board({
       {initialized && objects.size === 0 && !boardGenStarted && !chatOpen && isInitiator && (
         <OnboardModal
           personas={personas}
+          presence={presence}
+          boardId={boardId}
           onSubmit={(prompt, mode, model, personaId, templateId, tc) => {
             markInitiator();
             setGameMode(mode);
