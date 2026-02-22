@@ -422,16 +422,92 @@ export function createSDKTools(
   // Frame-aware placement: when a frame is created, subsequent objects go inside it
   let currentFrame: { x: number; y: number; width: number; height: number } | null = null;
 
+  /** Check if a candidate rectangle is clear of all existing bounds with a gap margin.
+   *  Combines overlapFraction (interior overlap) + AABB-with-gap (touching edges) checks. */
+  function isClear(
+    candidate: { x: number; y: number; width: number; height: number },
+    allBounds: Array<{ x: number; y: number; width: number; height: number }>,
+    gap: number,
+  ): boolean {
+    return (
+      !allBounds.some((b) => overlapFraction(candidate, b) > 0) &&
+      !allBounds.some(
+        (b) =>
+          candidate.x < b.x + b.width + gap &&
+          candidate.x + candidate.width + gap > b.x &&
+          candidate.y < b.y + b.height + gap &&
+          candidate.y + candidate.height + gap > b.y,
+      )
+    );
+  }
+
   /** Flow-place an object on the canvas, avoiding all existing + same-turn objects.
+   *  When hint is provided (and no currentFrame), tries the hinted position first, then
+   *  spirals outward via Chebyshev rings to find the nearest clear slot.
    *  KEY-DECISION 2026-02-21: two-pass scan eliminates the "place at origin" fallback that
    *  caused overlap=12 on dense scenes. Pass 1: coarse grid (fast, covers most cases). Pass 2
    *  (fallback): fine-grained scan from below the tallest existing content, guaranteeing a
-   *  clear position as long as the canvas has any vertical space left. */
-  async function flowPlace(width: number, height: number): Promise<{ x: number; y: number }> {
+   *  clear position as long as the canvas has any vertical space left.
+   *  KEY-DECISION 2026-02-22: hint support re-introduces optional positional intent from LLMs.
+   *  Server validates and corrects via collision avoidance - LLM hints, server decides. */
+  async function flowPlace(
+    width: number,
+    height: number,
+    hint?: { x: number; y: number },
+  ): Promise<{ x: number; y: number }> {
     const GAP = 16;
     const existing = await getExistingBounds();
     // Include sharedBounds (cross-closure: stageManager objects visible to main and vice versa)
     const allBounds = [...existing, ...aiCreatedBounds, ...(sharedBounds ?? [])];
+
+    // Hint-based placement: try hinted position first, then spiral outward.
+    // Ignored when currentFrame is set (frame-local semantics take priority).
+    if (hint && !currentFrame) {
+      // OOB clamp the hint to canvas bounds
+      const hx = Math.max(CANVAS_MIN_X, Math.min(hint.x, CANVAS_MAX_X - width));
+      const hy = Math.max(CANVAS_MIN_Y, Math.min(hint.y, CANVAS_MAX_Y - height));
+
+      // Direct check - if clamped position is clear, use it (zero cost)
+      const direct = { x: hx, y: hy, width, height };
+      if (isClear(direct, allBounds, GAP)) {
+        console.debug(JSON.stringify({ event: "ai:flowplace:hint", hint, result: { x: hx, y: hy }, spiralRadius: 0 }));
+        return { x: hx, y: hy };
+      }
+
+      // Chebyshev spiral outward from hint - expanding square rings
+      const STEP = Math.max(16, Math.floor(Math.min(width, height) / 2));
+      const MAX_RADIUS = Math.max(CANVAS_MAX_X - CANVAS_MIN_X, CANVAS_MAX_Y - CANVAS_MIN_Y);
+      for (let r = STEP; r <= MAX_RADIUS; r += STEP) {
+        // Walk the perimeter of the square ring at distance r
+        for (let dx = -r; dx <= r; dx += STEP) {
+          for (const dy of [-r, r]) {
+            const cx = Math.max(CANVAS_MIN_X, Math.min(hx + dx, CANVAS_MAX_X - width));
+            const cy = Math.max(CANVAS_MIN_Y, Math.min(hy + dy, CANVAS_MAX_Y - height));
+            if (isClear({ x: cx, y: cy, width, height }, allBounds, GAP)) {
+              console.debug(
+                JSON.stringify({ event: "ai:flowplace:hint", hint, result: { x: cx, y: cy }, spiralRadius: r }),
+              );
+              return { x: cx, y: cy };
+            }
+          }
+        }
+        // Vertical edges of the ring (skip corners already checked above)
+        for (let dy = -r + STEP; dy < r; dy += STEP) {
+          for (const dx of [-r, r]) {
+            const cx = Math.max(CANVAS_MIN_X, Math.min(hx + dx, CANVAS_MAX_X - width));
+            const cy = Math.max(CANVAS_MIN_Y, Math.min(hy + dy, CANVAS_MAX_Y - height));
+            if (isClear({ x: cx, y: cy, width, height }, allBounds, GAP)) {
+              console.debug(
+                JSON.stringify({ event: "ai:flowplace:hint", hint, result: { x: cx, y: cy }, spiralRadius: r }),
+              );
+              return { x: cx, y: cy };
+            }
+          }
+        }
+      }
+      // Spiral exhausted - fall through to standard flowPlace algorithm
+      console.debug(JSON.stringify({ event: "ai:flowplace:hint-exhausted", hint, fallback: "flowPlace" }));
+    }
 
     // Frame-local placement: objects created after a frame go inside it
     if (currentFrame) {
@@ -455,8 +531,7 @@ export function createSDKTools(
 
       for (let cy = fMinY; cy + height <= fMaxY; cy += height + GAP) {
         for (let cx = fMinX; cx + width <= fMaxX; cx += width + GAP) {
-          const candidate = { x: cx, y: cy, width, height };
-          if (!innerBounds.some((b) => overlapFraction(candidate, b) > 0)) {
+          if (isClear({ x: cx, y: cy, width, height }, innerBounds, GAP)) {
             return { x: cx, y: cy };
           }
         }
@@ -468,21 +543,8 @@ export function createSDKTools(
     // --- Pass 1: coarse grid scan (object-sized steps, efficient) ---
     for (let cy = CANVAS_MIN_Y; cy + height <= CANVAS_MAX_Y; cy += height + GAP) {
       for (let cx = CANVAS_MIN_X; cx + width <= CANVAS_MAX_X; cx += width + GAP) {
-        const candidate = { x: cx, y: cy, width, height };
-        if (!allBounds.some((b) => overlapFraction(candidate, b) > 0)) {
-          // KEY-DECISION 2026-02-21: AABB check enforces 16px gap after coarse grid. overlapFraction
-          // misses touching objects (shared edge → intersection area=0 → fraction=0 → false clear).
-          if (
-            !allBounds.some(
-              (b) =>
-                candidate.x < b.x + b.width + GAP &&
-                candidate.x + candidate.width + GAP > b.x &&
-                candidate.y < b.y + b.height + GAP &&
-                candidate.y + candidate.height + GAP > b.y,
-            )
-          ) {
-            return { x: cx, y: cy };
-          }
+        if (isClear({ x: cx, y: cy, width, height }, allBounds, GAP)) {
+          return { x: cx, y: cy };
         }
       }
     }
@@ -500,19 +562,8 @@ export function createSDKTools(
     if (fallbackStartY + height <= CANVAS_MAX_Y) {
       for (let cy = fallbackStartY; cy + height <= CANVAS_MAX_Y; cy += FINE_STEP_Y) {
         for (let cx = CANVAS_MIN_X; cx + width <= CANVAS_MAX_X; cx += FINE_STEP_X) {
-          const candidate = { x: cx, y: cy, width, height };
-          if (!allBounds.some((b) => overlapFraction(candidate, b) > 0)) {
-            if (
-              !allBounds.some(
-                (b) =>
-                  candidate.x < b.x + b.width + GAP &&
-                  candidate.x + candidate.width + GAP > b.x &&
-                  candidate.y < b.y + b.height + GAP &&
-                  candidate.y + candidate.height + GAP > b.y,
-              )
-            ) {
-              return { x: cx, y: cy };
-            }
+          if (isClear({ x: cx, y: cy, width, height }, allBounds, GAP)) {
+            return { x: cx, y: cy };
           }
         }
       }
@@ -612,7 +663,7 @@ export function createSDKTools(
         "Create a sticky note (colored card) on the whiteboard. Use ONLY for action words, exclamations, " +
         "or status callouts that benefit from the colored card background (e.g. 'BANG!', 'DUCK!', 'DANGER!'). " +
         "For dialogue, narration, labels, and descriptions, use createText instead (it's the default for text content). " +
-        "Position is auto-placed by the layout engine - just specify text and optional color.",
+        "Position is auto-placed by the layout engine. Optionally provide x,y hints for preferred placement.",
       inputSchema: z.object({
         text: z.string().describe("The text content of the sticky note"),
         color: z
@@ -621,9 +672,22 @@ export function createSDKTools(
           .describe(
             "Hex color (default: #fbbf24 yellow). Options: #fbbf24, #f87171, #4ade80, #60a5fa, #c084fc, #fb923c",
           ),
+        x: z
+          .number()
+          .optional()
+          .describe(
+            "Preferred X position (canvas: 50-1150). Server enforces collision avoidance - final position may differ.",
+          ),
+        y: z
+          .number()
+          .optional()
+          .describe(
+            "Preferred Y position (canvas: 60-780). Server enforces collision avoidance - final position may differ.",
+          ),
       }),
-      execute: instrumentExecute("createStickyNote", async ({ text, color }) => {
-        const pos = await flowPlace(TOOL_DEFAULTS.sticky.width, TOOL_DEFAULTS.sticky.height);
+      execute: instrumentExecute("createStickyNote", async ({ text, color, x, y }) => {
+        const hint = x !== undefined && y !== undefined ? { x, y } : undefined;
+        const pos = await flowPlace(TOOL_DEFAULTS.sticky.width, TOOL_DEFAULTS.sticky.height, hint);
         const obj = makeObject(
           "sticky",
           pos,
@@ -646,7 +710,7 @@ export function createSDKTools(
         "Use for scene characters, players, NPCs, and crowd members. " +
         "Use persona colors for AI characters: SPARK=#fb923c, SAGE=#4ade80. " +
         "Prefer createPerson over drawScene for human characters. " +
-        "Position is auto-placed by the layout engine - just specify name and optional color.",
+        "Position is auto-placed by the layout engine. Optionally provide x,y hints for preferred placement.",
       inputSchema: z.object({
         name: z.string().describe("Character name shown above the figure (e.g. 'Dr. Fang', 'The Patient', 'Nurse')"),
         color: z
@@ -655,9 +719,22 @@ export function createSDKTools(
           .describe(
             "Figure color hex (default: #6366f1 indigo). SPARK=#fb923c, SAGE=#4ade80. Use player color to represent a specific user.",
           ),
+        x: z
+          .number()
+          .optional()
+          .describe(
+            "Preferred X position (canvas: 50-1150). Server enforces collision avoidance - final position may differ.",
+          ),
+        y: z
+          .number()
+          .optional()
+          .describe(
+            "Preferred Y position (canvas: 60-780). Server enforces collision avoidance - final position may differ.",
+          ),
       }),
-      execute: instrumentExecute("createPerson", async ({ name, color }) => {
-        const pos = await flowPlace(TOOL_DEFAULTS.person.width, TOOL_DEFAULTS.person.height);
+      execute: instrumentExecute("createPerson", async ({ name, color, x, y }) => {
+        const hint = x !== undefined && y !== undefined ? { x, y } : undefined;
+        const pos = await flowPlace(TOOL_DEFAULTS.person.width, TOOL_DEFAULTS.person.height, hint);
         const obj = makeObject(
           "person",
           pos,
@@ -677,7 +754,7 @@ export function createSDKTools(
     createShape: tool({
       description:
         "Create a shape on the whiteboard. Use shape='rect' for rectangle, 'circle' for circle, 'line' for line. " +
-        "Position is auto-placed by the layout engine - just specify shape type and optional dimensions/colors.",
+        "Position is auto-placed by the layout engine. Optionally provide x,y hints for preferred placement.",
       inputSchema: z.object({
         shape: z.string().describe("Shape type: 'rect', 'circle', or 'line'"),
         width: z
@@ -690,13 +767,26 @@ export function createSDKTools(
           .describe("Height (default: 100). For circle: same as width. For line: Y delta to endpoint."),
         fill: z.string().optional().describe("Fill color hex (default: #3b82f6)"),
         stroke: z.string().optional().describe("Stroke color hex (default: #2563eb)"),
+        x: z
+          .number()
+          .optional()
+          .describe(
+            "Preferred X position (canvas: 50-1150). Server enforces collision avoidance - final position may differ.",
+          ),
+        y: z
+          .number()
+          .optional()
+          .describe(
+            "Preferred Y position (canvas: 60-780). Server enforces collision avoidance - final position may differ.",
+          ),
       }),
-      execute: instrumentExecute("createShape", async ({ shape: shapeArg, width, height, fill, stroke }) => {
+      execute: instrumentExecute("createShape", async ({ shape: shapeArg, width, height, fill, stroke, x, y }) => {
         const shape = shapeArg || "rect";
+        const hint = x !== undefined && y !== undefined ? { x, y } : undefined;
 
         if (shape === "circle") {
           const diameter = width ?? TOOL_DEFAULTS.circle.diameter;
-          const pos = await flowPlace(diameter, diameter);
+          const pos = await flowPlace(diameter, diameter, hint);
           const palFill = fill || nextPaletteColor();
           const obj = makeObject(
             "circle",
@@ -712,7 +802,7 @@ export function createSDKTools(
         if (shape === "line") {
           const lineW = width ?? TOOL_DEFAULTS.line.width;
           const lineH = height ?? TOOL_DEFAULTS.line.height;
-          const pos = await flowPlace(lineW, Math.max(lineH, 4));
+          const pos = await flowPlace(lineW, Math.max(lineH, 4), hint);
           const obj = makeObject("line", pos, lineW, lineH, { stroke: stroke || TOOL_DEFAULTS.line.stroke }, batchId);
           return enforcedCreate(obj);
         }
@@ -720,7 +810,7 @@ export function createSDKTools(
         // Default: rect
         const rectW = width ?? TOOL_DEFAULTS.rect.width;
         const rectH = height ?? TOOL_DEFAULTS.rect.height;
-        const pos = await flowPlace(rectW, rectH);
+        const pos = await flowPlace(rectW, rectH, hint);
         const palFill = fill || nextPaletteColor();
         const obj = makeObject("rect", pos, rectW, rectH, { fill: palFill, stroke: stroke || palFill }, batchId);
         return enforcedCreate(obj);
@@ -731,16 +821,29 @@ export function createSDKTools(
     createFrame: tool({
       description:
         "Create a frame (labeled container/region) on the whiteboard to group or organize objects. Frames render behind other objects. " +
-        "Position is auto-placed by the layout engine - just specify title and optional dimensions.",
+        "Position is auto-placed by the layout engine. Optionally provide x,y hints for preferred placement.",
       inputSchema: z.object({
         title: z.string().describe("The frame title/label"),
         width: z.number().optional().describe("Width in pixels (default: 400)"),
         height: z.number().optional().describe("Height in pixels (default: 300)"),
+        x: z
+          .number()
+          .optional()
+          .describe(
+            "Preferred X position (canvas: 50-1150). Server enforces collision avoidance - final position may differ.",
+          ),
+        y: z
+          .number()
+          .optional()
+          .describe(
+            "Preferred Y position (canvas: 60-780). Server enforces collision avoidance - final position may differ.",
+          ),
       }),
-      execute: instrumentExecute("createFrame", async ({ title, width, height }) => {
+      execute: instrumentExecute("createFrame", async ({ title, width, height, x, y }) => {
         const frameW = width ?? TOOL_DEFAULTS.frame.width;
         const frameH = height ?? TOOL_DEFAULTS.frame.height;
-        const pos = await flowPlace(frameW, frameH);
+        const hint = x !== undefined && y !== undefined ? { x, y } : undefined;
+        const pos = await flowPlace(frameW, frameH, hint);
         const obj = makeObject(
           "frame",
           pos,
@@ -1020,16 +1123,29 @@ export function createSDKTools(
         "Create a text label on the whiteboard. DEFAULT for dialogue, narration, labels, descriptions, captions, " +
         "character speech, scene text, and names. Prefer this over createStickyNote for virtually all text content. " +
         "Only use createStickyNote when the colored card background adds visual meaning (action words, exclamations). " +
-        "Position is auto-placed by the layout engine - just specify text and optional color.",
+        "Position is auto-placed by the layout engine. Optionally provide x,y hints for preferred placement.",
       inputSchema: z.object({
         text: z.string().describe("The text content"),
         color: z.string().optional().describe("Text color hex (default: #1a1a2e)"),
+        x: z
+          .number()
+          .optional()
+          .describe(
+            "Preferred X position (canvas: 50-1150). Server enforces collision avoidance - final position may differ.",
+          ),
+        y: z
+          .number()
+          .optional()
+          .describe(
+            "Preferred Y position (canvas: 60-780). Server enforces collision avoidance - final position may differ.",
+          ),
       }),
-      execute: instrumentExecute("createText", async ({ text, color }) => {
+      execute: instrumentExecute("createText", async ({ text, color, x, y }) => {
         const charWidth = 8; // ~8px per char at default 16px font
         const width = Math.max(40, text.length * charWidth + 16);
         const height = 24;
-        const pos = await flowPlace(width, height);
+        const hintPos = x !== undefined && y !== undefined ? { x, y } : undefined;
+        const pos = await flowPlace(width, height, hintPos);
         const obj = makeObject("text", pos, width, height, { text, color: color || "#1a1a2e" }, batchId);
         return enforcedCreate(obj);
       }),
@@ -1191,7 +1307,7 @@ export function createSDKTools(
       description:
         "Compose a visual character or object from 2-10 shapes in a bounding box. Uses proportional " +
         "coordinates (0-1) so you think in relative positions, not pixels. Auto-creates a text label. " +
-        "Canvas position is auto-placed - you only specify the bounding box size (width/height) and relative part positions. " +
+        "Canvas position is auto-placed. Optionally provide x,y hints for preferred placement. " +
         "Example snowman at (300,200) 150x250: " +
         'parts:[{shape:"circle",relX:0.5,relY:0.75,relW:0.9,relH:0.35,fill:"#fff"},' +
         '{shape:"circle",relX:0.5,relY:0.4,relW:0.6,relH:0.25,fill:"#fff"},' +
@@ -1201,6 +1317,18 @@ export function createSDKTools(
         label: z.string().describe("What this represents (auto-creates a text label below)"),
         width: z.number().optional().describe("Bounding box width in pixels (default: 200)"),
         height: z.number().optional().describe("Bounding box height in pixels (default: 300)"),
+        x: z
+          .number()
+          .optional()
+          .describe(
+            "Preferred X position (canvas: 50-1150). Server enforces collision avoidance - final position may differ.",
+          ),
+        y: z
+          .number()
+          .optional()
+          .describe(
+            "Preferred Y position (canvas: 60-780). Server enforces collision avoidance - final position may differ.",
+          ),
         parts: z
           .array(
             z.object({
@@ -1217,7 +1345,7 @@ export function createSDKTools(
           .max(10)
           .describe("Shape parts with proportional coordinates"),
       }),
-      execute: instrumentExecute("drawScene", async ({ label, width, height, parts }) => {
+      execute: instrumentExecute("drawScene", async ({ label, width, height, x, y, parts }) => {
         const w = width ?? 200;
         const h = height ?? 300;
 
@@ -1239,9 +1367,10 @@ export function createSDKTools(
         }
 
         // Flow-place the bounding box (parts go inside it via relative coordinates)
-        const pos = await flowPlace(w, h + 32); // +32 for label below
-        const x = pos.x;
-        const y = pos.y;
+        const hintPos = x !== undefined && y !== undefined ? { x, y } : undefined;
+        const pos = await flowPlace(w, h + 32, hintPos); // +32 for label below
+        const bx = pos.x;
+        const by = pos.y;
 
         const compositionBatchId = crypto.randomUUID();
         const clamp = (v: number) => Math.max(0, Math.min(1, v));
@@ -1257,8 +1386,8 @@ export function createSDKTools(
 
           const absW = rw * w;
           const absH = rh * h;
-          const absX = x + rx * w - absW / 2;
-          const absY = y + ry * h - absH / 2;
+          const absX = bx + rx * w - absW / 2;
+          const absY = by + ry * h - absH / 2;
 
           const shapeType = part.shape === "circle" ? "circle" : part.shape === "line" ? "line" : "rect";
           const props: BoardObjectProps =
@@ -1283,7 +1412,7 @@ export function createSDKTools(
         const labelWidth = Math.max(40, label.length * 8 + 16);
         const labelObj = makeObject(
           "text",
-          { x: x + w / 2 - labelWidth / 2, y: y + h + 8 },
+          { x: bx + w / 2 - labelWidth / 2, y: by + h + 8 },
           labelWidth,
           24,
           { text: label, color: "#1a1a2e" },
@@ -1295,7 +1424,7 @@ export function createSDKTools(
         if (!("error" in labelResult)) partIds.push(labelResult.created as string);
 
         // Track the full composition bounding box (not individual parts)
-        const compositionBounds = { x, y, width: w, height: h + 32 };
+        const compositionBounds = { x: bx, y: by, width: w, height: h + 32 };
         aiCreatedBounds.push(compositionBounds);
         sharedBounds?.push(compositionBounds);
         aiCreateCount++;
@@ -1304,7 +1433,7 @@ export function createSDKTools(
         return {
           created: partIds.length,
           label,
-          bounds: { x, y, width: w, height: h },
+          bounds: { x: bx, y: by, width: w, height: h },
           batchId: compositionBatchId,
           partIds,
           ...(failed > 0 && { error: `${failed}/${parts.length} parts failed` }),
