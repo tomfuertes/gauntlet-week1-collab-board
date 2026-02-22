@@ -47,6 +47,7 @@ import { recordBoardActivity } from "./env";
 import type {
   BoardObject,
   BoardObjectProps,
+  AIModel,
   BoardStub,
   CanvasAction,
   CharacterRelationship,
@@ -961,10 +962,12 @@ export class ChatAgent extends AIChatAgent<Bindings> {
       console.debug(JSON.stringify({ event: "plot-twist:already-used", boardId: this.name }));
     }
 
-    // Detect chat keyword prefixes: "note:" (director notes) and "qa:" (QA test commands).
+    // Detect chat keyword prefixes: "note:" (director notes), "sm:" (stage manager), "qa:" (QA test commands).
     // KEY-DECISION 2026-02-21: Server-side detection rewrites message history with a structured
     // tag so the AI sees clean context rather than raw prefix syntax. Follows [PLOT TWIST] pattern.
+    // KEY-DECISION 2026-02-22: sm: checked before qa: so "sm:" is never caught by qa: match.
     let detectedDirectorNote: { username: string; content: string } | undefined;
+    let detectedSMCommand: string | undefined;
     let detectedQACommand: string | undefined;
     const lastMsgForPrefix = this.messages[this.messages.length - 1];
     if (lastMsgForPrefix?.role === "user") {
@@ -976,7 +979,8 @@ export class ChatAgent extends AIChatAgent<Bindings> {
       // Strip [username] prefix before checking for keyword prefixes
       const contentForPrefix = rawTextForPrefix.replace(/^\[[^\]]+\]\s*/, "");
       const noteMatch = contentForPrefix.match(/^note:\s*(.+)/is);
-      const qaMatch = !noteMatch && contentForPrefix.match(/^qa:\s*(.+)/is);
+      const smMatch = !noteMatch && contentForPrefix.match(/^sm:\s*(.+)/is);
+      const qaMatch = !noteMatch && !smMatch && contentForPrefix.match(/^qa:\s*(.+)/is);
       const uname = (body?.username as string | undefined) || "a player";
       if (noteMatch) {
         const content = noteMatch[1].trim();
@@ -986,6 +990,14 @@ export class ChatAgent extends AIChatAgent<Bindings> {
           parts: [{ type: "text" as const, text: `[${uname}] [DIRECTOR NOTE: ${content}]` }],
         };
         console.debug(JSON.stringify({ event: "chat:director-note", boardId: this.name, user: uname }));
+      } else if (smMatch) {
+        const content = smMatch[1].trim();
+        detectedSMCommand = content;
+        this.messages[this.messages.length - 1] = {
+          ...lastMsgForPrefix,
+          parts: [{ type: "text" as const, text: `[${uname}] [STAGE DIRECTION: ${content}]` }],
+        };
+        console.debug(JSON.stringify({ event: "chat:stage-direction", boardId: this.name, user: uname }));
       } else if (qaMatch) {
         const command = qaMatch[1].trim();
         detectedQACommand = command;
@@ -1340,6 +1352,30 @@ export class ChatAgent extends AIChatAgent<Bindings> {
     this._resetDirectorTimer();
 
     try {
+      // SM: prefix - invoke stage manager on demand, skip main streamText entirely.
+      // Stage manager is silent (generateText only) - no chat output, no reactive persona.
+      // KEY-DECISION 2026-02-22: Falls back to default SPARK+SAGE troupe when no troupeConfig
+      // is stored, so sm: works on any board even without the onboard wizard.
+      if (detectedSMCommand) {
+        const storedTroupeConfig = troupeConfig ?? (await this.ctx.storage.get<TroupeConfig>("troupeConfig"));
+        const effectiveConfig: TroupeConfig = storedTroupeConfig ?? {
+          members: personas.slice(0, 2).map((p) => ({ personaId: p.id, model: "claude-haiku-4.5" as AIModel })),
+        };
+        await this._runStageManager(
+          effectiveConfig,
+          boardStub as unknown as BoardStub,
+          detectedSMCommand,
+          personas,
+          createBudget,
+          sharedBounds,
+          false, // qaMode: SM: never bypasses caps
+          stageManagerMaxCreates,
+        );
+        this._isGenerating = false;
+        await clearPresence();
+        return new Response(null, { status: 204 });
+      }
+
       // Stage Manager: synchronous scene setup on first exchange when troupe is configured.
       // Awaited so the canvas is populated before the main streamText response begins streaming.
       if (humanTurns <= 1 && troupeConfig) {
