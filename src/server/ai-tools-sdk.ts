@@ -541,7 +541,15 @@ export function createSDKTools(
             globalMax: globalMaxCreates,
           }),
         );
-        return { created: obj.id, type: obj.type, x: obj.x, y: obj.y, width: obj.width, height: obj.height };
+        return {
+          created: obj.id,
+          type: obj.type,
+          x: obj.x,
+          y: obj.y,
+          width: obj.width,
+          height: obj.height,
+          capped: true,
+        };
       }
 
       // Global cross-closure cap (shared between stageManager + main streamText)
@@ -556,7 +564,15 @@ export function createSDKTools(
             globalMax: globalMaxCreates,
           }),
         );
-        return { created: obj.id, type: obj.type, x: obj.x, y: obj.y, width: obj.width, height: obj.height };
+        return {
+          created: obj.id,
+          type: obj.type,
+          x: obj.x,
+          y: obj.y,
+          width: obj.width,
+          height: obj.height,
+          capped: true,
+        };
       }
     }
 
@@ -736,7 +752,11 @@ export function createSDKTools(
           batchId,
         );
         const result = await enforcedCreate(obj);
-        if (!("error" in result)) {
+        // KEY-DECISION 2026-02-22: Only set currentFrame when the frame was actually persisted.
+        // Capped frames (budget exhausted) return success-shaped data but nothing is on the board.
+        // A phantom currentFrame would place subsequent objects inside an invisible area, causing
+        // them to land in positions that overlap other content.
+        if (!("error" in result) && !("capped" in result)) {
           // Track frame for subsequent in-frame placement
           currentFrame = { x: obj.x, y: obj.y, width: obj.width, height: obj.height };
         }
