@@ -53,6 +53,7 @@ interface Scenario {
   expectedMinObjects?: number;
   expectedTypes?: string[];
   description?: string;
+  tags?: string[];
 }
 
 interface BoardMetrics {
@@ -87,6 +88,7 @@ interface NarrativeScenario {
   primaryDimensions: string[];
   minExpectedObjects: number;
   notes?: string;
+  tags?: string[];
 }
 
 interface TranscriptEntry {
@@ -645,10 +647,46 @@ function printNarrativeResult(result: NarrativeScenarioResult): void {
 // Main
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// Scenario filtering
+// ---------------------------------------------------------------------------
+
+function matchesFilter(
+  id: string,
+  tags: string[] | undefined,
+  filterIds: Set<string>,
+  filterTags: Set<string>,
+): boolean {
+  if (filterIds.size === 0 && filterTags.size === 0) return true;
+  if (filterIds.size > 0 && filterIds.has(id)) return true;
+  if (filterTags.size > 0 && tags?.some((t) => filterTags.has(t))) return true;
+  return false;
+}
+
+// ---------------------------------------------------------------------------
+// Main
+// ---------------------------------------------------------------------------
+
 async function main() {
   const promptVersion = readPromptVersion();
 
+  // Parse scenario/tag filters from env
+  const filterIds = new Set(
+    (process.env.EVAL_SCENARIO ?? "")
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean),
+  );
+  const filterTags = new Set(
+    (process.env.EVAL_TAG ?? "")
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean),
+  );
+
   console.log(`[eval] Prompt eval harness (PROMPT_VERSION=${promptVersion}, model=${MODEL}, port=${PORT})`);
+  if (filterIds.size > 0) console.log(`[eval] Filtering by scenario IDs: ${[...filterIds].join(", ")}`);
+  if (filterTags.size > 0) console.log(`[eval] Filtering by tags: ${[...filterTags].join(", ")}`);
 
   // Initialize Langfuse for pushing eval scores to traces (optional - skipped if env vars absent)
   const langfuse =
@@ -703,6 +741,7 @@ async function main() {
       console.error(`[eval] Failed to parse ${scenariosPath}: ${err}`);
       process.exit(1);
     }
+    scenarios = scenarios.filter((s) => matchesFilter(s.id, s.tags, filterIds, filterTags));
     console.log(`[eval] Running ${scenarios.length} layout scenarios...\n`);
 
     for (const scenario of scenarios) {
@@ -809,6 +848,7 @@ async function main() {
         console.error(`[eval] Failed to parse ${narrativePath}: ${err}`);
         process.exit(1);
       }
+      narrativeScenarios = narrativeScenarios.filter((s) => matchesFilter(s.id, s.tags, filterIds, filterTags));
       const skipJudge = process.env.EVAL_SKIP_JUDGE === "1";
       console.log(
         `\n[eval] Running ${narrativeScenarios.length} narrative scenarios` +
@@ -937,6 +977,13 @@ async function main() {
     await langfuse.flushAsync();
     console.log("[eval] Langfuse scores flushed");
   }
+
+  // Compact one-liner summary for easy copy-paste into commits/PRs
+  const layoutSummary =
+    layoutResults.length > 0 ? `layout: ${layoutPassed}/${layoutResults.length} | overlap: ${layoutAvgOverlap.toFixed(1)}` : "layout: n/a";
+  const narrativeSummary =
+    judgedNarrative.length > 0 ? `narrative: ${narrativeAvgOverall.toFixed(1)}/5` : "narrative: n/a";
+  console.log(`\n${promptVersion} | ${MODEL} | ${layoutSummary} | ${narrativeSummary}`);
 }
 
 main().catch((err) => {

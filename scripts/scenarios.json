@@ -4,7 +4,8 @@
     "prompt": "Set up a dentist office scene with a frame and 3 named characters inside it",
     "expectedMinObjects": 4,
     "expectedTypes": ["frame", "person", "person", "person"],
-    "description": "Tests frame + child positioning (createPerson characters inside frame at inset coords)"
+    "description": "Tests frame + child positioning (createPerson characters inside frame at inset coords)",
+    "tags": ["smoke"]
   },
   {
     "id": "row-layout",
@@ -17,7 +18,8 @@
     "id": "complication",
     "prompt": "Add a dramatic complication to the scene - something that raises the stakes",
     "expectedMinObjects": 1,
-    "description": "Tests creative placement relative to empty board; no overlap expected"
+    "description": "Tests creative placement relative to empty board; no overlap expected",
+    "tags": ["smoke"]
   },
   {
     "id": "image-gen",
@@ -59,12 +61,14 @@
     "prompt": "A stranger walks in",
     "expectedMinObjects": 1,
     "expectedTypes": ["person"],
-    "description": "Tests 'a stranger walks in' intent pattern - one createPerson character placed near canvas center"
+    "description": "Tests 'a stranger walks in' intent pattern - one createPerson character placed near canvas center",
+    "tags": ["smoke"]
   },
   {
     "id": "stakes-escalation",
     "prompt": "Complicate everything",
     "expectedMinObjects": 0,
-    "description": "Tests 'complicate everything' intent pattern - may modify existing objects via getBoardState + updateText rather than creating new ones"
+    "description": "Tests 'complicate everything' intent pattern - may modify existing objects via getBoardState + updateText rather than creating new ones",
+    "tags": ["smoke"]
   }
 ]
