@@ -10,6 +10,7 @@
  *   grid-2x2          - "Create a 2x2 grid of rooms: Kitchen, Bedroom, Bathroom, Living Room"
  *   color-variety     - "Create 4 stickies showing different emotions..."
  *   stakes-escalation - "The building is on fire! Everyone needs to evacuate!" (turn 3, expects mods)
+ *   frame-budget-cap  - "Set up a courtroom: frame + 3 characters" (regression: phantom frame bug #277)
  *
  * Usage:
  *   set -a && source .dev.vars && set +a
@@ -288,6 +289,48 @@ const SCENARIOS: Scenario[] = [
       return Math.max(0, 30 - (createCount - 3) * 10);
     },
   },
+  {
+    id: "frame-budget-cap",
+    // Regression scenario for the phantom frame bug (commit 85c47b9):
+    // createFrame near the budget cap (maxCreates=4) would silently set currentFrame
+    // even when the frame was capped, causing subsequent objects to land at phantom
+    // frame coordinates and overlap each other. This scenario pushes toward the cap
+    // by requesting 3 characters + a frame container, total 4 objects.
+    prompt:
+      "Set up a busy courtroom scene: create a frame called 'Courtroom' and put a judge, a defendant, and a lawyer inside it",
+    humanTurns: 2,
+    injectSceneSetup: true,
+    prePopulate: false,
+    expectedBehavior:
+      "createFrame + 3 createPerson calls (4 total = at budget cap). " +
+      "If frame is capped, persons should still be created without error (not at phantom coords). " +
+      "Regression: pre-fix, capped frame set currentFrame -> persons overlapped at phantom position.",
+    passThreshold: 75,
+    scoreRun: (r) => {
+      const frameCount = r.createdTypes.filter((t) => t === "frame").length;
+      const personCount = r.createdTypes.filter((t) => t === "person").length;
+      const totalCreates = r.createdTypes.length;
+
+      // Ideal: frame + 3 persons (4 total, all within cap)
+      if (frameCount >= 1 && personCount >= 3) return 100;
+      // Good: frame + 2 persons (1 person capped at 4-object budget boundary)
+      if (frameCount >= 1 && personCount >= 2) return 90;
+      // Good: frame + 1 person (budget partially exhausted by frame)
+      if (frameCount >= 1 && personCount >= 1) return 75;
+      // Acceptable: frame only (3 persons capped - regression guard: no phantom frame)
+      if (frameCount >= 1 && totalCreates === 1) return 60;
+      // Acceptable: 3 persons, no frame (frame capped but persons placed correctly)
+      // Pre-fix regression: this would have produced 0 visible persons (placed at phantom coords = origin overlap)
+      if (personCount >= 3 && frameCount === 0) return 70;
+      // Partial: 1-2 persons, no frame (budget issues but not a phantom-frame crash)
+      if (personCount >= 2) return 50;
+      if (personCount >= 1) return 30;
+      // Only non-person creates (wrong type)
+      if (totalCreates >= 2) return 20;
+      if (totalCreates >= 1) return 10;
+      return 0;
+    },
+  },
 ];
 
 // ---------------------------------------------------------------------------
@@ -360,6 +403,22 @@ function analyzeFailures(scenario: Scenario, results: RunResult[]): string[] {
       modes.push(
         `UNDER-CREATION in ${underCreateCount} failures (avg ${(frameTotal / underCreateCount).toFixed(1)} frames, need 4)`,
       );
+    }
+  }
+
+  if (scenario.id === "frame-budget-cap") {
+    // Regression detection: persons without any frame likely means frame was capped.
+    // Pre-fix: capped frame still set currentFrame -> persons overlapped at phantom coords.
+    // Post-fix: persons are still created, laid out independently from frame.
+    const noFramePersons = failures.filter(
+      (r) => r.createdTypes.filter((t) => t === "frame").length === 0 && r.createdTypes.filter((t) => t === "person").length >= 1,
+    ).length;
+    if (noFramePersons > 0) {
+      modes.push(`FRAME-CAPPED in ${noFramePersons} failures (frame at cap boundary, persons still created - check for overlap regression)`);
+    }
+    const noPersons = failures.filter((r) => r.createdTypes.filter((t) => t === "person").length === 0).length;
+    if (noPersons > 0) {
+      modes.push(`NO-PERSONS in ${noPersons} failures (expected 1+ createPerson for characters)`);
     }
   }
 
