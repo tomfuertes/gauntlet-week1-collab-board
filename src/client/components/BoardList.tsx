@@ -5,6 +5,7 @@ import { BOARD_TEMPLATES } from "../../shared/board-templates";
 import { colors } from "../theme";
 import { Button } from "./Button";
 import { Select } from "./Select";
+import { ShowPickerModal } from "./ShowPickerModal";
 
 interface BoardMeta {
   id: string;
@@ -406,6 +407,7 @@ export function BoardList({
 }) {
   const [boards, setBoards] = useState<BoardMeta[]>([]);
   const [loading, setLoading] = useState(true);
+  const [showPickerOpen, setShowPickerOpen] = useState(false);
   const [challenge, setChallenge] = useState<DailyChallenge | null>(null);
   const [challengeLoading, setChallengeLoading] = useState(true);
   const [enteringChallenge, setEnteringChallenge] = useState(false);
@@ -549,6 +551,7 @@ export function BoardList({
 
   return (
     <div style={{ minHeight: "100vh", background: colors.bg, color: colors.text }}>
+      <ShowPickerModal isOpen={showPickerOpen} onClose={() => setShowPickerOpen(false)} />
       {/* Header */}
       <div
         style={{
@@ -564,6 +567,20 @@ export function BoardList({
       >
         <span style={{ fontWeight: 600 }}>YesAInd</span>
         <div style={{ display: "flex", alignItems: "center", gap: "1rem" }}>
+          <Button
+            onClick={() => setShowPickerOpen(true)}
+            style={{
+              color: "#fff",
+              background: "linear-gradient(135deg, #7c3aed 0%, #6d28d9 100%)",
+              border: "none",
+              borderRadius: 4,
+              fontWeight: 600,
+              padding: "0.375rem 0.75rem",
+              fontSize: "0.8125rem",
+            }}
+          >
+            🎭 Watch a Show
+          </Button>
           <Button
             onClick={() => {
               location.hash = "challenge";
