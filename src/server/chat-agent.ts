@@ -1398,6 +1398,34 @@ export class ChatAgent extends AIChatAgent<Bindings> {
         );
       }
 
+      // Inject compact board state summary so the AI knows what's on canvas without a getBoardState tool call.
+      // KEY-DECISION 2026-02-22: Injected after stage manager so SM-placed objects are visible.
+      // Fires every turn (not just turn 1) - keeps the AI grounded on dense boards.
+      // Lines and background images excluded: lines are positional noise, backgrounds are decorative.
+      try {
+        const boardObjects = (await boardStub.readObjects()) as BoardObject[];
+        const visible = boardObjects.filter((o) => !o.isBackground && o.type !== "line");
+        let stageBlock: string;
+        if (visible.length === 0) {
+          stageBlock = "[CURRENT STAGE]\nEmpty canvas.";
+        } else {
+          const descs = visible.map((o) => {
+            const p = o.props as BoardObjectProps;
+            const name = p.text || p.prompt || "";
+            const color = p.color || p.fill || "";
+            const parts: string[] = [o.type];
+            if (name) parts.push(`"${name}"`);
+            if (color) parts.push(color);
+            return parts.join(" ");
+          });
+          stageBlock = `[CURRENT STAGE]\nObjects on canvas: ${descs.join(", ")}`;
+        }
+        systemPrompt += `\n\n${stageBlock}`;
+      } catch (err) {
+        console.warn(JSON.stringify({ event: "board-state-inject:error", boardId: this.name, error: String(err) }));
+        // Non-fatal: skip injection if board state read fails
+      }
+
       const { messages: sanitizedMsgs, repairedCount } = sanitizeMessages(this.messages);
       if (repairedCount > 0) this._traceSanitizeRepair("chat", repairedCount);
       const result = streamText({
