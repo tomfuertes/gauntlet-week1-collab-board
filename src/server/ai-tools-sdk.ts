@@ -470,7 +470,19 @@ export function createSDKTools(
       for (let cx = CANVAS_MIN_X; cx + width <= CANVAS_MAX_X; cx += width + GAP) {
         const candidate = { x: cx, y: cy, width, height };
         if (!allBounds.some((b) => overlapFraction(candidate, b) > 0)) {
-          return { x: cx, y: cy };
+          // KEY-DECISION 2026-02-21: AABB check enforces 16px gap after coarse grid. overlapFraction
+          // misses touching objects (shared edge → intersection area=0 → fraction=0 → false clear).
+          if (
+            !allBounds.some(
+              (b) =>
+                candidate.x < b.x + b.width + GAP &&
+                candidate.x + candidate.width + GAP > b.x &&
+                candidate.y < b.y + b.height + GAP &&
+                candidate.y + candidate.height + GAP > b.y,
+            )
+          ) {
+            return { x: cx, y: cy };
+          }
         }
       }
     }
@@ -490,7 +502,17 @@ export function createSDKTools(
         for (let cx = CANVAS_MIN_X; cx + width <= CANVAS_MAX_X; cx += FINE_STEP_X) {
           const candidate = { x: cx, y: cy, width, height };
           if (!allBounds.some((b) => overlapFraction(candidate, b) > 0)) {
-            return { x: cx, y: cy };
+            if (
+              !allBounds.some(
+                (b) =>
+                  candidate.x < b.x + b.width + GAP &&
+                  candidate.x + candidate.width + GAP > b.x &&
+                  candidate.y < b.y + b.height + GAP &&
+                  candidate.y + candidate.height + GAP > b.y,
+              )
+            ) {
+              return { x: cx, y: cy };
+            }
           }
         }
       }
