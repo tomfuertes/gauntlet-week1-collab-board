@@ -3,6 +3,38 @@ import { Langfuse } from "langfuse";
 
 export { wrapLanguageModel, Langfuse };
 
+/**
+ * Model pricing table: input/output cost in USD per 1M tokens.
+ * Used to compute inputCost/outputCost on each Langfuse generation so totalCost is non-zero.
+ * Sources (as of 2026-02-22): Anthropic pricing page, OpenAI pricing page.
+ */
+const MODEL_PRICING_PER_MTOK: Record<string, { input: number; output: number }> = {
+  // Anthropic
+  "claude-haiku-4.5": { input: 1.0, output: 5.0 },
+  "claude-sonnet-4": { input: 3.0, output: 15.0 },
+  "claude-sonnet-4.6": { input: 3.0, output: 15.0 },
+  // OpenAI
+  "gpt-4o-mini": { input: 0.15, output: 0.6 },
+  "gpt-4o": { input: 2.5, output: 10.0 },
+  "gpt-4.1-mini": { input: 0.4, output: 1.6 },
+  "gpt-4.1-nano": { input: 0.1, output: 0.4 },
+  "gpt-5-mini": { input: 1.1, output: 4.4 },
+};
+
+/** Compute USD cost from token counts and model ID. Returns undefined if model not in table. */
+function computeCost(
+  modelId: string,
+  inputTokens: number,
+  outputTokens: number,
+): { inputCost: number; outputCost: number } | undefined {
+  const pricing = MODEL_PRICING_PER_MTOK[modelId];
+  if (!pricing) return undefined;
+  return {
+    inputCost: (inputTokens / 1_000_000) * pricing.input,
+    outputCost: (outputTokens / 1_000_000) * pricing.output,
+  };
+}
+
 interface TraceContext {
   boardId: string;
   trigger: string;
@@ -65,9 +97,15 @@ function recordLangfuseGeneration(
       input: ctx.prompt,
       metadata,
     });
+    const cost = computeCost(ctx.model, ctx.inputTokens, ctx.outputTokens);
     generation.end({
       output: resolvedOutput,
-      usage: { input: ctx.inputTokens, output: ctx.outputTokens, unit: "TOKENS" },
+      usage: {
+        input: ctx.inputTokens,
+        output: ctx.outputTokens,
+        unit: "TOKENS",
+        ...(cost && { inputCost: cost.inputCost, outputCost: cost.outputCost }),
+      },
 
       level: (ctx.error ? "ERROR" : "DEFAULT") as any,
       statusMessage: ctx.error,
