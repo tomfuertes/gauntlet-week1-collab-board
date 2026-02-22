@@ -60,7 +60,7 @@ export function useDragSelection({ objectsRef, setSelectedIds }: UseDragSelectio
                 height: Math.abs(obj.height),
               }
             : obj;
-        if (rectsIntersect(m, bounds)) {
+        if (!obj.isBackground && rectsIntersect(m, bounds)) {
           selected.add(obj.id);
         }
       }
