@@ -60,6 +60,7 @@ React + Vite + react-konva + TypeScript | Cloudflare Workers + Hono + Durable Ob
 - **v26 fixes:** (1) `computeOverlapScore` excludes frames + lines - false positive fix (3 persons inside a frame were counting as 3 overlaps). (2) `flowPlace` two-pass scan: Pass 1 coarse grid (object-sized steps), Pass 2 fine-grained fallback below all content (step=objectWidth/4). Eliminates "place at origin" fallback that caused overlap=12 on dense scenes. (3) Crisis-aware maxCreates: 2/1 for escalation turns vs 4/3 normal. (4) QA bypass via `qa:` prefix. (5) Judge transcript now expands batchExecute inner tools (was blind to create tools nested inside batch). (6) GPT-4.1 Mini + Nano added to AI_MODELS.
 - **v26 baseline (Haiku):** 3/10 layout pass, avg overlap 3.3. Narrative tool_usage still 1/5 (Haiku wrapping creates in batchExecute → judge sees batch call, not inner tools → score 1 despite canvas activity).
 - **Eval command:** `set -a && source .dev.vars && set +a && EVAL_MODEL=claude-haiku-4.5 npm run eval` (must use `set -a` to export vars to child processes).
+- **Standalone eval (no server):** `set -a && source .dev.vars && set +a && npx tsx scripts/prompt-scenarios-diag.ts` - calls Anthropic API directly, no wrangler/dev server needed. Preferred for prompt/layout validation. Always redirect output: `> /tmp/eval-diag.txt 2>&1` then read the file. Never re-run to get different output slices.
 
 ## Commands
 
