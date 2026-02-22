@@ -1,0 +1,3 @@
+-- Migration number: 0014 	 2026-02-22T06:43:00.000Z
+ALTER TABLE boards ADD COLUMN is_show INTEGER DEFAULT 0;
+ALTER TABLE boards ADD COLUMN show_status TEXT;
