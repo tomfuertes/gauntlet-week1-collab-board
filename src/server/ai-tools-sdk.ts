@@ -191,11 +191,16 @@ export function rectsOverlap(a: BoardObject, b: BoardObject): boolean {
   return a.x < b.x + b.width && a.x + a.width > b.x && a.y < b.y + b.height && a.y + a.height > b.y;
 }
 
-/** Count pairwise overlaps among objects (0 = perfect layout) */
+/** Count pairwise overlaps among objects (0 = perfect layout).
+ *  Frames are excluded: objects placed inside a frame are expected to overlap it visually.
+ *  Lines are excluded: connector bbox always overlaps connected objects by design.
+ *  KEY-DECISION 2026-02-21: frame+line exclusion prevents false positives in eval metrics
+ *  for scene-setup (3 persons inside frame → 3 false overlaps without this filter). */
 export function computeOverlapScore(objects: BoardObject[]): number {
+  const collidable = objects.filter((o) => o.type !== "frame" && o.type !== "line");
   let overlaps = 0;
-  for (let i = 0; i < objects.length; i++)
-    for (let j = i + 1; j < objects.length; j++) if (rectsOverlap(objects[i], objects[j])) overlaps++;
+  for (let i = 0; i < collidable.length; i++)
+    for (let j = i + 1; j < collidable.length; j++) if (rectsOverlap(collidable[i], collidable[j])) overlaps++;
   return overlaps;
 }
 
@@ -417,7 +422,11 @@ export function createSDKTools(
   // Frame-aware placement: when a frame is created, subsequent objects go inside it
   let currentFrame: { x: number; y: number; width: number; height: number } | null = null;
 
-  /** Flow-place an object on the canvas, avoiding all existing + same-turn objects. */
+  /** Flow-place an object on the canvas, avoiding all existing + same-turn objects.
+   *  KEY-DECISION 2026-02-21: two-pass scan eliminates the "place at origin" fallback that
+   *  caused overlap=12 on dense scenes. Pass 1: coarse grid (fast, covers most cases). Pass 2
+   *  (fallback): fine-grained scan from below the tallest existing content, guaranteeing a
+   *  clear position as long as the canvas has any vertical space left. */
   async function flowPlace(width: number, height: number): Promise<{ x: number; y: number }> {
     const GAP = 16;
     const existing = await getExistingBounds();
@@ -456,7 +465,7 @@ export function createSDKTools(
       currentFrame = null;
     }
 
-    // Canvas-level scan: left-to-right, top-to-bottom, step by object size
+    // --- Pass 1: coarse grid scan (object-sized steps, efficient) ---
     for (let cy = CANVAS_MIN_Y; cy + height <= CANVAS_MAX_Y; cy += height + GAP) {
       for (let cx = CANVAS_MIN_X; cx + width <= CANVAS_MAX_X; cx += width + GAP) {
         const candidate = { x: cx, y: cy, width, height };
@@ -466,7 +475,29 @@ export function createSDKTools(
       }
     }
 
-    // Canvas full - place at origin (OOB clamping handles bounds)
+    // --- Pass 2: fine-grained fallback below all existing content ---
+    // The coarse grid can miss valid positions when existing objects have irregular sizes.
+    // Find the Y coordinate below the bottom edge of all placed objects, then scan right-to-left
+    // at a fine step (half object height) to find the nearest clear slot.
+    // KEY-DECISION 2026-02-21: this prevents the "canvas full" fallback from placing objects
+    // at origin (CANVAS_MIN_X, CANVAS_MIN_Y) which guarantees overlap when content is there.
+    const FINE_STEP_X = Math.max(8, Math.floor(width / 4));
+    const FINE_STEP_Y = Math.max(8, Math.floor(height / 4));
+    const contentMaxY = allBounds.reduce((m, b) => Math.max(m, b.y + b.height), CANVAS_MIN_Y - 1);
+    const fallbackStartY = Math.min(contentMaxY + GAP, CANVAS_MAX_Y - height);
+    if (fallbackStartY + height <= CANVAS_MAX_Y) {
+      for (let cy = fallbackStartY; cy + height <= CANVAS_MAX_Y; cy += FINE_STEP_Y) {
+        for (let cx = CANVAS_MIN_X; cx + width <= CANVAS_MAX_X; cx += FINE_STEP_X) {
+          const candidate = { x: cx, y: cy, width, height };
+          if (!allBounds.some((b) => overlapFraction(candidate, b) > 0)) {
+            return { x: cx, y: cy };
+          }
+        }
+      }
+    }
+
+    // Canvas truly full - place at origin (OOB clamping handles bounds).
+    // Should only happen when the canvas has more objects than it can fit.
     return { x: CANVAS_MIN_X, y: CANVAS_MIN_Y };
   }
 
