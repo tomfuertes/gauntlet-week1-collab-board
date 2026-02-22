@@ -214,19 +214,6 @@ export const BoardObjectRenderer = React.memo(function BoardObjectRenderer({
     const nameFontSize = Math.max(9, Math.min(13, w * 0.14));
     return (
       <Group {...merged} {...glowProps}>
-        {/* Name label floats above head */}
-        {obj.props.text ? (
-          <Text
-            x={0}
-            y={-(nameFontSize + 4)}
-            text={obj.props.text}
-            fontSize={nameFontSize}
-            fill="#ffffff"
-            fontStyle="600"
-            width={w}
-            align="center"
-          />
-        ) : null}
         {/* Head */}
         <Ellipse x={headCX} y={headCY} radiusX={headR} radiusY={headR} fill={color} />
         {/* Torso */}
@@ -251,6 +238,19 @@ export const BoardObjectRenderer = React.memo(function BoardObjectRenderer({
           strokeWidth={strokeW}
           lineCap="round"
         />
+        {/* Name label floats above head - rendered last so it appears on top */}
+        {obj.props.text ? (
+          <Text
+            x={0}
+            y={-(nameFontSize + 4)}
+            text={obj.props.text}
+            fontSize={nameFontSize}
+            fill="#ffffff"
+            fontStyle="600"
+            width={w}
+            align="center"
+          />
+        ) : null}
       </Group>
     );
   }
