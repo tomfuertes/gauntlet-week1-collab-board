@@ -831,7 +831,7 @@ export function Board({
     // Show the "Undo AI" button
     setUndoAiBatchId(latestBatchId);
     if (undoAiTimerRef.current) clearTimeout(undoAiTimerRef.current);
-    undoAiTimerRef.current = setTimeout(() => setUndoAiBatchId(null), 10000);
+    undoAiTimerRef.current = setTimeout(() => setUndoAiBatchId(null), 30000);
   }, [pushExternalBatch]);
 
   /** Capture Konva stage snapshot and open PostcardModal */
