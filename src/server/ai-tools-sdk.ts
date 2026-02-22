@@ -357,10 +357,16 @@ export async function generateImageDataUrl(ai: Ai, prompt: string): Promise<stri
  *  Allows stageManager + main streamText to share a single global creation cap. */
 export type CreateBudget = { used: number };
 
+/** Shared mutable array passed across multiple createSDKTools closures in the same turn.
+ *  Allows stageManager + main streamText to see each other's placed object bounds in flowPlace,
+ *  preventing cross-closure overlaps (same pattern as CreateBudget shared ref). */
+export type SharedBounds = Array<{ x: number; y: number; width: number; height: number }>;
+
 /** Create the full AI SDK tool registry bound to a specific Board DO stub.
  *  @param maxCreates - per-closure object creation budget (local cap).
  *  @param createBudget - shared ref for cross-closure global cap (stageManager + main turn).
- *  @param globalMaxCreates - max total creates across all closures sharing createBudget. */
+ *  @param globalMaxCreates - max total creates across all closures sharing createBudget.
+ *  @param sharedBounds - shared array for cross-closure layout awareness (stageManager + main turn). */
 export function createSDKTools(
   stub: BoardStub,
   batchId?: string,
@@ -369,6 +375,7 @@ export function createSDKTools(
   maxCreates = 4,
   createBudget?: CreateBudget,
   globalMaxCreates?: number,
+  sharedBounds?: SharedBounds,
 ) {
   // Rotate through AI_PALETTE per streamText call so multi-entity scenes get distinct colors.
   // Only used as fallback when the LLM doesn't specify an explicit color.
@@ -384,6 +391,10 @@ export function createSDKTools(
   // KEY-DECISION 2026-02-21: createBudget is a shared mutable ref that lets stageManager and
   // main streamText share a global cap (~6) per turn. Out-of-band calls (reactive, sfx, canvas,
   // director) fire in separate execution contexts and keep independent closure counters.
+  // KEY-DECISION 2026-02-21: sharedBounds is a shared mutable array (same pattern as
+  // createBudget) that lets stageManager + main see each other's placed object bounds in
+  // flowPlace. Root cause of overlap=12 on grid-2x2: stageManager creates 3 objects, main
+  // flowPlace checks only its own empty aiCreatedBounds -> all 3 main objects land at origin.
   let aiCreateCount = 0;
   const MAX_AI_CREATES_PER_RESPONSE = maxCreates;
   const aiCreatedBounds: Array<{ x: number; y: number; width: number; height: number }> = [];
@@ -408,7 +419,8 @@ export function createSDKTools(
   async function flowPlace(width: number, height: number): Promise<{ x: number; y: number }> {
     const GAP = 16;
     const existing = await getExistingBounds();
-    const allBounds = [...existing, ...aiCreatedBounds];
+    // Include sharedBounds (cross-closure: stageManager objects visible to main and vice versa)
+    const allBounds = [...existing, ...aiCreatedBounds, ...(sharedBounds ?? [])];
 
     // Frame-local placement: objects created after a frame go inside it
     if (currentFrame) {
@@ -482,7 +494,9 @@ export function createSDKTools(
     const result = await createAndMutate(stub, obj);
     if (!("error" in result)) {
       if (obj.type !== "line" && obj.type !== "image") {
-        aiCreatedBounds.push({ x: obj.x, y: obj.y, width: obj.width, height: obj.height });
+        const bounds = { x: obj.x, y: obj.y, width: obj.width, height: obj.height };
+        aiCreatedBounds.push(bounds);
+        sharedBounds?.push(bounds);
       }
       aiCreateCount++;
       if (createBudget) createBudget.used++;
@@ -1149,7 +1163,9 @@ export function createSDKTools(
         if (!("error" in labelResult)) partIds.push(labelResult.created as string);
 
         // Track the full composition bounding box (not individual parts)
-        aiCreatedBounds.push({ x, y, width: w, height: h + 32 });
+        const compositionBounds = { x, y, width: w, height: h + 32 };
+        aiCreatedBounds.push(compositionBounds);
+        sharedBounds?.push(compositionBounds);
         aiCreateCount++;
         if (createBudget) createBudget.used++;
 

@@ -7,7 +7,7 @@ import { createWorkersAI } from "workers-ai-provider";
 import { createAnthropic } from "@ai-sdk/anthropic";
 import { createOpenAI } from "@ai-sdk/openai";
 import { createSDKTools, isPlainObject, rectsOverlap, generateImageDataUrl } from "./ai-tools-sdk";
-import type { CreateBudget } from "./ai-tools-sdk";
+import type { CreateBudget, SharedBounds } from "./ai-tools-sdk";
 import { createTracingMiddleware, wrapLanguageModel, Langfuse } from "./tracing-middleware";
 import {
   SYSTEM_PROMPT,
@@ -852,9 +852,13 @@ export class ChatAgent extends AIChatAgent<Bindings> {
     // KEY-DECISION 2026-02-21: Shared budget ref so stageManager + main streamText together
     // respect a single global per-turn cap (~6). Out-of-band calls (reactive, sfx, canvas,
     // director) run in separate execution contexts and keep independent closure counters.
+    // KEY-DECISION 2026-02-21: sharedBounds mirrors createBudget pattern - a mutable array ref
+    // so stageManager objects are visible to main's flowPlace and vice versa. Fixes overlap=12
+    // on grid-2x2 where stageManager + main were placing objects without awareness of each other.
     const createBudget: CreateBudget = { used: 0 };
+    const sharedBounds: SharedBounds = [];
     const batchId = crypto.randomUUID();
-    const tools = createSDKTools(boardStub, batchId, this.env.AI, this.ctx.storage, 3, createBudget, 6);
+    const tools = createSDKTools(boardStub, batchId, this.env.AI, this.ctx.storage, 3, createBudget, 6, sharedBounds);
 
     // Update game mode from client (sent on every message so it survives DO hibernation)
     if (body?.gameMode && ["yesand", "freeform", "harold"].includes(body.gameMode)) {
@@ -1283,6 +1287,7 @@ export class ChatAgent extends AIChatAgent<Bindings> {
           sceneOpener,
           personas,
           createBudget,
+          sharedBounds,
         );
       }
 
@@ -1378,6 +1383,7 @@ export class ChatAgent extends AIChatAgent<Bindings> {
     sceneOpener: string,
     personas: Persona[],
     createBudget?: CreateBudget,
+    sharedBounds?: SharedBounds,
   ): Promise<void> {
     // Persist for troupe-aware persona rotation on subsequent messages (survives DO hibernation)
     await this.ctx.storage.put("troupeConfig", troupeConfig);
@@ -1412,7 +1418,7 @@ export class ChatAgent extends AIChatAgent<Bindings> {
     }
 
     const batchId = crypto.randomUUID();
-    const tools = createSDKTools(boardStub, batchId, this.env.AI, this.ctx.storage, 3, createBudget, 6);
+    const tools = createSDKTools(boardStub, batchId, this.env.AI, this.ctx.storage, 3, createBudget, 6, sharedBounds);
 
     try {
       const result = await generateText({
