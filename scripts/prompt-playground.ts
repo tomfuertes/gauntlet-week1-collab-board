@@ -21,7 +21,7 @@ import {
   computeLifecyclePhase,
   buildLifecycleBlock,
   PROMPT_VERSION,
-} from "../src/server/prompts.js";
+} from "../src/server/prompts/index.js";
 import { DEFAULT_PERSONAS, AI_MODELS } from "../src/shared/types.js";
 import type { GameMode, BoardStub } from "../src/shared/types.js";
 import { createSDKTools } from "../src/server/ai-tools-sdk.js";
