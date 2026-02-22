@@ -149,12 +149,14 @@ export function useWebSocket(
 
       ws.onopen = () => {
         attempt = 0;
+        if (localStorage.getItem("debug-ws")) console.log("[WS] open", boardId);
         setConnectionState("connected");
       };
 
       ws.onclose = (event: CloseEvent) => {
         wsRef.current = null;
         if (intentionalClose) {
+          if (localStorage.getItem("debug-ws")) console.log("[WS] close (intentional)", boardId);
           setConnectionState("disconnected");
           return;
         }
@@ -179,6 +181,7 @@ export function useWebSocket(
 
       // When onerror fires, onclose always follows - reconnect logic lives in onclose
       ws.onerror = () => {
+        if (localStorage.getItem("debug-ws")) console.log("[WS] error", boardId, `attempt=${attempt}`);
         console.error(`[WS] error on board ${boardId} (attempt ${attempt})`);
       };
 
@@ -247,9 +250,11 @@ export function useWebSocket(
             });
             break;
           case "obj:create":
+            if (localStorage.getItem("debug-ws")) console.log("[WS]", msg.type, msg.obj?.id, msg.obj?.type);
             setObjects((prev) => new Map(prev).set(msg.obj.id, msg.obj));
             break;
           case "obj:update":
+            if (localStorage.getItem("debug-ws")) console.log("[WS]", msg.type, msg.obj?.id, msg.obj?.type);
             // Fire animation callback before state update so caller can capture current Konva node position
             if (msg.anim) {
               onAnimatedUpdateRef.current?.(
@@ -274,6 +279,7 @@ export function useWebSocket(
             });
             break;
           case "obj:delete":
+            if (localStorage.getItem("debug-ws")) console.log("[WS]", msg.type, msg.id, undefined);
             setObjects((prev) => {
               const next = new Map(prev);
               next.delete(msg.id);
