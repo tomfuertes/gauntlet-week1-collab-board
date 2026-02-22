@@ -1,5 +1,6 @@
 import type { Board } from "./board";
 import type { ChatAgent } from "./chat-agent";
+import type { ShowAgent } from "./show-agent";
 
 /**
  * Server environment - extends auto-generated Env (from wrangler types).
@@ -10,6 +11,7 @@ import type { ChatAgent } from "./chat-agent";
 export type Bindings = Env & {
   BOARD: DurableObjectNamespace<Board>;
   CHAT_AGENT: DurableObjectNamespace<ChatAgent>;
+  SHOW_AGENT: DurableObjectNamespace<ShowAgent>;
   AUTH_SECRET: string;
   ANTHROPIC_API_KEY: string;
   OPENAI_API_KEY: string;

@@ -12,6 +12,7 @@ import { recordBoardActivity, markBoardSeen } from "./env";
 import { CANVAS_MIN_X, CANVAS_MIN_Y, CANVAS_MAX_X, CANVAS_MAX_Y } from "../shared/types";
 export { Board } from "./board";
 export { ChatAgent } from "./chat-agent";
+export { ShowAgent } from "./show-agent";
 import { containsFlaggedContent } from "./chat-agent";
 
 const app = new Hono<{ Bindings: Bindings }>();
@@ -597,6 +598,66 @@ app.get("/api/boards/:boardId/recap", async (c) => {
     console.error(JSON.stringify({ event: "recap:route-error", boardId, error: String(err) }));
     return c.json({ available: false });
   }
+});
+
+// --- AI Show routes ---
+
+// POST /api/shows - Create a board and start an AI show
+app.post("/api/shows", async (c) => {
+  const user = await requireAuth(c);
+  if (!user) return c.text("Unauthorized", 401);
+
+  const body = await c.req.json<{ premise?: string; name?: string }>();
+  const premise = (body.premise ?? "").trim();
+  if (!premise) return c.json({ error: "premise is required" }, 400);
+
+  const boardId = crypto.randomUUID();
+  const name = (body.name ?? "").trim() || `AI Show: ${premise.slice(0, 40)}`;
+
+  await c.env.DB.prepare(
+    "INSERT INTO boards (id, name, created_by, created_at, updated_at, is_show, show_status) VALUES (?, ?, ?, datetime('now'), datetime('now'), 1, 'running')",
+  )
+    .bind(boardId, name, user.id)
+    .run();
+
+  await recordBoardActivity(c.env.DB, boardId);
+  await markBoardSeen(c.env.DB, user.id, boardId);
+
+  const showAgentStub = c.env.SHOW_AGENT.get(c.env.SHOW_AGENT.idFromName(boardId));
+  await showAgentStub.startShow(premise, boardId);
+
+  return c.json({ boardId }, 201);
+});
+
+// POST /api/shows/:boardId/stop - Stop a running show
+app.post("/api/shows/:boardId/stop", async (c) => {
+  const user = await requireAuth(c);
+  if (!user) return c.text("Unauthorized", 401);
+
+  const boardId = c.req.param("boardId");
+  const ownership = await checkBoardOwnership(c.env.DB, boardId, user.id);
+  if (ownership === "not_found") return c.text("Not found", 404);
+  if (ownership === "forbidden") return c.text("Forbidden", 403);
+
+  const showAgentStub = c.env.SHOW_AGENT.get(c.env.SHOW_AGENT.idFromName(boardId));
+  await showAgentStub.stopShow();
+
+  await c.env.DB.prepare("UPDATE boards SET show_status = 'stopped' WHERE id = ?").bind(boardId).run();
+
+  return c.json({ ok: true });
+});
+
+// GET /api/shows/:boardId/status - Poll show status
+app.get("/api/shows/:boardId/status", async (c) => {
+  const user = await requireAuth(c);
+  if (!user) return c.text("Unauthorized", 401);
+
+  const boardId = c.req.param("boardId");
+  const showAgentStub = c.env.SHOW_AGENT.get(c.env.SHOW_AGENT.idFromName(boardId));
+  const status = await showAgentStub.getStatus();
+
+  if (!status) return c.json({ error: "Show not found" }, 404);
+  return c.json(status);
 });
 
 // Agent SDK route (auth-protected)
